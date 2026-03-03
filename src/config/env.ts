@@ -13,7 +13,9 @@ export type AppEnv = {
   deepseekApiKey: string;
   deepseekBaseUrl: string;
   deepseekModel: string;
-  obsidianVault: string;
+  obsidianVault?: string;
+  obsidianFolder: string;
+  obsidianDynamicFolders: string[];
   maxToolSteps: number;
 };
 
@@ -37,12 +39,25 @@ function getNumber(name: string, defaultValue: number): number {
   return n;
 }
 
+function getList(name: string): string[] {
+  const raw = process.env[name]?.trim();
+  if (!raw) {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function loadEnv(): AppEnv {
   return {
     deepseekApiKey: mustGet("DEEPSEEK_API_KEY"),
     deepseekBaseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com",
     deepseekModel: process.env.DEEPSEEK_MODEL?.trim() || "deepseek-chat",
-    obsidianVault: mustGet("OBSIDIAN_VAULT"),
+    obsidianVault: process.env.OBSIDIAN_VAULT?.trim() || undefined,
+    obsidianFolder: process.env.OBSIDIAN_FOLDER?.trim() || "clippings",
+    obsidianDynamicFolders: getList("OBSIDIAN_DYNAMIC_FOLDERS"),
     maxToolSteps: getNumber("MAX_TOOL_STEPS", 4),
   };
 }

@@ -14,12 +14,16 @@ const inputSchema = z.object({
   author: z.string().min(1).optional().describe("作者"),
   source: z.string().min(1).optional().describe("来源名称，如 WeChat"),
   tags: z.array(z.string().min(1)).optional().describe("标签数组"),
+  dynamic_folder: z
+    .string()
+    .optional()
+    .describe("动态目录（从全局配置中选择一个）；不传或空字符串时仅使用基础目录"),
   vault: z.string().min(1).optional().describe("Obsidian vault 名称"),
   path: z
     .string()
     .min(1)
     .optional()
-    .describe("笔记相对路径；不传时自动生成为 clippings/{tags}/YYYY-MM-DD {title}.md"),
+    .describe("笔记相对路径；不传时自动生成为 {folder}/{dynamicFolder}/YYYY-MM-DD {title}.md"),
   mode: z.enum(["create", "append"]).default("create"),
 });
 
@@ -55,11 +59,31 @@ function inferSource(input: SaveInput): string {
   return host;
 }
 
-function buildDefaultPath(title: string, tags: string[]): string {
+function normalizePathSegments(segments: string[]): string[] {
+  return segments.map((item) => sanitizeFileName(item)).filter(Boolean);
+}
+
+function resolveDynamicFolder(input: SaveInput, allowedFolders: string[]): string {
+  const selected = input.dynamic_folder?.trim() ?? "";
+  if (!selected) {
+    return "";
+  }
+  if (allowedFolders.length > 0 && !allowedFolders.includes(selected)) {
+    throw new Error(
+      `Invalid dynamic_folder: "${selected}". Allowed values: ${allowedFolders.join(", ")}. Or pass empty string.`,
+    );
+  }
+  return selected;
+}
+
+function buildDefaultPath(title: string, folder: string, dynamicFolder: string): string {
   const date = formatLocalDate(new Date());
   const safeTitle = sanitizeFileName(title) || "untitled";
-  const folder = sanitizeFileName(tags.join("-")) || "clippings";
-  return `clippings/${folder}/${date} ${safeTitle}.md`;
+  const folderSegments = normalizePathSegments(folder.split("/"));
+  const dynamicSegments = dynamicFolder ? normalizePathSegments(dynamicFolder.split("/")) : [];
+  const allSegments = [...folderSegments, ...dynamicSegments];
+  const basePath = allSegments.length > 0 ? allSegments.join("/") : "clippings";
+  return `${basePath}/${date} ${safeTitle}.md`;
 }
 
 function quoteYamlValue(value: string): string {
@@ -90,31 +114,50 @@ function buildNoteContent(input: SaveInput, tags: string[]): string {
 export function createSaveToObsidianTool(env: AppEnv) {
   return tool(
     async (input) => {
-      const vault = input.vault || env.obsidianVault;
+      const vault = input.vault?.trim() || env.obsidianVault;
+      if (!vault) {
+        throw new Error(
+          "Missing Obsidian vault. Set OBSIDIAN_VAULT in env or pass `vault` in tool input.",
+        );
+      }
       const tags = inferTags(input);
-      const path = input.path || buildDefaultPath(input.title, tags);
+      const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
+      const path = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
       const content = buildNoteContent(input, tags);
 
       const args =
         input.mode === "append"
           ? [`vault=${vault}`, "append", `path=${path}`, `content=${content}`]
           : [`vault=${vault}`, "create", `path=${path}`, `content=${content}`];
+      console.info(
+        `[tool:save_to_obsidian] start mode=${input.mode} vault=${vault} path=${path} dynamic_folder=${dynamicFolder}`,
+      );
 
       try {
         await execFileAsync("obsidian", args, { maxBuffer: 10 * 1024 * 1024 });
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
+        const stderr =
+          typeof error === "object" && error !== null && "stderr" in error
+            ? String((error as { stderr?: unknown }).stderr ?? "")
+            : "";
+        console.error(`[tool:save_to_obsidian] failed msg=${msg}`);
+        if (stderr.trim()) {
+          console.error(`[tool:save_to_obsidian] stderr=${stderr.trim()}`);
+        }
         if (msg.includes("ENOENT")) {
           throw new Error("Obsidian CLI not found. Please ensure `obsidian` is available in PATH.");
         }
         throw new Error(`Obsidian CLI failed: ${msg}`);
       }
+      console.info(`[tool:save_to_obsidian] success path=${path}`);
 
       return {
         saved: true,
         vault,
         path,
         tags,
+        dynamic_folder: dynamicFolder,
         mode: input.mode,
       };
     },
