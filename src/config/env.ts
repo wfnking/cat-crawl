@@ -72,7 +72,7 @@ export function loadEnv(): AppEnv {
     feishuAppSecret: process.env.FEISHU_APP_SECRET?.trim() || undefined,
     feishuDomain: process.env.FEISHU_DOMAIN?.trim().toLowerCase() === "lark" ? "lark" : "feishu",
     obsidianVault: process.env.OBSIDIAN_VAULT?.trim() || undefined,
-    obsidianFolder: process.env.OBSIDIAN_FOLDER?.trim() || "clippings",
+    obsidianFolder: process.env.OBSIDIAN_FOLDER?.trim() || "Clippings",
     obsidianDynamicFolders: getList("OBSIDIAN_DYNAMIC_FOLDERS"),
     maxToolSteps: getNumber("MAX_TOOL_STEPS", 4),
   };

@@ -7,7 +7,7 @@
 - 输入公众号链接，自动抓取文章内容
 - HTML 转 Markdown（保留结构）
 - 根据文章内容自动选择动态目录（可配置）
-- 通过 Obsidian CLI 保存到本地 Vault
+- 直接写入 Obsidian Vault（默认当前打开的 vault，也可通过配置指定）
 - 支持飞书机器人长连接接入（阶段 2）
 
 ## 环境要求
@@ -35,7 +35,7 @@ cp .env.example .env
 - `DEEPSEEK_API_KEY`：必填
 - `DEEPSEEK_BASE_URL`：默认 `https://api.deepseek.com`
 - `DEEPSEEK_MODEL`：默认 `deepseek-chat`
-- `OBSIDIAN_VAULT`：可选（也可在工具入参里传）
+- `OBSIDIAN_VAULT`：当前应用流程必填（vault 名称 / vault id / 绝对路径）
 - `OBSIDIAN_FOLDER`：保存根目录，默认 `Clippings`
 - `OBSIDIAN_DYNAMIC_FOLDERS`：候选动态目录，英文逗号分隔
 
