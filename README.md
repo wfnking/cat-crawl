@@ -7,7 +7,7 @@
 - 输入公众号链接，自动抓取文章内容
 - HTML 转 Markdown（保留结构）
 - 根据文章内容自动选择动态目录（可配置）
-- 直接写入 Obsidian Vault（默认当前打开的 vault，也可通过配置指定）
+- 通过 Obsidian CLI 写入指定 Obsidian Vault
 - 支持飞书机器人长连接接入（阶段 2）
 
 ## 环境要求
