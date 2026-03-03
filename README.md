@@ -19,7 +19,7 @@
 ## 安装
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## 配置
@@ -48,7 +48,7 @@ OBSIDIAN_DYNAMIC_FOLDERS=AI学习法技能提升,产品增长,编程前端
 ## 本地 CLI 模式
 
 ```bash
-npm run dev -- "https://mp.weixin.qq.com/s/xxxx"
+pnpm dev -- "https://mp.weixin.qq.com/s/xxxx"
 ```
 
 ## 飞书模式（长连接）
@@ -63,15 +63,15 @@ npm run dev -- "https://mp.weixin.qq.com/s/xxxx"
 启动：
 
 ```bash
-npm run dev -- --feishu
+pnpm dev -- --feishu
 # 或
-npm run dev:feishu
+pnpm dev:feishu
 ```
 
 ## 构建
 
 ```bash
-npm run build
+pnpm build
 ```
 
 ## 当前流程
