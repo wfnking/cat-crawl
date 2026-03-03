@@ -3,7 +3,7 @@ name: obsidian-clippings-cli
 description: Create Obsidian clipping notes via Obsidian CLI using path pattern `{folder}/{dynamicFolder}/YYYY-MM-DD {title}.md`, auto-extract frontmatter properties, and write body content.
 ---
 
-# Obsidian Clippings CLI
+# Obsidian Clippings
 
 当用户要把网页/摘录/文本保存到 Obsidian `Clippings` 目录，并要求：
 - 文件路径遵循 `{folder}/{dynamicFolder}/YYYY-MM-DD {title}.md`
@@ -46,7 +46,7 @@ created: "<ISO_DATETIME>"
 - `source?: string`
 - `tags?: string[]`
 - `dynamic_folder?: string`（由 agent 按文章内容从全局配置中选择一个）
-- `vault?: string`
+- `vault?: string`（可选，vault 名称 / vault id / 绝对路径）
 - `path?: string`（通常不传，使用默认路径规则）
 - `mode?: "create" | "append"`
 
@@ -57,22 +57,11 @@ created: "<ISO_DATETIME>"
 - `dynamicFolder` 由 `dynamic_folder` 推导；若为空则直接落到 `folder` 根目录
 - 全局候选项来自 `OBSIDIAN_DYNAMIC_FOLDERS`（用 `,` 分隔）
 
-## CLI 调用约定
+## 保存约定
 
-如果环境变量里已指定 `OBSIDIAN_VAULT`，优先使用该值；否则用工具入参 `vault`。
-目录基础前缀可由 `OBSIDIAN_FOLDER` 配置。
-
-命令格式：
-
-```bash
-obsidian vault="<你的Vault名>" create path="{folder}/{dynamicFolder}/2026-03-03 title.md" content="..."
-```
-
-追加模式：
-
-```bash
-obsidian vault="<你的Vault名>" append path="{folder}/{dynamicFolder}/2026-03-03 title.md" content="..."
-```
+优先级：`vault` 入参 > `OBSIDIAN_VAULT`。
+工具通过 `obsidian` CLI 调用保存。
+目录基础前缀由 `OBSIDIAN_FOLDER` 配置。
 
 ## Implementation Notes
 
