@@ -86,6 +86,61 @@ async function sendTelegramMessage(botToken: string, chatId: number, text: strin
   }
 }
 
+async function sendTelegramChatAction(
+  botToken: string,
+  chatId: number,
+  action: "typing" | "record_voice" = "typing",
+): Promise<void> {
+  const url = `https://api.telegram.org/bot${botToken}/sendChatAction`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      action,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`telegram sendChatAction failed: status=${response.status} body=${body}`);
+  }
+}
+
+function startTypingIndicator(
+  botToken: string,
+  chatId: number,
+  intervalMs = 5000,
+): { stop: () => void } {
+  let stopped = false;
+
+  const tick = async (): Promise<void> => {
+    if (stopped) {
+      return;
+    }
+    try {
+      await sendTelegramChatAction(botToken, chatId, "typing");
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.warn(`[telegram] typing signal failed: ${detail}`);
+    }
+  };
+
+  void tick();
+  const timer = setInterval(() => {
+    void tick();
+  }, intervalMs);
+
+  return {
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
+}
+
 async function fetchTelegramUpdates(
   botToken: string,
   offset: number,
@@ -166,6 +221,7 @@ async function handleIncomingTextMessage(
     }
   }
 
+  const typing = startTypingIndicator(botToken, chatId);
   try {
     const result = await runWechatAgent(text, {
       context: {
@@ -191,6 +247,8 @@ async function handleIncomingTextMessage(
       const sendDetail = sendError instanceof Error ? sendError.message : String(sendError);
       console.error(`[telegram] send failure message failed: ${sendDetail}`);
     }
+  } finally {
+    typing.stop();
   }
 }
 
