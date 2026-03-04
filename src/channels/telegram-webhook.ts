@@ -141,6 +141,15 @@ function startTypingIndicator(
   };
 }
 
+async function sendTypingOnce(botToken: string, chatId: number): Promise<void> {
+  try {
+    await sendTelegramChatAction(botToken, chatId, "typing");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`[telegram] typing signal failed: ${detail}`);
+  }
+}
+
 async function fetchTelegramUpdates(
   botToken: string,
   offset: number,
@@ -221,8 +230,17 @@ async function handleIncomingTextMessage(
     }
   }
 
-  const typing = startTypingIndicator(botToken, chatId);
+  const typingMode = env.telegramTypingMode;
+  const typingIntervalMs = Math.max(1000, Math.floor(env.telegramTypingIntervalSeconds * 1000));
+  const typing = typingMode === "thinking" || typingMode === "message"
+    ? startTypingIndicator(botToken, chatId, typingIntervalMs)
+    : null;
+
   try {
+    if (typingMode === "instant") {
+      await sendTypingOnce(botToken, chatId);
+    }
+
     const result = await runWechatAgent(text, {
       context: {
         channel: "telegram",
@@ -231,6 +249,11 @@ async function handleIncomingTextMessage(
         messageId: messageId ? String(messageId) : undefined,
       },
     });
+
+    if (typingMode === "thinking") {
+      typing?.stop();
+    }
+
     const parts = splitMessage(result.reply);
     for (const part of parts) {
       await sendTelegramMessage(botToken, chatId, part);
@@ -248,7 +271,7 @@ async function handleIncomingTextMessage(
       console.error(`[telegram] send failure message failed: ${sendDetail}`);
     }
   } finally {
-    typing.stop();
+    typing?.stop();
   }
 }
 

@@ -34,6 +34,18 @@ export function getGatewaySetupSteps(channel: ChannelConfigValue): GatewaySetupS
         required: true,
         defaultValue: "partial",
       },
+      {
+        key: "TELEGRAM_TYPING_MODE",
+        label: "Telegram Typing Mode (never/instant/thinking/message)",
+        required: true,
+        defaultValue: "thinking",
+      },
+      {
+        key: "TELEGRAM_TYPING_INTERVAL_SECONDS",
+        label: "Telegram Typing Interval Seconds",
+        required: true,
+        defaultValue: "6",
+      },
     ];
   }
 
@@ -92,6 +104,9 @@ export function buildGatewaySetupConfig(
     output.TELEGRAM_DM_POLICY = answers.TELEGRAM_DM_POLICY?.trim() || "pairing";
     output.TELEGRAM_GROUP_POLICY = answers.TELEGRAM_GROUP_POLICY?.trim() || "allowlist";
     output.TELEGRAM_STREAM_MODE = answers.TELEGRAM_STREAM_MODE?.trim() || "partial";
+    output.TELEGRAM_TYPING_MODE = answers.TELEGRAM_TYPING_MODE?.trim() || "thinking";
+    output.TELEGRAM_TYPING_INTERVAL_SECONDS =
+      answers.TELEGRAM_TYPING_INTERVAL_SECONDS?.trim() || "6";
   }
   if (channel === "discord" || channel === "all") {
     output.DISCORD_GROUP_POLICY = answers.DISCORD_GROUP_POLICY?.trim() || "allowlist";
@@ -102,6 +117,8 @@ export function buildGatewaySetupConfig(
       key === "TELEGRAM_DM_POLICY" ||
       key === "TELEGRAM_GROUP_POLICY" ||
       key === "TELEGRAM_STREAM_MODE" ||
+      key === "TELEGRAM_TYPING_MODE" ||
+      key === "TELEGRAM_TYPING_INTERVAL_SECONDS" ||
       key === "DISCORD_GROUP_POLICY"
     ) {
       continue;

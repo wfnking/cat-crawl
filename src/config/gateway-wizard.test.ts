@@ -11,6 +11,8 @@ test("telegram gateway should expose required setup steps", () => {
       "TELEGRAM_DM_POLICY",
       "TELEGRAM_GROUP_POLICY",
       "TELEGRAM_STREAM_MODE",
+      "TELEGRAM_TYPING_MODE",
+      "TELEGRAM_TYPING_INTERVAL_SECONDS",
     ],
   );
   assert.equal(steps[0]?.required, true);
@@ -23,6 +25,8 @@ test("buildGatewaySetupConfig should output channel + env-style keys", () => {
     TELEGRAM_DM_POLICY: "pairing",
     TELEGRAM_GROUP_POLICY: "allowlist",
     TELEGRAM_STREAM_MODE: "partial",
+    TELEGRAM_TYPING_MODE: "thinking",
+    TELEGRAM_TYPING_INTERVAL_SECONDS: "6",
   });
 
   assert.equal(config.channel, "telegram");
@@ -31,6 +35,8 @@ test("buildGatewaySetupConfig should output channel + env-style keys", () => {
   assert.equal(config.TELEGRAM_DM_POLICY, "pairing");
   assert.equal(config.TELEGRAM_GROUP_POLICY, "allowlist");
   assert.equal(config.TELEGRAM_STREAM_MODE, "partial");
+  assert.equal(config.TELEGRAM_TYPING_MODE, "thinking");
+  assert.equal(config.TELEGRAM_TYPING_INTERVAL_SECONDS, "6");
 });
 
 test("buildGatewaySetupConfig should set telegram policy defaults", () => {
@@ -41,4 +47,6 @@ test("buildGatewaySetupConfig should set telegram policy defaults", () => {
   assert.equal(config.TELEGRAM_DM_POLICY, "pairing");
   assert.equal(config.TELEGRAM_GROUP_POLICY, "allowlist");
   assert.equal(config.TELEGRAM_STREAM_MODE, "partial");
+  assert.equal(config.TELEGRAM_TYPING_MODE, "thinking");
+  assert.equal(config.TELEGRAM_TYPING_INTERVAL_SECONDS, "6");
 });

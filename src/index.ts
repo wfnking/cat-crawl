@@ -73,6 +73,8 @@ function persistStructuredChannelConfig(
     "TELEGRAM_DM_POLICY",
     "TELEGRAM_GROUP_POLICY",
     "TELEGRAM_STREAM_MODE",
+    "TELEGRAM_TYPING_MODE",
+    "TELEGRAM_TYPING_INTERVAL_SECONDS",
     "DISCORD_BOT_TOKEN",
     "DISCORD_GROUP_POLICY",
     "TELEGRAM_MODE",
@@ -93,6 +95,13 @@ function persistStructuredChannelConfig(
   telegram.dmPolicy = values.TELEGRAM_DM_POLICY || "pairing";
   telegram.groupPolicy = values.TELEGRAM_GROUP_POLICY || "allowlist";
   telegram.streamMode = values.TELEGRAM_STREAM_MODE || "partial";
+  telegram.typingMode = values.TELEGRAM_TYPING_MODE || "thinking";
+  {
+    const rawInterval = values.TELEGRAM_TYPING_INTERVAL_SECONDS?.trim() || "6";
+    const parsed = Number(rawInterval);
+    telegram.typingIntervalSeconds =
+      Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 6;
+  }
   if (values.TELEGRAM_BOT_TOKEN) {
     telegram.botToken = values.TELEGRAM_BOT_TOKEN;
   }

@@ -22,6 +22,8 @@ export type AppEnv = {
   telegramEnabled: boolean;
   telegramDmPolicy: string;
   telegramBotToken?: string;
+  telegramTypingMode: "never" | "instant" | "thinking" | "message";
+  telegramTypingIntervalSeconds: number;
   discordEnabled: boolean;
   discordBotToken?: string;
   obsidianVault?: string;
@@ -59,6 +61,7 @@ function readFromStructuredConfig(name: string): string | undefined {
     DEEPSEEK_MODEL: ["agent", "deepseek", "model"],
     TELEGRAM_BOT_TOKEN: ["channels", "telegram", "botToken"],
     TELEGRAM_DM_POLICY: ["channels", "telegram", "dmPolicy"],
+    TELEGRAM_TYPING_MODE: ["channels", "telegram", "typingMode"],
     DISCORD_BOT_TOKEN: ["channels", "discord", "token"],
     FEISHU_APP_ID: ["channels", "feishu", "accounts", "main", "appId"],
     FEISHU_APP_SECRET: ["channels", "feishu", "accounts", "main", "appSecret"],
@@ -68,6 +71,9 @@ function readFromStructuredConfig(name: string): string | undefined {
     TELEGRAM_ENABLED: ["channels", "telegram", "enabled"],
     DISCORD_ENABLED: ["channels", "discord", "enabled"],
     FEISHU_ENABLED: ["channels", "feishu", "accounts", "main", "enabled"],
+  };
+  const numberMappings: Record<string, string[]> = {
+    TELEGRAM_TYPING_INTERVAL_SECONDS: ["channels", "telegram", "typingIntervalSeconds"],
   };
 
   const path = mappings[name];
@@ -81,6 +87,17 @@ function readFromStructuredConfig(name: string): string | undefined {
     const value = readFromPath(raw, boolPath);
     if (typeof value === "boolean") {
       return value ? "true" : "false";
+    }
+  }
+
+  const numberPath = numberMappings[name];
+  if (numberPath) {
+    const value = readFromPath(raw, numberPath);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
     }
   }
 
@@ -142,6 +159,17 @@ function getBoolean(name: string, defaultValue: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
 }
 
+function getTelegramTypingMode(): "never" | "instant" | "thinking" | "message" {
+  const raw = readRaw("TELEGRAM_TYPING_MODE")?.toLowerCase();
+  if (!raw) {
+    return "thinking";
+  }
+  if (raw === "never" || raw === "instant" || raw === "thinking" || raw === "message") {
+    return raw;
+  }
+  throw new Error(`Invalid TELEGRAM_TYPING_MODE: ${raw}`);
+}
+
 export function loadEnv(): AppEnv {
   return {
     agent: readRaw("agent") || "deepseek",
@@ -155,6 +183,8 @@ export function loadEnv(): AppEnv {
     telegramEnabled: getBoolean("TELEGRAM_ENABLED", false),
     telegramDmPolicy: readRaw("TELEGRAM_DM_POLICY") || "pairing",
     telegramBotToken: readRaw("TELEGRAM_BOT_TOKEN") || undefined,
+    telegramTypingMode: getTelegramTypingMode(),
+    telegramTypingIntervalSeconds: getNumber("TELEGRAM_TYPING_INTERVAL_SECONDS", 6),
     discordEnabled: getBoolean("DISCORD_ENABLED", false),
     discordBotToken: readRaw("DISCORD_BOT_TOKEN") || undefined,
     obsidianVault: readRaw("OBSIDIAN_VAULT") || undefined,

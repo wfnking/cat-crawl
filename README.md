@@ -74,7 +74,7 @@ cat-crawl get agent deepseek
 
 说明：
 
-- `set channel telegram`：进入交互式向导，设置 Telegram Token 与策略字段（Polling 模式）。
+- `set channel telegram`：进入交互式向导，设置 Telegram Token、策略字段与 typing 行为（Polling 模式）。
 - `set channel <value>` 支持 `feishu` / `telegram` / `discord` / `all`，其中 `feishu|discord` 也会进入对应交互式字段收集。
 - 当 `channels.telegram.dmPolicy=pairing` 时，未配对用户会收到 Pairing Code，管理员使用 `cat-crawl pairing approve telegram <code>` 完成授权。
 - `set agent deepseek`：进入交互式向导，输入 DeepSeek 配置（API Key/Model，默认 `deepseek-chat`），并写入分层 `agent` 配置。
@@ -98,7 +98,9 @@ cat-crawl get agent deepseek
       "botToken": "xxx",
       "dmPolicy": "pairing",
       "groupPolicy": "allowlist",
-      "streamMode": "partial"
+      "streamMode": "partial",
+      "typingMode": "thinking",
+      "typingIntervalSeconds": 6
     },
     "discord": {
       "enabled": false,
