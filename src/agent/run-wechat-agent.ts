@@ -1,5 +1,6 @@
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from "./history-intent.js";
+import { appendConversationRound, getRecentConversationMessages } from "./chat-memory.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
 import { createDeepSeekModel } from "../services/deepseek.js";
@@ -149,7 +150,11 @@ async function detectHistoryIntent(userInput: string, env: ReturnType<typeof loa
   return fallback;
 }
 
-async function chatForNonWechatInput(userInput: string, env: ReturnType<typeof loadEnv>): Promise<string> {
+async function chatForNonWechatInput(
+  userInput: string,
+  env: ReturnType<typeof loadEnv>,
+  context: AgentRequestContext | undefined,
+): Promise<string> {
   if (shouldReturnCapabilityReply(userInput)) {
     return buildCapabilityReply();
   }
@@ -159,6 +164,13 @@ async function chatForNonWechatInput(userInput: string, env: ReturnType<typeof l
     timeout: 25000,
   });
   try {
+    const memoryMessages = getRecentConversationMessages(context);
+    const contextMessages = memoryMessages.map((message) => {
+      if (message.role === "assistant") {
+        return new AIMessage(message.content);
+      }
+      return new HumanMessage(message.content);
+    });
     console.info("[agent] invoking model for non-wechat small chat");
     const message = await chatModel.invoke([
       new SystemMessage(
@@ -168,10 +180,13 @@ async function chatForNonWechatInput(userInput: string, env: ReturnType<typeof l
           "回答保持简洁、友好、中文。",
         ].join("\n"),
       ),
+      ...contextMessages,
       new HumanMessage(userInput),
     ]);
     const reply = normalizeModelText(message.content);
-    return reply || buildCapabilityReply();
+    const finalReply = reply || buildCapabilityReply();
+    appendConversationRound(context, userInput, finalReply);
+    return finalReply;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`[agent] non-wechat chat fallback failed: ${detail}`);
@@ -317,7 +332,7 @@ export async function runWechatAgent(
       };
     }
 
-    const reply = await chatForNonWechatInput(userInput, env);
+    const reply = await chatForNonWechatInput(userInput, env, options?.context);
     return {
       reply,
       usedTools,
