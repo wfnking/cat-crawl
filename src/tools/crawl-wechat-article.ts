@@ -9,6 +9,14 @@ type CrawlResult = {
   content_markdown: string;
 };
 
+type WechatImageAttrs = {
+  src?: string | null;
+  dataSrc?: string | null;
+  dataOriginal?: string | null;
+  dataOriginalSrc?: string | null;
+  dataLazySrc?: string | null;
+};
+
 const inputSchema = z.object({
   url: z.string().url().describe("微信公众号文章链接，必须为 mp.weixin.qq.com 域名"),
 });
@@ -36,6 +44,36 @@ function toMarkdown(result: {
     result.contentBody,
   ];
   return lines.join("\n").trim();
+}
+
+function normalizeUrl(url: string): string {
+  return url.startsWith("//") ? `https:${url}` : url;
+}
+
+function isInlineDataImage(url: string): boolean {
+  return url.toLowerCase().startsWith("data:image/");
+}
+
+export function resolveWechatImageSrc(attrs: WechatImageAttrs): string {
+  const values = [
+    attrs.dataSrc,
+    attrs.dataOriginal,
+    attrs.dataOriginalSrc,
+    attrs.dataLazySrc,
+    attrs.src,
+  ]
+    .map((item) => item?.trim() || "")
+    .filter(Boolean);
+
+  for (const value of values) {
+    const normalized = normalizeUrl(value);
+    if (isInlineDataImage(normalized)) {
+      continue;
+    }
+    return normalized;
+  }
+
+  return "";
 }
 
 function createTurndownService(): TurndownService {
@@ -67,16 +105,17 @@ function createTurndownService(): TurndownService {
     replacement(_content, node) {
       const element = node as HTMLImageElement;
       const alt = (element.getAttribute("alt") || "image").trim();
-      const src =
-        element.getAttribute("src")?.trim() ||
-        element.getAttribute("data-src")?.trim() ||
-        element.getAttribute("data-original")?.trim() ||
-        "";
+      const src = resolveWechatImageSrc({
+        src: element.getAttribute("src"),
+        dataSrc: element.getAttribute("data-src"),
+        dataOriginal: element.getAttribute("data-original"),
+        dataOriginalSrc: element.getAttribute("data-original-src"),
+        dataLazySrc: element.getAttribute("data-lazy-src"),
+      });
       if (!src) {
         return "";
       }
-      const normalized = src.startsWith("//") ? `https:${src}` : src;
-      return `![${alt}](${normalized})`;
+      return `![${alt}](${src})`;
     },
   });
 
@@ -147,12 +186,15 @@ export const crawlWechatArticleTool = tool(
 
             if (el.tagName.toLowerCase() === "img") {
               const img = el as HTMLImageElement;
-              const src =
-                img.getAttribute("src") ||
+              const src = img.getAttribute("src");
+              const preferred =
                 img.getAttribute("data-src") ||
-                img.getAttribute("data-original");
-              if (src && !img.getAttribute("src")) {
-                img.setAttribute("src", src);
+                img.getAttribute("data-original") ||
+                img.getAttribute("data-original-src") ||
+                img.getAttribute("data-lazy-src");
+              const isDataImage = (src || "").toLowerCase().startsWith("data:image/");
+              if ((!src || isDataImage) && preferred) {
+                img.setAttribute("src", preferred);
               }
             }
 
