@@ -1,5 +1,6 @@
 import { runWechatAgent } from "../agent/run-wechat-agent.js";
 import type { AppEnv } from "../config/env.js";
+import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
 type FeishuMessageEvent = {
   message?: {
@@ -220,7 +221,7 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
       } catch (error) {
         console.error(`[feishu] runWechatAgent failed: ${formatError(error)}`);
         try {
-          await sendToTarget(target, "处理失败，请稍后重试。");
+          await sendToTarget(target, toUserFacingErrorMessage(error));
         } catch (sendError) {
           console.error(`[feishu] send failure message failed: ${formatError(sendError)}`);
         }

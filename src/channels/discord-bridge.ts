@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, Partials, type Message } from "discord.js";
 import { runWechatAgent } from "../agent/run-wechat-agent.js";
 import type { AppEnv } from "../config/env.js";
+import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
 const MESSAGE_DEDUP_TTL_MS = 10 * 60 * 1000;
 const processedMessageIds = new Map<string, number>();
@@ -111,7 +112,7 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`[discord] handle message failed: ${detail}`);
       try {
-        await message.reply("处理失败，请稍后重试。");
+        await message.reply(toUserFacingErrorMessage(error));
       } catch (sendError) {
         const sendDetail = sendError instanceof Error ? sendError.message : String(sendError);
         console.error(`[discord] send failure message failed: ${sendDetail}`);

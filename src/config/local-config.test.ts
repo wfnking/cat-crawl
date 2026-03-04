@@ -49,9 +49,9 @@ test("remove should delete existing key", () => {
   const { homeDir, cleanup } = createTempHome();
   const store = createLocalConfigStore({ homeDir });
   try {
-    store.set("gateway", "telegram");
-    store.remove("gateway");
-    assert.equal(store.get("gateway"), undefined);
+    store.set("temp_key", "value");
+    store.remove("temp_key");
+    assert.equal(store.get("temp_key"), undefined);
   } finally {
     cleanup();
   }

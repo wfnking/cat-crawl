@@ -83,7 +83,6 @@ cat-crawl get agent deepseek
 - `get channel telegram`：当键不存在时返回你提供的 fallback（这里是 `telegram`）。
 - `get agent`：读取当前 agent。
 - `get agent deepseek`：当键不存在时返回 fallback（这里是 `deepseek`）。
-- `gateway` 键已废弃，不再支持读写。
 
 当你不带参数直接运行 `cat-crawl` 且已设置 `channel` 时，会按该渠道启动对应通道模式。
 

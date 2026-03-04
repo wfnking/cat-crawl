@@ -1,6 +1,7 @@
 import { runWechatAgent } from "../agent/run-wechat-agent.js";
 import type { AppEnv } from "../config/env.js";
 import { ensureTelegramPairingCodeForUser, isTelegramUserApproved } from "../config/telegram-pairing.js";
+import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
 type TelegramUpdate = {
   update_id?: number;
@@ -265,7 +266,7 @@ async function handleIncomingTextMessage(
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`[telegram] handle message failed: ${detail}`);
     try {
-      await sendTelegramMessage(botToken, chatId, "处理失败，请稍后重试。");
+      await sendTelegramMessage(botToken, chatId, toUserFacingErrorMessage(error));
     } catch (sendError) {
       const sendDetail = sendError instanceof Error ? sendError.message : String(sendError);
       console.error(`[telegram] send failure message failed: ${sendDetail}`);

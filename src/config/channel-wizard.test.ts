@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildGatewaySetupConfig, getGatewaySetupSteps } from "./gateway-wizard.js";
+import { buildChannelSetupConfig, getChannelSetupSteps } from "./channel-wizard.js";
 
-test("telegram gateway should expose required setup steps", () => {
-  const steps = getGatewaySetupSteps("telegram");
+test("telegram channel should expose required setup steps", () => {
+  const steps = getChannelSetupSteps("telegram");
   assert.deepEqual(
     steps.map((item) => item.key),
     [
@@ -19,8 +19,8 @@ test("telegram gateway should expose required setup steps", () => {
   assert.equal(steps[1]?.required, true);
 });
 
-test("buildGatewaySetupConfig should output channel + env-style keys", () => {
-  const config = buildGatewaySetupConfig("telegram", {
+test("buildChannelSetupConfig should output channel + env-style keys", () => {
+  const config = buildChannelSetupConfig("telegram", {
     TELEGRAM_BOT_TOKEN: "token-123",
     TELEGRAM_DM_POLICY: "pairing",
     TELEGRAM_GROUP_POLICY: "allowlist",
@@ -39,8 +39,8 @@ test("buildGatewaySetupConfig should output channel + env-style keys", () => {
   assert.equal(config.TELEGRAM_TYPING_INTERVAL_SECONDS, "6");
 });
 
-test("buildGatewaySetupConfig should set telegram policy defaults", () => {
-  const config = buildGatewaySetupConfig("telegram", {
+test("buildChannelSetupConfig should set telegram policy defaults", () => {
+  const config = buildChannelSetupConfig("telegram", {
     TELEGRAM_BOT_TOKEN: "token-123",
   });
 

@@ -1,6 +1,6 @@
 import type { ChannelConfigValue } from "./local-config.js";
 
-export type GatewaySetupStep = {
+export type ChannelSetupStep = {
   key: string;
   label: string;
   required: boolean;
@@ -8,7 +8,7 @@ export type GatewaySetupStep = {
   shouldAsk?: (answers: Record<string, string>, existing: Record<string, string>) => boolean;
 };
 
-export function getGatewaySetupSteps(channel: ChannelConfigValue): GatewaySetupStep[] {
+export function getChannelSetupSteps(channel: ChannelConfigValue): ChannelSetupStep[] {
   if (channel === "telegram") {
     return [
       {
@@ -89,7 +89,7 @@ export function getGatewaySetupSteps(channel: ChannelConfigValue): GatewaySetupS
   return [];
 }
 
-export function buildGatewaySetupConfig(
+export function buildChannelSetupConfig(
   channel: ChannelConfigValue,
   answers: Record<string, string>,
 ): Record<string, string> {

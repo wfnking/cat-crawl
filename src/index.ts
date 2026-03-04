@@ -7,8 +7,8 @@ import { startDiscordBridge } from "./channels/discord-bridge.js";
 import { startFeishuBridge } from "./channels/feishu-bridge.js";
 import { startTelegramPollingChannel } from "./channels/telegram-webhook.js";
 import { buildAgentSetupConfig, getAgentSetupSteps } from "./config/agent-wizard.js";
+import { buildChannelSetupConfig, getChannelSetupSteps } from "./config/channel-wizard.js";
 import { loadEnv } from "./config/env.js";
-import { buildGatewaySetupConfig, getGatewaySetupSteps } from "./config/gateway-wizard.js";
 import {
   getLocalConfigStore,
   parseAgentConfig,
@@ -62,7 +62,6 @@ function persistStructuredChannelConfig(
   const raw = store.readRaw();
 
   const flatChannelKeys = [
-    "gateway",
     "FEISHU_ENABLED",
     "TELEGRAM_ENABLED",
     "DISCORD_ENABLED",
@@ -267,14 +266,14 @@ function parsePairingApproveCommand(args: string[]): PairingApproveCommand | nul
   };
 }
 
-async function promptGatewaySetup(channel: ChannelConfigValue): Promise<Record<string, string>> {
+async function promptChannelSetup(channel: ChannelConfigValue): Promise<Record<string, string>> {
   const store = getLocalConfigStore();
   const existing = store.all();
-  const steps = getGatewaySetupSteps(channel);
+  const steps = getChannelSetupSteps(channel);
   const answers: Record<string, string> = {};
 
   if (steps.length === 0) {
-    return buildGatewaySetupConfig(channel, answers);
+    return buildChannelSetupConfig(channel, answers);
   }
 
   const rl = createInterface({
@@ -304,7 +303,7 @@ async function promptGatewaySetup(channel: ChannelConfigValue): Promise<Record<s
     rl.close();
   }
 
-  return buildGatewaySetupConfig(channel, answers);
+  return buildChannelSetupConfig(channel, answers);
 }
 
 async function promptAgentSetup(agent: AgentConfigValue): Promise<Record<string, string>> {
@@ -352,9 +351,8 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
   if (!key) {
     throw new Error("Usage: cat-crawl <set|get> <key> [value]");
   }
-
   if (key === "gateway") {
-    throw new Error("配置键 gateway 已废弃，请改用 channel");
+    throw new Error("gateway 已移除，请使用 channel。");
   }
 
   if (command.action === "set") {
@@ -367,7 +365,7 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
       if (!channel) {
         throw new Error("channel 只支持 feishu / telegram / discord / all");
       }
-      const values = await promptGatewaySetup(channel);
+      const values = await promptChannelSetup(channel);
       persistStructuredChannelConfig(channel, values);
       console.log(`channel=${channel}`);
       console.log("已完成渠道交互配置，配置已写入 ~/.cat-crawl/config.json");
