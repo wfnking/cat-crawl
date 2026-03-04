@@ -1,7 +1,10 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from "./history-intent.js";
 import { loadEnv } from "../config/env.js";
+import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
 import { createDeepSeekModel } from "../services/deepseek.js";
 import { crawlWechatArticleTool } from "../tools/crawl-wechat-article.js";
+import { createQuerySuccessHistoryTool, type QuerySuccessHistoryResult } from "../tools/query-success-history.js";
 import { createSaveToObsidianTool } from "../tools/save-to-obsidian.js";
 import { extractWechatUrl, normalizeModelText } from "../utils/text.js";
 
@@ -16,6 +19,7 @@ type SaveToolResult = {
   saved?: boolean;
   vault?: string;
   path?: string;
+  tags?: string[];
   dynamic_folder?: string;
 };
 
@@ -37,8 +41,22 @@ export type AgentStatusUpdate = {
   message: string;
 };
 
+export type AgentRequestContext = {
+  channel?: HistoryChannel;
+  senderId?: string;
+  roomId?: string;
+  messageId?: string;
+};
+
 export type AgentRunOptions = {
   onStatus?: (status: AgentStatusUpdate) => void | Promise<void>;
+  context?: AgentRequestContext;
+};
+
+type HistoryIntent = {
+  shouldQuery: boolean;
+  scope: "all" | "today";
+  tag?: string;
 };
 
 async function emitStatus(options: AgentRunOptions | undefined, status: AgentStatusUpdate): Promise<void> {
@@ -60,8 +78,9 @@ function buildCapabilityReply(): string {
     "2. 抓取文章并转换为 Markdown（尽量保留结构）。",
     "3. 根据文章内容选择一个动态目录（或留空）。",
     "4. 通过 Obsidian CLI 保存到你的 Vault。",
+    "5. 查询历史成功记录（全部 / 今天 / 按标签）。",
     "",
-    "直接发公众号链接给我即可开始处理。",
+    "直接发公众号链接，或说“查看今天成功记录 / 根据标签 ai 查询”。",
   ].join("\n");
 }
 
@@ -69,6 +88,65 @@ function shouldReturnCapabilityReply(input: string): boolean {
   const text = input.trim().toLowerCase();
   if (!text) return true;
   return /(可以做什么|能做什么|你能做什么|怎么用|help|what can you do|功能)/i.test(text);
+}
+
+function formatHistoryReply(result: QuerySuccessHistoryResult): string {
+  if (result.total === 0) {
+    if (result.scope === "today") {
+      return "今天还没有成功记录。";
+    }
+    if (result.tag) {
+      return `没有找到标签为 \`${result.tag}\` 的成功记录。`;
+    }
+    return "还没有成功记录。";
+  }
+
+  const header = `共找到 ${result.total} 条成功记录（展示 ${result.items.length} 条）。`;
+  const lines = result.items.map((item, index) => {
+    const fullPath = `${item.vault}/${item.path}`;
+    const tagText = item.tags.length > 0 ? item.tags.join(", ") : "(无)";
+    return [
+      `${index + 1}. [${item.created_at}] [${item.source}/${item.channel}] ${item.title}`,
+      `标签: ${tagText}`,
+      `路径: ${fullPath}`,
+      `链接: ${item.source_url}`,
+    ].join("\n");
+  });
+
+  return [header, "", ...lines].join("\n\n");
+}
+
+async function detectHistoryIntent(userInput: string, env: ReturnType<typeof loadEnv>): Promise<HistoryIntent> {
+  const fallback = parseHistoryIntentFromText(userInput);
+  const classifyModel = createDeepSeekModel(env, {
+    maxTokens: 120,
+    timeout: 15000,
+    temperature: 0,
+  });
+
+  try {
+    const message = await classifyModel.invoke([
+      new SystemMessage(
+        [
+          "你是意图分类器，只返回 JSON。",
+          "识别用户是否在查询历史成功记录。",
+          '返回格式：{"should_query":boolean,"scope":"all|today","tag":"可选标签"}',
+          "如果不是历史查询，should_query=false，scope=all。",
+        ].join("\n"),
+      ),
+      new HumanMessage(userInput),
+    ]);
+
+    const parsed = parseHistoryIntentFromModelOutput(normalizeModelText(message.content));
+    if (parsed) {
+      return parsed;
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`[agent] history intent classify failed, fallback regex: ${detail}`);
+  }
+
+  return fallback;
 }
 
 async function chatForNonWechatInput(userInput: string, env: ReturnType<typeof loadEnv>): Promise<string> {
@@ -86,7 +164,7 @@ async function chatForNonWechatInput(userInput: string, env: ReturnType<typeof l
       new SystemMessage(
         [
           "你是 cat-crawl 的助手。",
-          "你可以做简短聊天，但核心能力是处理微信公众号链接并保存到 Obsidian。",
+          "你可以做简短聊天，但核心能力是处理微信公众号链接、保存 Obsidian、查询历史成功记录。",
           "回答保持简洁、友好、中文。",
         ].join("\n"),
       ),
@@ -121,7 +199,7 @@ function buildClassifierPrompt(options: string[]): string {
     "You are a strict classifier.",
     "Pick exactly one dynamic_folder from the allowed list based on article content.",
     "If nothing fits, return empty string.",
-    "Output JSON only: {\"dynamic_folder\":\"...\"}",
+    'Output JSON only: {"dynamic_folder":"..."}',
     "Allowed options:",
     optionText,
   ].join("\n");
@@ -164,6 +242,42 @@ function formatSuccessReply(saveResult: SaveToolResult): string {
   return `文章已成功保存到 Obsidian！\n\n保存路径：\`${fullPath}\``;
 }
 
+function persistSuccessHistory(
+  crawlResult: CrawlToolResult,
+  saveResult: SaveToolResult,
+  context: AgentRequestContext | undefined,
+): void {
+  if (!saveResult.saved || !saveResult.vault || !saveResult.path) {
+    return;
+  }
+
+  const store = getHistoryStore();
+  const source = inferSourceFromUrl(crawlResult.source_url);
+  const channel = context?.channel ?? "cli";
+  const tags = (saveResult.tags ?? []).map((item) => item.trim()).filter(Boolean);
+
+  try {
+    store.insertSuccessRecord({
+      createdAt: new Date().toISOString(),
+      source,
+      channel,
+      sourceUrl: crawlResult.source_url,
+      title: crawlResult.title,
+      tags,
+      vault: saveResult.vault,
+      path: saveResult.path,
+      dynamicFolder: saveResult.dynamic_folder,
+      author: crawlResult.author ?? undefined,
+      senderId: context?.senderId,
+      roomId: context?.roomId,
+      messageId: context?.messageId,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`[agent] persist success history failed: ${detail}`);
+  }
+}
+
 export async function runWechatAgent(
   userInput: string,
   options?: AgentRunOptions,
@@ -180,8 +294,29 @@ export async function runWechatAgent(
   if (!url) {
     await emitStatus(options, {
       stage: "small_chat",
-      message: "检测到非公众号链接，进入简短对话模式。",
+      message: "检测到非公众号链接，先尝试历史查询意图，否则进入简短对话模式。",
     });
+    if (shouldReturnCapabilityReply(userInput)) {
+      return {
+        reply: buildCapabilityReply(),
+        usedTools,
+      };
+    }
+    const historyIntent = await detectHistoryIntent(userInput, env);
+    if (historyIntent.shouldQuery) {
+      const historyTool = createQuerySuccessHistoryTool(getHistoryStore());
+      const historyResult = (await historyTool.invoke({
+        scope: historyIntent.scope,
+        tag: historyIntent.tag,
+        limit: 20,
+      })) as QuerySuccessHistoryResult;
+      usedTools.push("query_success_history");
+      return {
+        reply: formatHistoryReply(historyResult),
+        usedTools,
+      };
+    }
+
     const reply = await chatForNonWechatInput(userInput, env);
     return {
       reply,
@@ -268,6 +403,8 @@ export async function runWechatAgent(
     dynamic_folder: dynamicFolder,
   })) as SaveToolResult;
   usedTools.push("save_to_obsidian");
+  persistSuccessHistory(crawlResult, saveResult, options?.context);
+
   console.info("[agent] tool success: save_to_obsidian");
   console.info("[agent] finalize response");
   await emitStatus(options, {

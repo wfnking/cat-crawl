@@ -208,7 +208,14 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
       const typingState = await addTypingIndicator(client, messageId);
       let replyText = "";
       try {
-        const result = await runWechatAgent(text);
+        const result = await runWechatAgent(text, {
+          context: {
+            channel: "feishu",
+            senderId: senderOpenId,
+            roomId: chatId,
+            messageId,
+          },
+        });
         replyText = result.reply;
       } catch (error) {
         console.error(`[feishu] runWechatAgent failed: ${formatError(error)}`);

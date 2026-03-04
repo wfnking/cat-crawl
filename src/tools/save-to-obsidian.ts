@@ -45,6 +45,9 @@ function inferTags(input: SaveInput): string[] {
   if (host.includes("weixin.qq.com")) {
     return ["wechat", "clippings"];
   }
+  if (host.includes("x.com") || host.includes("twitter.com")) {
+    return ["x", "clippings"];
+  }
   return ["clippings"];
 }
 
@@ -55,6 +58,9 @@ function inferSource(input: SaveInput): string {
   const host = new URL(input.source_url).hostname.toLowerCase();
   if (host.includes("weixin.qq.com")) {
     return "WeChat";
+  }
+  if (host.includes("x.com") || host.includes("twitter.com")) {
+    return "X";
   }
   return host;
 }

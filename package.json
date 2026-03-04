@@ -1,18 +1,41 @@
 {
   "name": "cat-crawl",
   "version": "0.1.0",
-  "private": true,
+  "description": "Crawl WeChat articles and save them to Obsidian with multi-channel bot interfaces.",
   "type": "module",
+  "bin": {
+    "cat-crawl": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    ".env.example",
+    "Formula/cat-crawl.rb"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:feishu": "tsx src/index.ts --feishu",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "dev:telegram": "tsx src/index.ts --telegram",
+    "dev:discord": "tsx src/index.ts --discord",
+    "dev:all": "tsx src/index.ts --all-channels",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "tsx --test src/**/*.test.ts",
+    "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {
     "@langchain/core": "^1.1.29",
     "@langchain/openai": "^1.2.11",
     "@larksuiteoapi/node-sdk": "^1.58.0",
+    "discord.js": "^14.25.1",
     "playwright": "^1.58.2",
     "turndown": "^7.2.2",
     "zod": "^4.3.6"
@@ -22,5 +45,13 @@
     "@types/turndown": "^5.0.5",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
-  }
+  },
+  "keywords": [
+    "wechat",
+    "telegram",
+    "discord",
+    "obsidian",
+    "crawler"
+  ],
+  "license": "MIT"
 }
