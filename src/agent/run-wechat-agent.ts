@@ -1,6 +1,7 @@
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from "./history-intent.js";
 import { appendConversationRound, getRecentConversationMessages } from "./chat-memory.js";
+import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
 import { createDeepSeekModel } from "../services/deepseek.js";
@@ -335,6 +336,20 @@ export async function runWechatAgent(
     const reply = await chatForNonWechatInput(userInput, env, options?.context);
     return {
       reply,
+      usedTools,
+    };
+  }
+
+  const existing = await findExistingSavedRecordByUrl(url);
+  if (existing) {
+    const fullPath = `${existing.vault}/${existing.path}`;
+    return {
+      reply: [
+        "这篇文章之前已经爬取并保存过了。",
+        `标题：${existing.title}`,
+        `保存路径：\`${fullPath}\``,
+        "如果你希望强制重抓，我可以再加一个参数支持覆盖保存。",
+      ].join("\n"),
       usedTools,
     };
   }

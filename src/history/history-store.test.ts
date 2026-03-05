@@ -77,3 +77,39 @@ test("query by tag should only return matching records", () => {
     cleanup();
   }
 });
+
+test("findLatestSuccessBySourceUrl should return newest matched record", () => {
+  const { dbPath, cleanup } = createTempDbPath();
+  const store = createHistoryStore({ dbPath });
+
+  try {
+    store.insertSuccessRecord({
+      createdAt: "2026-03-05T01:00:00.000Z",
+      source: "wechat",
+      channel: "telegram",
+      sourceUrl: "https://mp.weixin.qq.com/s/repeat",
+      title: "Old",
+      tags: ["wechat"],
+      vault: "知识库",
+      path: "Clippings/Old.md",
+    });
+    store.insertSuccessRecord({
+      createdAt: "2026-03-05T02:00:00.000Z",
+      source: "wechat",
+      channel: "telegram",
+      sourceUrl: "https://mp.weixin.qq.com/s/repeat",
+      title: "New",
+      tags: ["wechat"],
+      vault: "知识库",
+      path: "Clippings/New.md",
+    });
+
+    const latest = store.findLatestSuccessBySourceUrl("https://mp.weixin.qq.com/s/repeat");
+    assert.ok(latest);
+    assert.equal(latest.title, "New");
+    assert.equal(latest.path, "Clippings/New.md");
+  } finally {
+    store.close();
+    cleanup();
+  }
+});

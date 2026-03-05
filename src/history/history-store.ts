@@ -41,6 +41,7 @@ export type QuerySuccessRecordsResult = {
 export type HistoryStore = {
   insertSuccessRecord: (record: SuccessRecordInput) => void;
   querySuccessRecords: (input: QuerySuccessRecordsInput) => QuerySuccessRecordsResult;
+  findLatestSuccessBySourceUrl: (sourceUrl: string) => SuccessRecord | null;
   close: () => void;
 };
 
@@ -92,6 +93,7 @@ function createSchema(db: import("node:sqlite").DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_success_created_at ON success_records(created_at);
     CREATE INDEX IF NOT EXISTS idx_success_source ON success_records(source);
     CREATE INDEX IF NOT EXISTS idx_success_channel ON success_records(channel);
+    CREATE INDEX IF NOT EXISTS idx_success_source_url ON success_records(source_url);
   `);
 }
 
@@ -171,6 +173,14 @@ export function createHistoryStore(options?: { dbPath?: string }): HistoryStore 
       vault, path, dynamic_folder, author, sender_id, room_id, message_id
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const findLatestByUrlStmt = db.prepare(`
+    SELECT id, created_at, source, channel, source_url, title, tags_json,
+           vault, path, dynamic_folder, author, sender_id, room_id, message_id
+    FROM success_records
+    WHERE source_url = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
 
   return {
     insertSuccessRecord(record) {
@@ -221,6 +231,17 @@ export function createHistoryStore(options?: { dbPath?: string }): HistoryStore 
         total: items.length,
         items: items.slice(0, limit),
       };
+    },
+    findLatestSuccessBySourceUrl(sourceUrl) {
+      const normalized = sourceUrl.trim();
+      if (!normalized) {
+        return null;
+      }
+      const row = findLatestByUrlStmt.get(normalized) as DbRow | undefined;
+      if (!row) {
+        return null;
+      }
+      return mapRow(row);
     },
     close() {
       db.close();
