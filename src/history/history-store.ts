@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import Database from "better-sqlite3";
 
 export type HistoryChannel = "cli" | "feishu" | "telegram" | "discord";
 export type HistorySource = "wechat" | "x" | "unknown";
@@ -64,14 +64,12 @@ type DbRow = {
 
 const DEFAULT_DB_DIR = join(homedir(), ".cat-crawl");
 const DEFAULT_DB_PATH = join(DEFAULT_DB_DIR, "history.db");
-const require = createRequire(import.meta.url);
 
-function openDatabase(dbPath: string): import("node:sqlite").DatabaseSync {
-  const sqlite = require("node:sqlite") as typeof import("node:sqlite");
-  return new sqlite.DatabaseSync(dbPath);
+function openDatabase(dbPath: string): Database.Database {
+  return new Database(dbPath);
 }
 
-function createSchema(db: import("node:sqlite").DatabaseSync): void {
+function createSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS success_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
