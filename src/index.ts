@@ -3,6 +3,7 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { runWechatAgent } from "./agent/run-wechat-agent.js";
+import { parseCaseStudyCommand } from "./case-study/commands.js";
 import { startDiscordBridge } from "./channels/discord-bridge.js";
 import { startFeishuBridge } from "./channels/feishu-bridge.js";
 import { startTelegramPollingChannel } from "./channels/telegram-webhook.js";
@@ -221,6 +222,9 @@ function printUsage(): void {
       "9) cat-crawl get agent [fallback]",
       "10) cat-crawl pairing approve telegram <code>",
       "11) cat-crawl config set ...（兼容旧命令）",
+      "12) cat-crawl case-study crawl <url>",
+      "13) cat-crawl case-study build",
+      "14) cat-crawl case-study serve",
     ].join("\n"),
   );
 }
@@ -471,6 +475,15 @@ async function runCliMode(input: string): Promise<void> {
 
 async function main() {
   const args = parseArgs();
+  const caseStudyCommand = parseCaseStudyCommand(args);
+  if (caseStudyCommand) {
+    if (caseStudyCommand.action === "crawl") {
+      console.log(`case-study crawl queued for ${caseStudyCommand.url}`);
+      return;
+    }
+    console.log(`case-study ${caseStudyCommand.action} is not implemented yet`);
+    return;
+  }
   const pairingCommand = parsePairingApproveCommand(args);
   if (pairingCommand) {
     handlePairingApproveCommand(pairingCommand);
