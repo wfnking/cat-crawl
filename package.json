@@ -2,13 +2,14 @@
   "name": "cat-crawl",
   "version": "0.1.0",
   "description": "Crawl WeChat articles and save them to Obsidian with multi-channel bot interfaces.",
+  "private": true,
   "type": "module",
   "bin": {
-    "cat-crawl": "dist/index.js"
+    "cat-crawl": "dist/src/index.js"
   },
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/src/index.js"
   },
   "files": [
     "dist",
@@ -26,8 +27,8 @@
     "dev:discord": "tsx src/index.ts --discord",
     "dev:all": "tsx src/index.ts --all-channels",
     "build": "rm -rf dist && tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "test": "tsx --test src/**/*.test.ts",
+    "start": "node dist/src/index.js",
+    "test": "tsx --test src/**/*.test.ts packages/**/*.test.ts",
     "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {

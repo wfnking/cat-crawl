@@ -2,6 +2,7 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from "./history-intent.js";
 import { appendConversationRound, getRecentConversationMessages } from "./chat-memory.js";
 import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
+import { pickPolicyFolder } from "./folder-policy.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
 import { createDeepSeekModel } from "../services/deepseek.js";
@@ -382,34 +383,48 @@ export async function runWechatAgent(
     console.info("[agent] preparing summarized context for dynamic folder classification");
     const summary = buildClassificationSummary(crawlResult.content_markdown);
 
-    const classifierModel = createDeepSeekModel(env, {
-      maxTokens: 500,
-      timeout: 30000,
+    const policyFolder = pickPolicyFolder({
+      title: crawlResult.title,
+      summary,
+      options: env.obsidianDynamicFolders,
     });
-    const classifyStart = Date.now();
-    console.info("[agent] invoking model for dynamic_folder classification");
-    const classifyMessage = await classifierModel.invoke([
-      new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
-      new HumanMessage(
-        [
-          `Title: ${crawlResult.title}`,
-          "",
-          `Summary: ${summary}`,
-          "",
-          "Return JSON only.",
-        ].join("\n"),
-      ),
-    ]);
-    const classifyCostMs = Date.now() - classifyStart;
-    console.info(`[agent] classification model done in ${classifyCostMs}ms`);
+    if (policyFolder) {
+      dynamicFolder = policyFolder;
+      console.info(`[agent] dynamic_folder policy selected=${dynamicFolder}`);
+      await emitStatus(options, {
+        stage: "classify_done",
+        message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
+      });
+    } else {
+      const classifierModel = createDeepSeekModel(env, {
+        maxTokens: 500,
+        timeout: 30000,
+      });
+      const classifyStart = Date.now();
+      console.info("[agent] invoking model for dynamic_folder classification");
+      const classifyMessage = await classifierModel.invoke([
+        new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
+        new HumanMessage(
+          [
+            `Title: ${crawlResult.title}`,
+            "",
+            `Summary: ${summary}`,
+            "",
+            "Return JSON only.",
+          ].join("\n"),
+        ),
+      ]);
+      const classifyCostMs = Date.now() - classifyStart;
+      console.info(`[agent] classification model done in ${classifyCostMs}ms`);
 
-    const modelOutput = normalizeModelText(classifyMessage.content);
-    dynamicFolder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
-    console.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
-    await emitStatus(options, {
-      stage: "classify_done",
-      message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
-    });
+      const modelOutput = normalizeModelText(classifyMessage.content);
+      dynamicFolder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
+      console.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
+      await emitStatus(options, {
+        stage: "classify_done",
+        message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
+      });
+    }
   } else {
     console.info("[agent] dynamic folder options empty, skip classification");
     await emitStatus(options, {

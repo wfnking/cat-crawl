@@ -2,25 +2,29 @@
 
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
-import { runWechatAgent } from "./agent/run-wechat-agent.js";
-import { buildCaseStudyIndexes } from "./case-study/build.js";
-import { parseCaseStudyCommand } from "./case-study/commands.js";
-import { runCaseStudyCrawl } from "./case-study/run-crawl.js";
-import { startCaseStudyServer } from "./case-study/serve.js";
-import { startDiscordBridge } from "./channels/discord-bridge.js";
-import { startFeishuBridge } from "./channels/feishu-bridge.js";
-import { startTelegramPollingChannel } from "./channels/telegram-webhook.js";
-import { buildAgentSetupConfig, getAgentSetupSteps } from "./config/agent-wizard.js";
-import { buildChannelSetupConfig, getChannelSetupSteps } from "./config/channel-wizard.js";
-import { loadEnv } from "./config/env.js";
 import {
+  buildCaseStudyIndexes,
+  parseCaseStudyCommand,
+  runCaseStudyCrawl,
+  startCaseStudyServer,
+} from "../packages/case-study/src/index.js";
+import {
+  approveTelegramPairingCode,
+  buildAgentSetupConfig,
+  buildChannelSetupConfig,
   getLocalConfigStore,
+  getAgentSetupSteps,
+  getChannelSetupSteps,
+  loadEnv,
   parseAgentConfig,
   parseChannelConfig,
+  runWechatAgent,
+  startDiscordBridge,
+  startFeishuBridge,
+  startTelegramPollingChannel,
   type AgentConfigValue,
   type ChannelConfigValue,
-} from "./config/local-config.js";
-import { approveTelegramPairingCode } from "./config/telegram-pairing.js";
+} from "../packages/obsidian-publisher/src/index.js";
 
 type ChannelModes = {
   feishu: boolean;

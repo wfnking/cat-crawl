@@ -6,15 +6,17 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "types": [
       "node"
     ]
   },
   "include": [
-    "src"
+    "src",
+    "packages"
   ],
   "exclude": [
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "packages/**/*.test.ts"
   ]
 }

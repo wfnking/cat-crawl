@@ -1,7 +1,8 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { cwd } from "node:process";
-import { join, normalize } from "node:path";
+import { dirname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type CaseStudyServeOptions = {
   port?: number;
@@ -19,8 +20,13 @@ export function resolveCaseStudyServeOptions(
 
 function resolveStaticFile(rootDir: string, requestPath: string): string {
   const caseStudiesRoot = join(rootDir, "case-studies");
+  const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   if (requestPath === "/" || requestPath === "") {
-    return join(caseStudiesRoot, "viewer", "index.html");
+    return join(packageRoot, "viewer", "index.html");
+  }
+
+  if (requestPath.startsWith("/viewer/")) {
+    return join(packageRoot, requestPath.replace(/^\/+/, ""));
   }
 
   const normalizedPath = normalize(requestPath.replace(/^\/+/, ""));
