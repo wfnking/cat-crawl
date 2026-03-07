@@ -1,4 +1,5 @@
 import { tool } from "@langchain/core/tools";
+import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -6,6 +7,7 @@ import type { AppEnv } from "../config/env.js";
 import { sanitizeFileName } from "../utils/text.js";
 
 const execFileAsync = promisify(execFile);
+const logger = createLogger();
 
 const inputSchema = z.object({
   title: z.string().min(1).describe("文章标题"),
@@ -135,7 +137,7 @@ export function createSaveToObsidianTool(env: AppEnv) {
         input.mode === "append"
           ? [`vault=${vault}`, "append", `path=${path}`, `content=${content}`]
           : [`vault=${vault}`, "create", `path=${path}`, `content=${content}`];
-      console.info(
+      logger.info(
         `[tool:save_to_obsidian] start mode=${input.mode} vault=${vault} path=${path} dynamic_folder=${dynamicFolder}`,
       );
 
@@ -147,16 +149,16 @@ export function createSaveToObsidianTool(env: AppEnv) {
           typeof error === "object" && error !== null && "stderr" in error
             ? String((error as { stderr?: unknown }).stderr ?? "")
             : "";
-        console.error(`[tool:save_to_obsidian] failed msg=${msg}`);
+        logger.error(`[tool:save_to_obsidian] failed msg=${msg}`);
         if (stderr.trim()) {
-          console.error(`[tool:save_to_obsidian] stderr=${stderr.trim()}`);
+          logger.error(`[tool:save_to_obsidian] stderr=${stderr.trim()}`);
         }
         if (msg.includes("ENOENT")) {
           throw new Error("Obsidian CLI not found. Please ensure `obsidian` is available in PATH.");
         }
         throw new Error(`Obsidian CLI failed: ${msg}`);
       }
-      console.info(`[tool:save_to_obsidian] success path=${path}`);
+      logger.info(`[tool:save_to_obsidian] success path=${path}`);
 
       return {
         saved: true,

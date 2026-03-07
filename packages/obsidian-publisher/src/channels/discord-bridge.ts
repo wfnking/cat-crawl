@@ -1,10 +1,12 @@
 import { Client, GatewayIntentBits, Partials, type Message } from "discord.js";
+import { createLogger } from "@cat-crawl/core";
 import { runWechatAgent } from "../agent/run-wechat-agent.js";
 import type { AppEnv } from "../config/env.js";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
 const MESSAGE_DEDUP_TTL_MS = 10 * 60 * 1000;
 const processedMessageIds = new Map<string, number>();
+const logger = createLogger();
 
 function isDuplicateMessage(messageId: string | undefined): boolean {
   if (!messageId) {
@@ -61,7 +63,7 @@ async function replyInChunks(message: Message, text: string): Promise<void> {
 
 export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
   if (!env.discordEnabled) {
-    console.info("[discord] DISCORD_ENABLED is false, skip startup");
+    logger.info("[discord] DISCORD_ENABLED is false, skip startup");
     return null;
   }
   if (!env.discordBotToken) {
@@ -79,7 +81,7 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
   });
 
   client.on("ready", () => {
-    console.info(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
+    logger.info(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
   });
 
   client.on("messageCreate", async (message) => {
@@ -94,7 +96,7 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
 
     const dedupKey = message.id ? `discord:${message.id}` : undefined;
     if (isDuplicateMessage(dedupKey)) {
-      console.info(`[discord] skip duplicate message_id=${dedupKey}`);
+      logger.info(`[discord] skip duplicate message_id=${dedupKey}`);
       return;
     }
 
@@ -110,12 +112,12 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
       await replyInChunks(message, result.reply);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      console.error(`[discord] handle message failed: ${detail}`);
+      logger.error(`[discord] handle message failed: ${detail}`);
       try {
         await message.reply(toUserFacingErrorMessage(error));
       } catch (sendError) {
         const sendDetail = sendError instanceof Error ? sendError.message : String(sendError);
-        console.error(`[discord] send failure message failed: ${sendDetail}`);
+        logger.error(`[discord] send failure message failed: ${sendDetail}`);
       }
     }
   });

@@ -1,4 +1,5 @@
 import { tool } from "@langchain/core/tools";
+import { createLogger } from "@cat-crawl/core";
 import TurndownService from "turndown";
 import { z } from "zod";
 
@@ -20,6 +21,7 @@ type WechatImageAttrs = {
 const inputSchema = z.object({
   url: z.string().url().describe("微信公众号文章链接，必须为 mp.weixin.qq.com 域名"),
 });
+const logger = createLogger();
 
 function isMissingPlaywrightBrowserError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -124,7 +126,7 @@ function createTurndownService(): TurndownService {
 
 export const crawlWechatArticleTool = tool(
   async ({ url }): Promise<CrawlResult> => {
-    console.info(`[tool:crawl_wechat_article] start url=${url}`);
+    logger.info(`[tool:crawl_wechat_article] start url=${url}`);
     const parsed = new URL(url);
     if (parsed.hostname !== "mp.weixin.qq.com") {
       throw new Error("Only mp.weixin.qq.com links are supported.");
@@ -134,16 +136,16 @@ export const crawlWechatArticleTool = tool(
     let browser;
     try {
       browser = await chromium.launch({ headless: true });
-      console.info("[tool:crawl_wechat_article] using bundled playwright chromium");
+      logger.info("[tool:crawl_wechat_article] using bundled playwright chromium");
     } catch (error) {
       if (!isMissingPlaywrightBrowserError(error)) {
         throw error;
       }
-      console.warn(
+      logger.warn(
         "[tool:crawl_wechat_article] bundled chromium missing, fallback to local Chrome channel",
       );
       browser = await chromium.launch({ channel: "chrome", headless: true });
-      console.info("[tool:crawl_wechat_article] using local chrome channel");
+      logger.info("[tool:crawl_wechat_article] using local chrome channel");
     }
     const page = await browser.newPage();
 
@@ -232,7 +234,7 @@ export const crawlWechatArticleTool = tool(
       };
     } catch (error) {
       const detail = error instanceof Error ? error.stack || error.message : String(error);
-      console.error(`[tool:crawl_wechat_article] failed url=${url}; error=${detail}`);
+      logger.error(`[tool:crawl_wechat_article] failed url=${url}; error=${detail}`);
       throw error;
     } finally {
       await page.close();

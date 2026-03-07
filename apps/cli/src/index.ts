@@ -2,7 +2,7 @@
 
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
-import { asObject, ensureObject } from "@cat-crawl/core";
+import { asObject, createLogger, ensureObject } from "@cat-crawl/core";
 import {
   buildCaseStudyIndexes,
   parseCaseStudyCommand,
@@ -45,6 +45,7 @@ type PairingApproveCommand = {
 };
 
 const CHANNEL_FLAGS = new Set(["--feishu", "--telegram", "--discord", "--all-channels"]);
+const logger = createLogger();
 
 function persistStructuredChannelConfig(
   channel: ChannelConfigValue,
@@ -199,7 +200,7 @@ function readInputFromArgs(args: string[]): string {
 }
 
 function printUsage(): void {
-  console.error(
+  logger.error(
     [
       "Usage:",
       '1) cat-crawl "你的消息内容或公众号链接"',
@@ -287,7 +288,7 @@ async function promptChannelSetup(channel: ChannelConfigValue): Promise<Record<s
         const raw = (await rl.question(prompt)).trim();
         const value = raw || preset;
         if (step.required && !value) {
-          console.log("该字段必填，请重新输入。");
+          logger.log("该字段必填，请重新输入。");
           continue;
         }
         answers[step.key] = value;
@@ -324,7 +325,7 @@ async function promptAgentSetup(agent: AgentConfigValue): Promise<Record<string,
         const raw = (await rl.question(prompt)).trim();
         const value = raw || preset;
         if (step.required && !value) {
-          console.log("该字段必填，请重新输入。");
+          logger.log("该字段必填，请重新输入。");
           continue;
         }
         answers[step.key] = value;
@@ -362,8 +363,8 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
       }
       const values = await promptChannelSetup(channel);
       persistStructuredChannelConfig(channel, values);
-      console.log(`channel=${channel}`);
-      console.log("已完成渠道交互配置，配置已写入 ~/.cat-crawl/config.json");
+      logger.log(`channel=${channel}`);
+      logger.log("已完成渠道交互配置，配置已写入 ~/.cat-crawl/config.json");
       return;
     }
 
@@ -374,13 +375,13 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
       }
       const values = await promptAgentSetup(agent);
       persistStructuredAgentConfig(agent, values);
-      console.log(`agent=${agent}`);
-      console.log("已完成 Agent 交互配置，配置已写入 ~/.cat-crawl/config.json");
+      logger.log(`agent=${agent}`);
+      logger.log("已完成 Agent 交互配置，配置已写入 ~/.cat-crawl/config.json");
       return;
     }
 
     store.set(key, value);
-    console.log(`${key}=${value}`);
+    logger.log(`${key}=${value}`);
     return;
   }
 
@@ -396,7 +397,7 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
   if (output === undefined) {
     throw new Error(`Config key not found: ${key}`);
   }
-  console.log(output);
+  logger.log(output);
 }
 
 function handlePairingApproveCommand(command: PairingApproveCommand): void {
@@ -413,7 +414,7 @@ function handlePairingApproveCommand(command: PairingApproveCommand): void {
     }
     throw new Error("审批失败：未知错误。");
   }
-  console.log(`pairing approved: telegram user ${result.userId}`);
+  logger.log(`pairing approved: telegram user ${result.userId}`);
 }
 
 function resolveModes(args: string[], input: string): ChannelModes {
@@ -449,7 +450,7 @@ async function startChannels(modes: ChannelModes): Promise<void> {
   }
 
   await Promise.all(starts);
-  console.info("[index] channels started");
+  logger.info("[index] channels started");
 }
 
 async function runCliMode(input: string): Promise<void> {
@@ -458,9 +459,9 @@ async function runCliMode(input: string): Promise<void> {
       channel: "cli",
     },
   });
-  console.log(result.reply);
+  logger.log(result.reply);
   if (result.usedTools.length > 0) {
-    console.log(`Used tools: ${result.usedTools.join(", ")}`);
+    logger.log(`Used tools: ${result.usedTools.join(", ")}`);
   }
 }
 
@@ -470,12 +471,12 @@ async function main() {
   if (caseStudyCommand) {
     if (caseStudyCommand.action === "crawl") {
       const pageDir = await runCaseStudyCrawl(caseStudyCommand);
-      console.log(`case-study crawl saved to ${pageDir}`);
+      logger.log(`case-study crawl saved to ${pageDir}`);
       return;
     }
     if (caseStudyCommand.action === "build") {
       const generatedDir = buildCaseStudyIndexes();
-      console.log(`case-study indexes built at ${generatedDir}`);
+      logger.log(`case-study indexes built at ${generatedDir}`);
       return;
     }
     await startCaseStudyServer();
@@ -510,6 +511,6 @@ async function main() {
 
 main().catch((error) => {
   const detail = error instanceof Error ? error.message : String(error);
-  console.error(`Fatal error: ${detail}`);
+  logger.error(`Fatal error: ${detail}`);
   process.exit(1);
 });

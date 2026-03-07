@@ -1,4 +1,5 @@
 import { runWechatAgent } from "../agent/run-wechat-agent.js";
+import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
@@ -20,6 +21,7 @@ type FeishuMessageEvent = {
 const MESSAGE_DEDUP_TTL_MS = 10 * 60 * 1000;
 const processedMessageIds = new Map<string, number>();
 const TYPING_EMOJI = "Typing";
+const logger = createLogger();
 
 type TypingIndicatorState = {
   messageId: string;
@@ -96,7 +98,7 @@ async function addTypingIndicator(
     const reactionId = (response as { data?: { reaction_id?: string } })?.data?.reaction_id ?? null;
     return { messageId, reactionId };
   } catch (error) {
-    console.info(`[feishu] add typing indicator failed: ${formatError(error)}`);
+    logger.info(`[feishu] add typing indicator failed: ${formatError(error)}`);
     return { messageId, reactionId: null };
   }
 }
@@ -113,7 +115,7 @@ async function removeTypingIndicator(client: any, state: TypingIndicatorState): 
       },
     });
   } catch (error) {
-    console.info(`[feishu] remove typing indicator failed: ${formatError(error)}`);
+    logger.info(`[feishu] remove typing indicator failed: ${formatError(error)}`);
   }
 }
 
@@ -131,7 +133,7 @@ function formatError(error: unknown): string {
 
 export async function startFeishuBridge(env: AppEnv): Promise<void> {
   if (!env.feishuEnabled) {
-    console.info("[feishu] FEISHU_ENABLED is false, skip startup");
+    logger.info("[feishu] FEISHU_ENABLED is false, skip startup");
     return;
   }
   if (!env.feishuAppId || !env.feishuAppSecret) {
@@ -165,23 +167,23 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
       const event = (payload as { event?: FeishuMessageEvent }).event || (payload as FeishuMessageEvent);
       const messageId = event.message?.message_id;
       if (isDuplicateMessage(messageId)) {
-        console.info(`[feishu] skip duplicate event message_id=${messageId}`);
+        logger.info(`[feishu] skip duplicate event message_id=${messageId}`);
         return;
       }
 
       const messageType = event.message?.message_type;
       const text = parseFeishuText(messageType, event.message?.content);
       if (!text) {
-        console.info("[feishu] skip empty/non-text message");
+        logger.info("[feishu] skip empty/non-text message");
         return;
       }
 
-      console.info(`[feishu] inbound message: ${text.slice(0, 120)}`);
+      logger.info(`[feishu] inbound message: ${text.slice(0, 120)}`);
 
       const chatType = event.message?.chat_type;
       const chatId = event.message?.chat_id;
       const senderOpenId = event.sender?.sender_id?.open_id;
-      console.info(
+      logger.info(
         `[feishu] outbound target chat_type=${chatType ?? "unknown"} chat_id=${chatId ?? "none"} open_id=${senderOpenId ?? "none"}`,
       );
 
@@ -202,7 +204,7 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
           receiveId: senderOpenId,
         };
       } else {
-        console.warn("[feishu] unable to resolve reply target");
+        logger.warn("[feishu] unable to resolve reply target");
         return;
       }
 
@@ -219,11 +221,11 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
         });
         replyText = result.reply;
       } catch (error) {
-        console.error(`[feishu] runWechatAgent failed: ${formatError(error)}`);
+        logger.error(`[feishu] runWechatAgent failed: ${formatError(error)}`);
         try {
           await sendToTarget(target, toUserFacingErrorMessage(error));
         } catch (sendError) {
-          console.error(`[feishu] send failure message failed: ${formatError(sendError)}`);
+          logger.error(`[feishu] send failure message failed: ${formatError(sendError)}`);
         }
         return;
       } finally {
@@ -234,7 +236,7 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
         await sendToTarget(target, replyText);
         return;
       } catch (error) {
-        console.error(`[feishu] send message failed: ${formatError(error)}`);
+        logger.error(`[feishu] send message failed: ${formatError(error)}`);
         return;
       }
     },
@@ -246,7 +248,7 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
     domain,
   });
 
-  console.info("[feishu] starting websocket client");
+  logger.info("[feishu] starting websocket client");
   await wsClient.start({ eventDispatcher: dispatcher });
-  console.info("[feishu] websocket client started");
+  logger.info("[feishu] websocket client started");
 }

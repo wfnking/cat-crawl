@@ -1,8 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createLogger } from "@cat-crawl/core";
 import { getHistoryStore, type HistoryStore, type SuccessRecord } from "../history/history-store.js";
 
 const execFileAsync = promisify(execFile);
+const logger = createLogger();
 
 type ObsidianFileLookup = (vault: string, path: string) => Promise<string>;
 
@@ -64,7 +66,7 @@ export async function findExistingSavedRecordByUrl(
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`[agent] existing-note check failed, fallback to normal crawl: ${detail}`);
+    logger.warn(`[agent] existing-note check failed, fallback to normal crawl: ${detail}`);
     return null;
   }
 }

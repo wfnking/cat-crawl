@@ -3,11 +3,14 @@ import { createServer } from "node:http";
 import { cwd } from "node:process";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createLogger } from "@cat-crawl/core";
 
 export type CaseStudyServeOptions = {
   port?: number;
   rootDir?: string;
 };
+
+const logger = createLogger();
 
 export function resolveCaseStudyServeOptions(
   options?: CaseStudyServeOptions,
@@ -59,7 +62,7 @@ export async function startCaseStudyServer(options?: CaseStudyServeOptions): Pro
     });
 
     server.listen(resolved.port, () => {
-      console.log(`case-study viewer running at http://localhost:${resolved.port}`);
+      logger.log(`case-study viewer running at http://localhost:${resolved.port}`);
       resolve();
     });
   });

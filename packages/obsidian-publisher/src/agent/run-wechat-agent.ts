@@ -1,4 +1,5 @@
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { createLogger } from "@cat-crawl/core";
 import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from "./history-intent.js";
 import { appendConversationRound, getRecentConversationMessages } from "./chat-memory.js";
 import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
@@ -25,6 +26,8 @@ type SaveToolResult = {
   tags?: string[];
   dynamic_folder?: string;
 };
+
+const logger = createLogger();
 
 export type AgentRunResult = {
   reply: string;
@@ -70,7 +73,7 @@ async function emitStatus(options: AgentRunOptions | undefined, status: AgentSta
     await options.onStatus(status);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[agent] onStatus callback failed: ${detail}`);
+    logger.error(`[agent] onStatus callback failed: ${detail}`);
   }
 }
 
@@ -146,7 +149,7 @@ async function detectHistoryIntent(userInput: string, env: ReturnType<typeof loa
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`[agent] history intent classify failed, fallback regex: ${detail}`);
+    logger.warn(`[agent] history intent classify failed, fallback regex: ${detail}`);
   }
 
   return fallback;
@@ -173,7 +176,7 @@ async function chatForNonWechatInput(
       }
       return new HumanMessage(message.content);
     });
-    console.info("[agent] invoking model for non-wechat small chat");
+    logger.info("[agent] invoking model for non-wechat small chat");
     const message = await chatModel.invoke([
       new SystemMessage(
         [
@@ -191,7 +194,7 @@ async function chatForNonWechatInput(
     return finalReply;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[agent] non-wechat chat fallback failed: ${detail}`);
+    logger.error(`[agent] non-wechat chat fallback failed: ${detail}`);
     return buildCapabilityReply();
   }
 }
@@ -291,7 +294,7 @@ function persistSuccessHistory(
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[agent] persist success history failed: ${detail}`);
+    logger.error(`[agent] persist success history failed: ${detail}`);
   }
 }
 
@@ -299,7 +302,7 @@ export async function runWechatAgent(
   userInput: string,
   options?: AgentRunOptions,
 ): Promise<AgentRunResult> {
-  console.info("[agent] start processing input");
+  logger.info("[agent] start processing input");
   const env = loadEnv();
   const usedTools: string[] = [];
   await emitStatus(options, {
@@ -359,10 +362,10 @@ export async function runWechatAgent(
     stage: "crawl_start",
     message: `开始爬取公众号文章：${url}`,
   });
-  console.info("[agent] invoking tool=crawl_wechat_article");
+  logger.info("[agent] invoking tool=crawl_wechat_article");
   const crawlResult = (await crawlWechatArticleTool.invoke({ url })) as CrawlToolResult;
   usedTools.push("crawl_wechat_article");
-  console.info("[agent] tool success: crawl_wechat_article");
+  logger.info("[agent] tool success: crawl_wechat_article");
   const crawlSummary = buildClassificationSummary(crawlResult.content_markdown).slice(0, 120);
   await emitStatus(options, {
     stage: "crawl_done",
@@ -380,7 +383,7 @@ export async function runWechatAgent(
       stage: "classify_start",
       message: "正在根据文章内容选择目录分类...",
     });
-    console.info("[agent] preparing summarized context for dynamic folder classification");
+    logger.info("[agent] preparing summarized context for dynamic folder classification");
     const summary = buildClassificationSummary(crawlResult.content_markdown);
 
     const policyFolder = pickPolicyFolder({
@@ -390,7 +393,7 @@ export async function runWechatAgent(
     });
     if (policyFolder) {
       dynamicFolder = policyFolder;
-      console.info(`[agent] dynamic_folder policy selected=${dynamicFolder}`);
+      logger.info(`[agent] dynamic_folder policy selected=${dynamicFolder}`);
       await emitStatus(options, {
         stage: "classify_done",
         message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
@@ -401,7 +404,7 @@ export async function runWechatAgent(
         timeout: 30000,
       });
       const classifyStart = Date.now();
-      console.info("[agent] invoking model for dynamic_folder classification");
+      logger.info("[agent] invoking model for dynamic_folder classification");
       const classifyMessage = await classifierModel.invoke([
         new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
         new HumanMessage(
@@ -415,18 +418,18 @@ export async function runWechatAgent(
         ),
       ]);
       const classifyCostMs = Date.now() - classifyStart;
-      console.info(`[agent] classification model done in ${classifyCostMs}ms`);
+      logger.info(`[agent] classification model done in ${classifyCostMs}ms`);
 
       const modelOutput = normalizeModelText(classifyMessage.content);
       dynamicFolder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
-      console.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
+      logger.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
       await emitStatus(options, {
         stage: "classify_done",
         message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
       });
     }
   } else {
-    console.info("[agent] dynamic folder options empty, skip classification");
+    logger.info("[agent] dynamic folder options empty, skip classification");
     await emitStatus(options, {
       stage: "classify_done",
       message: "未配置目录分类候选，使用基础目录保存。",
@@ -438,7 +441,7 @@ export async function runWechatAgent(
     stage: "save_start",
     message: "正在保存到 Obsidian...",
   });
-  console.info("[agent] invoking tool=save_to_obsidian");
+  logger.info("[agent] invoking tool=save_to_obsidian");
   const saveResult = (await saveToObsidianTool.invoke({
     title: crawlResult.title,
     source_url: crawlResult.source_url,
@@ -450,8 +453,8 @@ export async function runWechatAgent(
   usedTools.push("save_to_obsidian");
   persistSuccessHistory(crawlResult, saveResult, options?.context);
 
-  console.info("[agent] tool success: save_to_obsidian");
-  console.info("[agent] finalize response");
+  logger.info("[agent] tool success: save_to_obsidian");
+  logger.info("[agent] finalize response");
   await emitStatus(options, {
     stage: "save_done",
     message: `保存成功：${saveResult.vault ?? ""}/${saveResult.path ?? "(unknown path)"}`,

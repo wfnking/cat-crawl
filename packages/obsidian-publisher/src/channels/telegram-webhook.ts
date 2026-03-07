@@ -1,4 +1,5 @@
 import { runWechatAgent } from "../agent/run-wechat-agent.js";
+import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { ensureTelegramPairingCodeForUser, isTelegramUserApproved } from "../config/telegram-pairing.js";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
@@ -26,6 +27,7 @@ type TelegramGetUpdatesResponse = {
 
 const MESSAGE_DEDUP_TTL_MS = 10 * 60 * 1000;
 const processedMessageIds = new Map<string, number>();
+const logger = createLogger();
 
 function isDuplicateMessage(messageId: string | undefined): boolean {
   if (!messageId) {
@@ -125,7 +127,7 @@ function startTypingIndicator(
       await sendTelegramChatAction(botToken, chatId, "typing");
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      console.warn(`[telegram] typing signal failed: ${detail}`);
+      logger.warn(`[telegram] typing signal failed: ${detail}`);
     }
   };
 
@@ -147,7 +149,7 @@ async function sendTypingOnce(botToken: string, chatId: number): Promise<void> {
     await sendTelegramChatAction(botToken, chatId, "typing");
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`[telegram] typing signal failed: ${detail}`);
+    logger.warn(`[telegram] typing signal failed: ${detail}`);
   }
 }
 
@@ -199,13 +201,13 @@ async function handleIncomingTextMessage(
     return;
   }
 
-  console.info(
+  logger.info(
     `[telegram] received message chatId=${chatId} chatType=${chatType || "unknown"} senderId=${senderId || "unknown"} textLen=${text.length}`,
   );
 
   const dedupKey = messageId ? `telegram:${chatId}:${messageId}` : undefined;
   if (isDuplicateMessage(dedupKey)) {
-    console.info(`[telegram] skip duplicate message_id=${dedupKey}`);
+    logger.info(`[telegram] skip duplicate message_id=${dedupKey}`);
     return;
   }
 
@@ -213,7 +215,7 @@ async function handleIncomingTextMessage(
     const telegramUserId = senderId ? String(senderId) : "";
     if (!telegramUserId || !isTelegramUserApproved(telegramUserId)) {
       const code = ensureTelegramPairingCodeForUser(telegramUserId || "unknown");
-      console.info(
+      logger.info(
         `[telegram] pairing required for userId=${telegramUserId || "unknown"}, code=${code}`,
       );
       const textReply = [
@@ -259,17 +261,17 @@ async function handleIncomingTextMessage(
     for (const part of parts) {
       await sendTelegramMessage(botToken, chatId, part);
     }
-    console.info(
+    logger.info(
       `[telegram] reply sent chatId=${chatId} senderId=${senderId || "unknown"} parts=${parts.length}`,
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[telegram] handle message failed: ${detail}`);
+    logger.error(`[telegram] handle message failed: ${detail}`);
     try {
       await sendTelegramMessage(botToken, chatId, toUserFacingErrorMessage(error));
     } catch (sendError) {
       const sendDetail = sendError instanceof Error ? sendError.message : String(sendError);
-      console.error(`[telegram] send failure message failed: ${sendDetail}`);
+      logger.error(`[telegram] send failure message failed: ${sendDetail}`);
     }
   } finally {
     typing?.stop();
@@ -280,7 +282,7 @@ async function startTelegramPolling(botToken: string, env: AppEnv): Promise<void
   const timeoutSeconds = 30;
   let offset = 0;
 
-  console.info(`[telegram] polling started (timeout=${timeoutSeconds}s)`);
+  logger.info(`[telegram] polling started (timeout=${timeoutSeconds}s)`);
 
   for (;;) {
     try {
@@ -293,7 +295,7 @@ async function startTelegramPolling(botToken: string, env: AppEnv): Promise<void
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      console.error(`[telegram] polling error: ${detail}`);
+      logger.error(`[telegram] polling error: ${detail}`);
       await sleep(1500);
     }
   }
@@ -301,7 +303,7 @@ async function startTelegramPolling(botToken: string, env: AppEnv): Promise<void
 
 export async function startTelegramPollingChannel(env: AppEnv): Promise<null> {
   if (!env.telegramEnabled) {
-    console.info("[telegram] TELEGRAM_ENABLED is false, skip startup");
+    logger.info("[telegram] TELEGRAM_ENABLED is false, skip startup");
     return null;
   }
   const botToken = env.telegramBotToken;
