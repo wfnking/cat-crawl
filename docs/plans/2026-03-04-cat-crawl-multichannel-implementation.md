@@ -166,12 +166,11 @@ Expected: PASS.
 Run: `pnpm build && pnpm test`
 Expected: PASS.
 
-### Task 7: npm + brew release scaffolding
+### Task 7: npm release scaffolding
 
 **Files:**
 - Modify: `package.json`
 - Modify: `README.md`
-- Create: `Formula/cat-crawl.rb`
 
 **Step 1: Make package publishable**
 
@@ -179,13 +178,9 @@ Expected: PASS.
 
 **Step 2: Add release docs**
 
-- npm publish steps and brew tap/formula usage.
+- npm publish steps.
 
-**Step 3: Add formula template**
-
-- Placeholder URL/SHA with clear replacement instructions.
-
-**Step 4: Verify packaging**
+**Step 3: Verify packaging**
 
 Run: `pnpm build && npm pack --dry-run`
 Expected: tarball includes dist + README + env template.
@@ -203,4 +198,3 @@ Run: `pnpm build && pnpm test && npm pack --dry-run`
 Expected: all pass.
 
 **Step 3: Summarize changed files and usage commands**
-

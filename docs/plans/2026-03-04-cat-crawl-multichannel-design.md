@@ -7,7 +7,7 @@
 1. 增加 Telegram 与 Discord 的消息接入能力。
 2. 将“成功抓取并保存”的历史记录持久化到本地数据库 `~/.cat-crawl`。
 3. 提供 AI 可调用的历史查询能力：查看全部成功记录、查看今天成功记录、按标签查询。
-4. 为发布到 npm 与 Homebrew 做工程化准备。
+4. 为发布到 npm 做工程化准备。
 
 ## 设计原则
 
@@ -119,11 +119,6 @@
 - 配置 `bin` 为 `cat-crawl`。
 - 去除 `private`，补全 `files`、`main`、`types`、`engines`。
 - `prepublishOnly` 触发构建。
-
-### Homebrew
-
-- 提供 tap formula 模板 `Formula/cat-crawl.rb`。
-- 使用发布 tarball 安装并暴露 `cat-crawl` 命令。
 
 ## 非目标（本次不做）
 

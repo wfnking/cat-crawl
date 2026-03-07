@@ -7,7 +7,7 @@ const OBSIDIAN_CLI_INSTALL_MESSAGE = [
   "2. 终端验证：command -v obsidian",
   "3. 若无输出（macOS），执行：",
   "sudo ln -sf /Applications/Obsidian.app/Contents/MacOS/obsidian /usr/local/bin/obsidian",
-  "Apple Silicon 也可改为 /opt/homebrew/bin/obsidian",
+  "若仍不可用，请确认 obsidian 可执行文件路径已加入 PATH。",
   "4. 完成后重试本次请求。",
 ].join("\n");
 

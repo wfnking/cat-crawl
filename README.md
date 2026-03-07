@@ -187,21 +187,6 @@ npm version patch
 npm publish
 ```
 
-## 发布到 Homebrew
-
-仓库内提供了 formula 模板：`Formula/cat-crawl.rb`。
-
-发布流程：
-
-1. 先发布 npm 包或 GitHub Release tarball
-2. 在你的 tap 仓库更新 formula 中的 `url` 与 `sha256`
-3. 提交后可安装：
-
-```bash
-brew tap <your-org>/cat-crawl
-brew install cat-crawl
-```
-
 ## 当前处理流程
 
 1. 接收用户消息
