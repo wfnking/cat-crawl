@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@cat-crawl/case-study": "workspace:*",
+    "@cat-crawl/obsidian-publisher": "workspace:*"
+  },
   "bin": {
     "cat-crawl": "../../dist/apps/cli/src/index.js"
   },

@@ -19,6 +19,9 @@
     "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {
+    "@cat-crawl/case-study": "workspace:*",
+    "@cat-crawl/core": "workspace:*",
+    "@cat-crawl/obsidian-publisher": "workspace:*",
     "@langchain/core": "^1.1.29",
     "@langchain/openai": "^1.2.11",
     "@larksuiteoapi/node-sdk": "^1.58.0",

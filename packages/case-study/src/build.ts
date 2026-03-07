@@ -1,6 +1,6 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { cwd } from "node:process";
 import { join } from "node:path";
+import { cwd } from "node:process";
+import { ensureDir, listDirectories, readJsonFile, writeJsonFile } from "@cat-crawl/core";
 
 type PageRecord = {
   slug: string;
@@ -30,20 +30,6 @@ type SiteMetadata = {
   updatedAt?: string;
   pageSlugs?: string[];
 };
-
-function readJsonFile<T>(filePath: string): T {
-  return JSON.parse(readFileSync(filePath, "utf8")) as T;
-}
-
-function listDirectories(rootDir: string): string[] {
-  try {
-    return readdirSync(rootDir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return [];
-  }
-}
 
 function loadSiteMetadata(siteDir: string, siteSlug: string): SiteMetadata {
   try {
@@ -108,7 +94,7 @@ export function buildCaseStudyIndexes(options?: { repoRoot?: string }): string {
   const repoRoot = options?.repoRoot || cwd();
   const sitesRoot = join(repoRoot, "case-studies", "sites");
   const generatedRoot = join(repoRoot, "case-studies", "generated");
-  mkdirSync(generatedRoot, { recursive: true });
+  ensureDir(generatedRoot);
 
   const sites = listDirectories(sitesRoot).map((siteSlug) => {
     const siteDir = join(sitesRoot, siteSlug);
@@ -137,12 +123,8 @@ export function buildCaseStudyIndexes(options?: { repoRoot?: string }): string {
     })),
   );
 
-  writeFileSync(join(generatedRoot, "index.json"), `${JSON.stringify({ sites }, null, 2)}\n`, "utf8");
-  writeFileSync(
-    join(generatedRoot, "search.json"),
-    `${JSON.stringify({ pages: searchPages }, null, 2)}\n`,
-    "utf8",
-  );
+  writeJsonFile(join(generatedRoot, "index.json"), { sites });
+  writeJsonFile(join(generatedRoot, "search.json"), { pages: searchPages });
 
   return generatedRoot;
 }

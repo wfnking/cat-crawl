@@ -2,12 +2,13 @@
 
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
+import { asObject, ensureObject } from "@cat-crawl/core";
 import {
   buildCaseStudyIndexes,
   parseCaseStudyCommand,
   runCaseStudyCrawl,
   startCaseStudyServer,
-} from "../../../packages/case-study/src/index.js";
+} from "@cat-crawl/case-study";
 import {
   approveTelegramPairingCode,
   buildAgentSetupConfig,
@@ -24,7 +25,7 @@ import {
   startTelegramPollingChannel,
   type AgentConfigValue,
   type ChannelConfigValue,
-} from "../../../packages/obsidian-publisher/src/index.js";
+} from "@cat-crawl/obsidian-publisher";
 
 type ChannelModes = {
   feishu: boolean;
@@ -44,23 +45,6 @@ type PairingApproveCommand = {
 };
 
 const CHANNEL_FLAGS = new Set(["--feishu", "--telegram", "--discord", "--all-channels"]);
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
-function ensureObject(parent: Record<string, unknown>, key: string): Record<string, unknown> {
-  const existing = asObject(parent[key]);
-  if (existing) {
-    return existing;
-  }
-  const created: Record<string, unknown> = {};
-  parent[key] = created;
-  return created;
-}
 
 function persistStructuredChannelConfig(
   channel: ChannelConfigValue,

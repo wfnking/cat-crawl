@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { ensureDir, safeParseObject, writeJsonFile } from "@cat-crawl/core";
 
 export type LocalConfigStore = {
   get: (key: string) => string | undefined;
@@ -14,28 +15,13 @@ export type LocalConfigStore = {
 
 type LocalConfig = Record<string, unknown>;
 
-function safeParseConfig(raw: string): LocalConfig {
-  if (!raw.trim()) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    return { ...parsed };
-  } catch {
-    return {};
-  }
-}
-
 export function createLocalConfigStore(options?: { homeDir?: string }): LocalConfigStore {
   const homeDir = options?.homeDir || homedir();
   const configDir = join(homeDir, ".cat-crawl");
   const configPath = join(configDir, "config.json");
 
-  function ensureDir(): void {
-    mkdirSync(configDir, { recursive: true });
+  function ensureConfigDir(): void {
+    ensureDir(configDir);
   }
 
   function load(): LocalConfig {
@@ -43,12 +29,12 @@ export function createLocalConfigStore(options?: { homeDir?: string }): LocalCon
       return {};
     }
     const raw = readFileSync(configPath, "utf8");
-    return safeParseConfig(raw);
+    return safeParseObject(raw);
   }
 
   function save(data: LocalConfig): void {
-    ensureDir();
-    writeFileSync(configPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    ensureConfigDir();
+    writeJsonFile(configPath, data);
   }
 
   return {

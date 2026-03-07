@@ -7,6 +7,18 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@cat-crawl/case-study": [
+        "packages/case-study/src/index.ts"
+      ],
+      "@cat-crawl/obsidian-publisher": [
+        "packages/obsidian-publisher/src/index.ts"
+      ],
+      "@cat-crawl/core": [
+        "packages/core/src/index.ts"
+      ]
+    },
     "types": [
       "node"
     ]

@@ -8,6 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@cat-crawl/case-study':
+        specifier: workspace:*
+        version: link:packages/case-study
+      '@cat-crawl/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@cat-crawl/obsidian-publisher':
+        specifier: workspace:*
+        version: link:packages/obsidian-publisher
       '@langchain/core':
         specifier: ^1.1.29
         version: 1.1.29(openai@6.25.0(ws@8.19.0)(zod@4.3.6))
@@ -48,6 +57,29 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  apps/cli:
+    dependencies:
+      '@cat-crawl/case-study':
+        specifier: workspace:*
+        version: link:../../packages/case-study
+      '@cat-crawl/obsidian-publisher':
+        specifier: workspace:*
+        version: link:../../packages/obsidian-publisher
+
+  packages/case-study:
+    dependencies:
+      '@cat-crawl/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/core: {}
+
+  packages/obsidian-publisher:
+    dependencies:
+      '@cat-crawl/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 
