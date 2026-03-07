@@ -1,5 +1,7 @@
 export type CaseStudyArtifactValue = string | Record<string, unknown>;
 
+export type CaseStudySiteMetadata = Record<string, unknown>;
+
 export type CaseStudyPageArtifacts = {
   "page.json"?: Record<string, unknown>;
   "tokens.json"?: Record<string, unknown>;

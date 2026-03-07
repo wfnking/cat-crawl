@@ -7,6 +7,7 @@ import {
   resolveCaseStudyPageDir,
   resolveCaseStudySiteDir,
   writeCaseStudyPageArtifacts,
+  writeCaseStudySiteMetadata,
 } from "./store.js";
 
 function createTempRoot(): { rootDir: string; cleanup: () => void } {
@@ -59,6 +60,38 @@ test("writeCaseStudyPageArtifacts writes expected files", () => {
       `${JSON.stringify({ colors: ["#000000"] }, null, 2)}\n`,
     );
     assert.equal(readFileSync(join(pageDir, "html.html"), "utf8"), "<html></html>");
+  } finally {
+    cleanup();
+  }
+});
+
+test("writeCaseStudySiteMetadata writes site.json at site root", () => {
+  const { rootDir, cleanup } = createTempRoot();
+
+  try {
+    const siteDir = writeCaseStudySiteMetadata({
+      repoRoot: rootDir,
+      siteSlug: "thevibemarketer",
+      metadata: {
+        title: "The Vibe Marketer",
+        updatedAt: "2026-03-07T00:00:00.000Z",
+        pageSlugs: ["home", "daily-ads"],
+      },
+    });
+
+    assert.equal(siteDir, join(rootDir, "case-studies", "sites", "thevibemarketer"));
+    assert.equal(
+      readFileSync(join(siteDir, "site.json"), "utf8"),
+      `${JSON.stringify(
+        {
+          title: "The Vibe Marketer",
+          updatedAt: "2026-03-07T00:00:00.000Z",
+          pageSlugs: ["home", "daily-ads"],
+        },
+        null,
+        2,
+      )}\n`,
+    );
   } finally {
     cleanup();
   }

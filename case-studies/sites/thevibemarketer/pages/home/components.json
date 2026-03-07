@@ -1,0 +1,86 @@
+{
+  "items": [
+    {
+      "name": "AI Marketing That Converts.",
+      "kind": "hero",
+      "selector": "section:nth-of-type(1)",
+      "purpose": "Top-of-page value proposition and primary CTA",
+      "contentStructure": {
+        "headings": [
+          "AI Marketing That Converts."
+        ],
+        "ctas": [
+          "Get the Playbook"
+        ],
+        "paragraphCount": 2
+      },
+      "styleTraits": [
+        "high-contrast",
+        "primary-cta"
+      ]
+    },
+    {
+      "name": "Section 2",
+      "kind": "testimonials",
+      "selector": "section:nth-of-type(2)",
+      "purpose": "Social proof and trust building",
+      "contentStructure": {
+        "headings": [],
+        "ctas": [],
+        "paragraphCount": 37
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Upgrade Your AI. Upgrade Yourself.",
+      "kind": "pricing",
+      "selector": "section:nth-of-type(3)",
+      "purpose": "Offer packaging and upgrade decision",
+      "contentStructure": {
+        "headings": [
+          "Upgrade Your AI. Upgrade Yourself.",
+          "Teach Your AI How to Sell",
+          "Stay Sharp. Stay Ahead.",
+          "AI Ads. Fresh Every Morning."
+        ],
+        "ctas": [
+          "Get the Skills",
+          "Join the Community",
+          "Try 3 Free Generations"
+        ],
+        "paragraphCount": 4
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Why I Built This",
+      "kind": "pricing",
+      "selector": "section:nth-of-type(4)",
+      "purpose": "Offer packaging and upgrade decision",
+      "contentStructure": {
+        "headings": [
+          "Why I Built This"
+        ],
+        "ctas": [],
+        "paragraphCount": 4
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "The Methodology. Yours Free.",
+      "kind": "testimonials",
+      "selector": "section:nth-of-type(5)",
+      "purpose": "Social proof and trust building",
+      "contentStructure": {
+        "headings": [
+          "The Methodology. Yours Free."
+        ],
+        "ctas": [
+          "Get the Playbook"
+        ],
+        "paragraphCount": 2
+      },
+      "styleTraits": []
+    }
+  ]
+}

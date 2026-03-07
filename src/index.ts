@@ -3,7 +3,10 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { runWechatAgent } from "./agent/run-wechat-agent.js";
+import { buildCaseStudyIndexes } from "./case-study/build.js";
 import { parseCaseStudyCommand } from "./case-study/commands.js";
+import { runCaseStudyCrawl } from "./case-study/run-crawl.js";
+import { startCaseStudyServer } from "./case-study/serve.js";
 import { startDiscordBridge } from "./channels/discord-bridge.js";
 import { startFeishuBridge } from "./channels/feishu-bridge.js";
 import { startTelegramPollingChannel } from "./channels/telegram-webhook.js";
@@ -478,10 +481,16 @@ async function main() {
   const caseStudyCommand = parseCaseStudyCommand(args);
   if (caseStudyCommand) {
     if (caseStudyCommand.action === "crawl") {
-      console.log(`case-study crawl queued for ${caseStudyCommand.url}`);
+      const pageDir = await runCaseStudyCrawl(caseStudyCommand);
+      console.log(`case-study crawl saved to ${pageDir}`);
       return;
     }
-    console.log(`case-study ${caseStudyCommand.action} is not implemented yet`);
+    if (caseStudyCommand.action === "build") {
+      const generatedDir = buildCaseStudyIndexes();
+      console.log(`case-study indexes built at ${generatedDir}`);
+      return;
+    }
+    await startCaseStudyServer();
     return;
   }
   const pairingCommand = parsePairingApproveCommand(args);

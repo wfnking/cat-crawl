@@ -23,6 +23,14 @@ export type CaseStudyCapturedPage = {
   screenshotPath: string;
 };
 
+export function isMissingPlaywrightBrowserError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Executable doesn't exist") ||
+    message.includes("Please run the following command to download new browsers")
+  );
+}
+
 function slugify(input: string): string {
   return input
     .trim()
@@ -72,7 +80,15 @@ export async function captureCaseStudyPage(input: {
   screenshotPath: string;
 }): Promise<CaseStudyCapturedPage> {
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+  } catch (error) {
+    if (!isMissingPlaywrightBrowserError(error)) {
+      throw error;
+    }
+    browser = await chromium.launch({ channel: "chrome", headless: true });
+  }
 
   try {
     const context = input.request.sessionPath

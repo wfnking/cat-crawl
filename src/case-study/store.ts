@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CaseStudyPageArtifacts } from "./schema.js";
+import type { CaseStudyPageArtifacts, CaseStudySiteMetadata } from "./schema.js";
 
 export function resolveCaseStudySiteDir(repoRoot: string, siteSlug: string): string {
   return join(repoRoot, "case-studies", "sites", siteSlug);
@@ -21,6 +21,17 @@ function writeArtifactFile(pageDir: string, fileName: string, value: string | Re
     return;
   }
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+export function writeCaseStudySiteMetadata(input: {
+  repoRoot: string;
+  siteSlug: string;
+  metadata: CaseStudySiteMetadata;
+}): string {
+  const siteDir = resolveCaseStudySiteDir(input.repoRoot, input.siteSlug);
+  mkdirSync(siteDir, { recursive: true });
+  writeArtifactFile(siteDir, "site.json", input.metadata);
+  return siteDir;
 }
 
 export function writeCaseStudyPageArtifacts(input: {

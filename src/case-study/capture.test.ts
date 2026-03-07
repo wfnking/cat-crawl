@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeCaseStudyCaptureRequest } from "./capture.js";
+import {
+  isMissingPlaywrightBrowserError,
+  normalizeCaseStudyCaptureRequest,
+} from "./capture.js";
 
 test("normalizeCaseStudyCaptureRequest defaults to public mode and infers slugs", () => {
   const result = normalizeCaseStudyCaptureRequest({
@@ -45,4 +48,12 @@ test("normalizeCaseStudyCaptureRequest infers page slug from pathname", () => {
     siteSlug: "thevibemarketer",
     pageSlug: "daily-ads",
   });
+});
+
+test("isMissingPlaywrightBrowserError detects missing browser binaries", () => {
+  const result = isMissingPlaywrightBrowserError(
+    new Error("Executable doesn't exist at /cache/chromium"),
+  );
+
+  assert.equal(result, true);
 });

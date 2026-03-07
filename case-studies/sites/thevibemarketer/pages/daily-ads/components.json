@@ -1,0 +1,180 @@
+{
+  "items": [
+    {
+      "name": "Your AI creative department that gets smarter every day",
+      "kind": "hero",
+      "selector": "section:nth-of-type(1)",
+      "purpose": "Top-of-page value proposition and primary CTA",
+      "contentStructure": {
+        "headings": [
+          "Your AI creative department that gets smarter every day"
+        ],
+        "ctas": [
+          "Generate Your First Ads Free",
+          "See How It Works"
+        ],
+        "paragraphCount": 1
+      },
+      "styleTraits": [
+        "high-contrast",
+        "primary-cta"
+      ]
+    },
+    {
+      "name": "From URL to ad creatives in under 60 seconds",
+      "kind": "section",
+      "selector": "section:nth-of-type(2)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "From URL to ad creatives in under 60 seconds",
+          "Paste Your URL",
+          "AI Builds Your Ads",
+          "Fresh Ads, Every Morning"
+        ],
+        "ctas": [],
+        "paragraphCount": 4
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "See What You'll Get",
+      "kind": "section",
+      "selector": "section:nth-of-type(3)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "See What You'll Get"
+        ],
+        "ctas": [
+          "Browse all ad examples →",
+          "Load 8 More"
+        ],
+        "paragraphCount": 18
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Formats that feel native to the feed",
+      "kind": "section",
+      "selector": "section:nth-of-type(4)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "Formats that feel native to the feed"
+        ],
+        "ctas": [],
+        "paragraphCount": 1
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Replace your creative team. Not your strategy.",
+      "kind": "section",
+      "selector": "section:nth-of-type(5)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "Replace your creative team. Not your strategy."
+        ],
+        "ctas": [],
+        "paragraphCount": 7
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "It gets smarter the longer you use it",
+      "kind": "section",
+      "selector": "section:nth-of-type(6)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "It gets smarter the longer you use it"
+        ],
+        "ctas": [],
+        "paragraphCount": 2
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Don't just make ads. Make the right ads.",
+      "kind": "section",
+      "selector": "section:nth-of-type(7)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "Don't just make ads. Make the right ads.",
+          "Discover Competitors",
+          "Spot Saturated Angles",
+          "Counter-Position"
+        ],
+        "ctas": [],
+        "paragraphCount": 4
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Built by The Boring Marketer",
+      "kind": "pricing",
+      "selector": "section:nth-of-type(8)",
+      "purpose": "Offer packaging and upgrade decision",
+      "contentStructure": {
+        "headings": [
+          "Built by The Boring Marketer"
+        ],
+        "ctas": [],
+        "paragraphCount": 14
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Less than your morning coffee. More than your last designer.",
+      "kind": "pricing",
+      "selector": "section:nth-of-type(9)",
+      "purpose": "Offer packaging and upgrade decision",
+      "contentStructure": {
+        "headings": [
+          "Less than your morning coffee. More than your last designer.",
+          "Spark Solo",
+          "Growth Scale",
+          "Agency Multi-brand"
+        ],
+        "ctas": [
+          "Get Started",
+          "Get Started",
+          "Get Started"
+        ],
+        "paragraphCount": 4
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Section 10",
+      "kind": "pricing",
+      "selector": "section:nth-of-type(10)",
+      "purpose": "Offer packaging and upgrade decision",
+      "contentStructure": {
+        "headings": [],
+        "ctas": [],
+        "paragraphCount": 1
+      },
+      "styleTraits": []
+    },
+    {
+      "name": "Stop staring at blank canvases",
+      "kind": "section",
+      "selector": "section:nth-of-type(11)",
+      "purpose": "General page section",
+      "contentStructure": {
+        "headings": [
+          "Stop staring at blank canvases"
+        ],
+        "ctas": [
+          "Generate Your First Ads Free"
+        ],
+        "paragraphCount": 1
+      },
+      "styleTraits": []
+    }
+  ]
+}
