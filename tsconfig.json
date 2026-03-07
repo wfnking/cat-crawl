@@ -13,10 +13,12 @@
   },
   "include": [
     "src",
+    "apps",
     "packages"
   ],
   "exclude": [
     "src/**/*.test.ts",
+    "apps/**/*.test.ts",
     "packages/**/*.test.ts"
   ]
 }

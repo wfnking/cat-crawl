@@ -1,0 +1,10 @@
+{
+  "name": "cat-crawl",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "cat-crawl": "../../dist/apps/cli/src/index.js"
+  },
+  "main": "../../dist/apps/cli/src/index.js"
+}

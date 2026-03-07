@@ -14,7 +14,10 @@ test("workspace manifests cover feature packages", () => {
     include?: string[];
   };
 
+  assert.match(workspace, /apps\/\*/);
   assert.match(workspace, /packages\/\*/);
   assert.match(packageJson.scripts?.test || "", /packages\/\*\*\/\*\.test\.ts/);
+  assert.match(packageJson.scripts?.dev || "", /apps\/cli\/src\/index\.ts/);
   assert.ok((tsconfig.include || []).some((entry) => entry.includes("packages")));
+  assert.ok((tsconfig.include || []).some((entry) => entry.includes("apps")));
 });

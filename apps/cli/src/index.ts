@@ -7,7 +7,7 @@ import {
   parseCaseStudyCommand,
   runCaseStudyCrawl,
   startCaseStudyServer,
-} from "../packages/case-study/src/index.js";
+} from "../../../packages/case-study/src/index.js";
 import {
   approveTelegramPairingCode,
   buildAgentSetupConfig,
@@ -24,7 +24,7 @@ import {
   startTelegramPollingChannel,
   type AgentConfigValue,
   type ChannelConfigValue,
-} from "../packages/obsidian-publisher/src/index.js";
+} from "../../../packages/obsidian-publisher/src/index.js";
 
 type ChannelModes = {
   feishu: boolean;

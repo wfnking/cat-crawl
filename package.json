@@ -1,34 +1,21 @@
 {
-  "name": "cat-crawl",
+  "name": "cat-crawl-workspace",
   "version": "0.1.0",
   "description": "Crawl WeChat articles and save them to Obsidian with multi-channel bot interfaces.",
   "private": true,
   "type": "module",
-  "bin": {
-    "cat-crawl": "dist/src/index.js"
-  },
-  "main": "dist/src/index.js",
-  "exports": {
-    ".": "./dist/src/index.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE",
-    ".env.example"
-  ],
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "tsx src/index.ts",
-    "dev:feishu": "tsx src/index.ts --feishu",
-    "dev:telegram": "tsx src/index.ts --telegram",
-    "dev:discord": "tsx src/index.ts --discord",
-    "dev:all": "tsx src/index.ts --all-channels",
+    "dev": "tsx apps/cli/src/index.ts",
+    "dev:feishu": "tsx apps/cli/src/index.ts --feishu",
+    "dev:telegram": "tsx apps/cli/src/index.ts --telegram",
+    "dev:discord": "tsx apps/cli/src/index.ts --discord",
+    "dev:all": "tsx apps/cli/src/index.ts --all-channels",
     "build": "rm -rf dist && tsc -p tsconfig.json",
-    "start": "node dist/src/index.js",
-    "test": "tsx --test src/**/*.test.ts packages/**/*.test.ts",
+    "start": "node dist/apps/cli/src/index.js",
+    "test": "tsx --test src/**/*.test.ts apps/**/*.test.ts packages/**/*.test.ts",
     "prepublishOnly": "pnpm build && pnpm test"
   },
   "dependencies": {
