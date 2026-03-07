@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createLocalConfigStore, parseChannelConfig } from "./local-config.js";
+import { createLocalConfigStore, parseChannelConfig } from "./config-store.js";
 
 function createTempHome(): { homeDir: string; cleanup: () => void } {
   const homeDir = mkdtempSync(join(tmpdir(), "cat-crawl-config-home-"));

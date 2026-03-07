@@ -1,4 +1,4 @@
-import type { ChannelConfigValue } from "./local-config.js";
+import type { ChannelConfigValue } from "@cat-crawl/core";
 
 export type ChannelSetupStep = {
   key: string;

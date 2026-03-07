@@ -1,4 +1,4 @@
-import type { AgentConfigValue } from "./local-config.js";
+import type { AgentConfigValue } from "@cat-crawl/core";
 
 export type AgentSetupStep = {
   key: string;

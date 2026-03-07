@@ -26,25 +26,14 @@ import {
   type AgentConfigValue,
   type ChannelConfigValue,
 } from "@cat-crawl/obsidian-publisher";
+import {
+  hasAnyChannelMode,
+  parseObsidianCommand,
+  type ChannelModes,
+  type PairingApproveCommand,
+  type SetGetCommand,
+} from "./obsidian-command.js";
 
-type ChannelModes = {
-  feishu: boolean;
-  telegram: boolean;
-  discord: boolean;
-};
-
-type SetGetCommand = {
-  action: "set" | "get";
-  key: string;
-  value?: string;
-};
-
-type PairingApproveCommand = {
-  channel: "telegram";
-  code: string;
-};
-
-const CHANNEL_FLAGS = new Set(["--feishu", "--telegram", "--discord", "--all-channels"]);
 const logger = createLogger();
 
 function persistStructuredChannelConfig(
@@ -149,18 +138,6 @@ function parseArgs(): string[] {
   return process.argv.slice(2);
 }
 
-function hasAnyChannelMode(modes: ChannelModes): boolean {
-  return modes.feishu || modes.telegram || modes.discord;
-}
-
-function emptyModes(): ChannelModes {
-  return {
-    feishu: false,
-    telegram: false,
-    discord: false,
-  };
-}
-
 function modesFromChannel(channel: ChannelConfigValue): ChannelModes {
   if (channel === "all") {
     return {
@@ -176,90 +153,20 @@ function modesFromChannel(channel: ChannelConfigValue): ChannelModes {
   };
 }
 
-function parseExplicitModes(args: string[]): ChannelModes {
-  const runAll = args.includes("--all-channels");
-  if (runAll) {
-    return {
-      feishu: true,
-      telegram: true,
-      discord: true,
-    };
-  }
-  return {
-    feishu: args.includes("--feishu"),
-    telegram: args.includes("--telegram"),
-    discord: args.includes("--discord"),
-  };
-}
-
-function readInputFromArgs(args: string[]): string {
-  return args
-    .filter((arg) => !CHANNEL_FLAGS.has(arg))
-    .join(" ")
-    .trim();
-}
-
 function printUsage(): void {
   logger.error(
     [
       "Usage:",
-      '1) cat-crawl "你的消息内容或公众号链接"',
-      "2) cat-crawl --feishu",
-      "3) cat-crawl --telegram",
-      "4) cat-crawl --discord",
-      "5) cat-crawl --all-channels",
-      "6) cat-crawl set channel telegram",
-      "7) cat-crawl get channel [fallback]",
-      "8) cat-crawl set agent deepseek",
-      "9) cat-crawl get agent [fallback]",
-      "10) cat-crawl pairing approve telegram <code>",
-      "11) cat-crawl config set ...（兼容旧命令）",
-      "12) cat-crawl case-study crawl <url>",
-      "13) cat-crawl case-study build",
-      "14) cat-crawl case-study serve",
+      "1) cat-crawl case-study <crawl|build|serve> ...",
+      "2) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
+      '3) cat-crawl obsidian run "你的消息内容或公众号链接"',
+      "4) cat-crawl obsidian config set channel telegram",
+      "5) cat-crawl obsidian config get channel [fallback]",
+      "6) cat-crawl obsidian config set agent deepseek",
+      "7) cat-crawl obsidian config get agent [fallback]",
+      "8) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),
   );
-}
-
-function parseSetGetCommand(args: string[]): SetGetCommand | null {
-  const action = args[0]?.trim().toLowerCase();
-  if (action === "set" || action === "get") {
-    return {
-      action,
-      key: args[1]?.trim() || "",
-      value: args[2]?.trim(),
-    };
-  }
-
-  if (args[0] === "config") {
-    const compatAction = args[1]?.trim().toLowerCase();
-    if (compatAction === "set" || compatAction === "get") {
-      return {
-        action: compatAction,
-        key: args[2]?.trim() || "",
-        value: args[3]?.trim(),
-      };
-    }
-  }
-
-  return null;
-}
-
-function parsePairingApproveCommand(args: string[]): PairingApproveCommand | null {
-  const action = args[0]?.trim().toLowerCase();
-  const subAction = args[1]?.trim().toLowerCase();
-  const channel = args[2]?.trim().toLowerCase();
-  if (action !== "pairing" || subAction !== "approve" || channel !== "telegram") {
-    return null;
-  }
-  const code = args[3]?.trim();
-  if (!code) {
-    throw new Error("Usage: cat-crawl pairing approve telegram <code>");
-  }
-  return {
-    channel: "telegram",
-    code,
-  };
 }
 
 async function promptChannelSetup(channel: ChannelConfigValue): Promise<Record<string, string>> {
@@ -345,7 +252,7 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
   const value = command.value;
 
   if (!key) {
-    throw new Error("Usage: cat-crawl <set|get> <key> [value]");
+    throw new Error("Usage: cat-crawl obsidian config <set|get> <key> [value]");
   }
   if (key === "gateway") {
     throw new Error("gateway 已移除，请使用 channel。");
@@ -353,7 +260,7 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
 
   if (command.action === "set") {
     if (!value) {
-      throw new Error("Usage: cat-crawl set <key> <value>");
+      throw new Error("Usage: cat-crawl obsidian config set <key> <value>");
     }
 
     if (key === "channel") {
@@ -417,22 +324,29 @@ function handlePairingApproveCommand(command: PairingApproveCommand): void {
   logger.log(`pairing approved: telegram user ${result.userId}`);
 }
 
-function resolveModes(args: string[], input: string): ChannelModes {
-  const explicit = parseExplicitModes(args);
+function resolveModes(explicit: ChannelModes): ChannelModes {
   if (hasAnyChannelMode(explicit)) {
     return explicit;
   }
 
-  if (input) {
-    return emptyModes();
+  const store = getLocalConfigStore();
+  const channelRaw = store.get("channel");
+  const parsed = parseChannelConfig(channelRaw);
+  if (parsed) {
+    return modesFromChannel(parsed);
   }
 
-  const channelRaw = getLocalConfigStore().get("channel");
-  const channel = parseChannelConfig(channelRaw);
-  if (!channel) {
-    return emptyModes();
+  const structuredChannel = store.readRaw().channel;
+  if (typeof structuredChannel === "string") {
+    const structuredParsed = parseChannelConfig(structuredChannel);
+    if (structuredParsed) {
+      return modesFromChannel(structuredParsed);
+    }
   }
-  return modesFromChannel(channel);
+
+  throw new Error(
+    "未配置默认 channel。请先运行 `cat-crawl obsidian config set channel telegram`，或在启动时加 --telegram/--feishu/--discord。",
+  );
 }
 
 async function startChannels(modes: ChannelModes): Promise<void> {
@@ -482,31 +396,30 @@ async function main() {
     await startCaseStudyServer();
     return;
   }
-  const pairingCommand = parsePairingApproveCommand(args);
-  if (pairingCommand) {
-    handlePairingApproveCommand(pairingCommand);
-    return;
-  }
-  const command = parseSetGetCommand(args);
-  if (command) {
-    await handleSetGetCommand(command);
-    return;
-  }
 
-  const input = readInputFromArgs(args);
-  const modes = resolveModes(args, input);
-
-  if (hasAnyChannelMode(modes)) {
-    await startChannels(modes);
-    return;
-  }
-
-  if (!input) {
+  const obsidianCommand = parseObsidianCommand(args);
+  if (!obsidianCommand) {
     printUsage();
     process.exit(1);
   }
 
-  await runCliMode(input);
+  if (obsidianCommand.action === "pairingApprove") {
+    handlePairingApproveCommand(obsidianCommand.command);
+    return;
+  }
+
+  if (obsidianCommand.action === "config") {
+    await handleSetGetCommand(obsidianCommand.command);
+    return;
+  }
+
+  if (obsidianCommand.action === "run") {
+    await runCliMode(obsidianCommand.input);
+    return;
+  }
+
+  const modes = resolveModes(obsidianCommand.modes);
+  await startChannels(modes);
 }
 
 main().catch((error) => {

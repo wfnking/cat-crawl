@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { ensureDir, safeParseObject, writeJsonFile } from "@cat-crawl/core";
+import { ensureDir } from "./fs-util.js";
+import { safeParseObject, writeJsonFile } from "./json-file.js";
 
 export type LocalConfigStore = {
   get: (key: string) => string | undefined;
@@ -14,6 +15,9 @@ export type LocalConfigStore = {
 };
 
 type LocalConfig = Record<string, unknown>;
+
+export type ChannelConfigValue = "feishu" | "telegram" | "discord" | "all";
+export type AgentConfigValue = "deepseek";
 
 export function createLocalConfigStore(options?: { homeDir?: string }): LocalConfigStore {
   const homeDir = options?.homeDir || homedir();
@@ -107,9 +111,6 @@ export function getLocalConfigStore(): LocalConfigStore {
 export function setLocalConfigStoreForTest(store: LocalConfigStore | null): void {
   singletonStore = store;
 }
-
-export type ChannelConfigValue = "feishu" | "telegram" | "discord" | "all";
-export type AgentConfigValue = "deepseek";
 
 export function parseChannelConfig(input: string | undefined): ChannelConfigValue | null {
   const value = input?.trim().toLowerCase();

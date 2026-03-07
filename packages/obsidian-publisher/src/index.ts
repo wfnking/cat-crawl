@@ -9,6 +9,7 @@ export {
   getLocalConfigStore,
   parseAgentConfig,
   parseChannelConfig,
-} from "./config/local-config.js";
-export type { AgentConfigValue, ChannelConfigValue } from "./config/local-config.js";
+  type AgentConfigValue,
+  type ChannelConfigValue,
+} from "@cat-crawl/core";
 export { approveTelegramPairingCode } from "./config/telegram-pairing.js";

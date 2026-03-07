@@ -1,5 +1,5 @@
 import process from "node:process";
-import { getLocalConfigStore } from "./local-config.js";
+import { getLocalConfigStore } from "@cat-crawl/core";
 
 try {
   process.loadEnvFile?.();

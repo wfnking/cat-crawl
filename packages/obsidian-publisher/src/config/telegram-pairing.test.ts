@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createLocalConfigStore, setLocalConfigStoreForTest } from "./local-config.js";
+import { createLocalConfigStore, setLocalConfigStoreForTest } from "@cat-crawl/core";
 import {
   approveTelegramPairingCode,
   ensureTelegramPairingCodeForUser,

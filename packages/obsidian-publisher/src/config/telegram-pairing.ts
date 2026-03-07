@@ -1,4 +1,4 @@
-import { getLocalConfigStore } from "./local-config.js";
+import { getLocalConfigStore } from "@cat-crawl/core";
 
 type PendingCodeRecord = {
   userId: string;
