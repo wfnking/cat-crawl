@@ -4,6 +4,9 @@
   "description": "Crawl WeChat articles and save them to Obsidian with multi-channel bot interfaces.",
   "private": true,
   "type": "module",
+  "bin": {
+    "cat-crawl": "./bin/cat-crawl.js"
+  },
   "engines": {
     "node": ">=22.0.0"
   },

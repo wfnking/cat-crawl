@@ -28,3 +28,12 @@ test("pickPolicyFolder should return empty when topic is not startup", () => {
   });
   assert.equal(picked, "");
 });
+
+test("pickPolicyFolder should map entrepreneurship inspiration topic to OPC", () => {
+  const picked = pickPolicyFolder({
+    title: "一个大学生做的小游戏网站，月入15K美元，卖了12万",
+    summary: "独立开发与副业增长复盘。",
+    options: ["AI", "OPC", "English"],
+  });
+  assert.equal(picked, "OPC");
+});

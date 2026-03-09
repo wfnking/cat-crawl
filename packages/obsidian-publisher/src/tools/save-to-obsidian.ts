@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
@@ -14,7 +15,9 @@ const inputSchema = z.object({
   source_url: z.string().url().describe("文章来源链接（url）"),
   content_markdown: z.string().min(1).describe("正文 markdown"),
   author: z.string().min(1).optional().describe("作者"),
-  source: z.string().min(1).optional().describe("来源名称，如 WeChat"),
+  published: z.string().min(1).optional().describe("文章发布日期，优先 YYYY-MM-DD"),
+  description: z.string().min(1).optional().describe("摘要描述，未传时自动从正文提取"),
+  source: z.string().min(1).optional().describe("来源名称（兼容字段，不用于 properties.source）"),
   tags: z.array(z.string().min(1)).optional().describe("标签数组"),
   dynamic_folder: z
     .string()
@@ -53,20 +56,6 @@ function inferTags(input: SaveInput): string[] {
   return ["clippings"];
 }
 
-function inferSource(input: SaveInput): string {
-  if (input.source?.trim()) {
-    return input.source.trim();
-  }
-  const host = new URL(input.source_url).hostname.toLowerCase();
-  if (host.includes("weixin.qq.com")) {
-    return "WeChat";
-  }
-  if (host.includes("x.com") || host.includes("twitter.com")) {
-    return "X";
-  }
-  return host;
-}
-
 function normalizePathSegments(segments: string[]): string[] {
   return segments.map((item) => sanitizeFileName(item)).filter(Boolean);
 }
@@ -98,20 +87,61 @@ function quoteYamlValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+function extractDescription(markdown: string): string {
+  const text = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter(
+      (line) =>
+        !line.startsWith("#") &&
+        !line.startsWith("- Source:") &&
+        !line.startsWith("- Author:") &&
+        !line.startsWith("- Published:"),
+    )
+    .map((line) =>
+      line
+        .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/[`*_>#-]/g, " "),
+    )
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return "";
+  }
+  return text.slice(0, 200);
+}
+
+function normalizeDateString(value: string): string {
+  const text = value.trim();
+  if (!text) {
+    return text;
+  }
+  const matched = text.match(/(\d{4})[./\-年](\d{1,2})[./\-月](\d{1,2})/);
+  if (!matched) {
+    return text;
+  }
+  return `${matched[1]}-${matched[2].padStart(2, "0")}-${matched[3].padStart(2, "0")}`;
+}
+
 function buildNoteContent(input: SaveInput, tags: string[]): string {
-  const source = inferSource(input);
   const safeAuthor = input.author?.trim() || "Unknown";
-  const created = new Date().toISOString();
+  const created = formatLocalDate(new Date());
+  const published = normalizeDateString(input.published?.trim() || created);
+  const description = input.description?.trim() || extractDescription(input.content_markdown);
   const tagInline = tags.map((t) => quoteYamlValue(t)).join(", ");
 
   const frontmatter = [
     "---",
     `title: ${quoteYamlValue(input.title.trim())}`,
-    `tags: [${tagInline}]`,
-    `source: ${quoteYamlValue(source)}`,
-    `url: ${quoteYamlValue(input.source_url)}`,
+    `source: ${quoteYamlValue(input.source_url)}`,
     `author: ${quoteYamlValue(safeAuthor)}`,
+    `published: ${quoteYamlValue(published)}`,
     `created: ${quoteYamlValue(created)}`,
+    `description: ${quoteYamlValue(description)}`,
+    `tags: [${tagInline}]`,
     "---",
     "",
   ];
@@ -119,30 +149,126 @@ function buildNoteContent(input: SaveInput, tags: string[]): string {
   return `${frontmatter.join("\n")}${input.content_markdown.trim()}`.trim();
 }
 
+function parseObsidianPlainOutput(stdout: string, stderr: string): string {
+  const combined = [stdout, stderr]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!combined) {
+    return "";
+  }
+  const lines = combined
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return "";
+  }
+  return lines[lines.length - 1] || "";
+}
+
+function formatObsidianCommandForLog(args: string[]): string {
+  const rendered = args.map((arg) => {
+    if (!arg.startsWith("content=")) {
+      return arg;
+    }
+    const content = arg.slice("content=".length);
+    return `content=<${content.length} chars>`;
+  });
+  return `obsidian ${rendered.join(" ")}`.trim();
+}
+
+function sanitizeVaultName(raw: string): string | undefined {
+  const value = raw.trim();
+  if (!value) {
+    return undefined;
+  }
+  const lower = value.toLowerCase();
+  if (lower.startsWith("error:")) {
+    return undefined;
+  }
+  if (lower.includes("vault not found")) {
+    return undefined;
+  }
+  if (lower.includes("no vault")) {
+    return undefined;
+  }
+  if (lower === "not found") {
+    return undefined;
+  }
+  return value;
+}
+
+function hasObsidianOutputError(output: string): boolean {
+  const lower = output.toLowerCase();
+  if (!lower) {
+    return false;
+  }
+  return lower.includes("vault not found") || lower.includes("no vault") || lower.includes("error:");
+}
+
+async function resolveActiveVaultName(): Promise<string | undefined> {
+  try {
+    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=name"], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const output = sanitizeVaultName(parseObsidianPlainOutput(stdout, stderr));
+    if (output) {
+      return output;
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=path"], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const output = parseObsidianPlainOutput(stdout, stderr).trim();
+    if (!output || output.toLowerCase().startsWith("error:")) {
+      return undefined;
+    }
+    if (output.includes("vault not found")) {
+      return undefined;
+    }
+    const name = basename(output);
+    const normalized = sanitizeVaultName(name);
+    if (!normalized) {
+      return undefined;
+    }
+    return normalized;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createSaveToObsidianTool(env: AppEnv) {
   return tool(
     async (input) => {
-      const vault = input.vault?.trim() || env.obsidianVault;
-      if (!vault) {
-        throw new Error(
-          "Missing Obsidian vault. Set OBSIDIAN_VAULT in env or pass `vault` in tool input.",
-        );
-      }
+      const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
       const path = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
       const content = buildNoteContent(input, tags);
 
-      const args =
-        input.mode === "append"
-          ? [`vault=${vault}`, "append", `path=${path}`, `content=${content}`]
-          : [`vault=${vault}`, "create", `path=${path}`, `content=${content}`];
+      const args = configuredVault ? [`vault=${configuredVault}`] : [];
+      if (input.mode === "append") {
+        args.push("append", `path=${path}`, `content=${content}`);
+      } else {
+        args.push("create", `path=${path}`, `content=${content}`);
+      }
+      const commandForLog = formatObsidianCommandForLog(args);
       logger.info(
-        `[tool:save_to_obsidian] start mode=${input.mode} vault=${vault} path=${path} dynamic_folder=${dynamicFolder}`,
+        `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${path} dynamic_folder=${dynamicFolder}`,
       );
+      logger.info(`[tool:save_to_obsidian] command=${commandForLog}`);
 
+      let commandStdout = "";
+      let commandStderr = "";
       try {
-        await execFileAsync("obsidian", args, { maxBuffer: 10 * 1024 * 1024 });
+        const result = await execFileAsync("obsidian", args, { maxBuffer: 10 * 1024 * 1024 });
+        commandStdout = result.stdout || "";
+        commandStderr = result.stderr || "";
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         const stderr =
@@ -158,11 +284,27 @@ export function createSaveToObsidianTool(env: AppEnv) {
         }
         throw new Error(`Obsidian CLI failed: ${msg}`);
       }
-      logger.info(`[tool:save_to_obsidian] success path=${path}`);
+      const commandOutput = [commandStdout, commandStderr].filter(Boolean).join("\n").trim();
+      if (hasObsidianOutputError(commandOutput)) {
+        throw new Error(
+          `Obsidian CLI failed: ${parseObsidianPlainOutput(commandStdout, commandStderr) || "unknown error output"}`,
+        );
+      }
+
+      if (commandStdout.trim()) {
+        logger.info(`[tool:save_to_obsidian] stdout=${commandStdout.trim()}`);
+      }
+      if (commandStderr.trim()) {
+        logger.info(`[tool:save_to_obsidian] stderr=${commandStderr.trim()}`);
+      }
+      const effectiveVault = configuredVault || (await resolveActiveVaultName()) || "";
+      logger.info(
+        `[tool:save_to_obsidian] success vault=${effectiveVault || "<active>"} path=${path}`,
+      );
 
       return {
         saved: true,
-        vault,
+        vault: effectiveVault || undefined,
         path,
         tags,
         dynamic_folder: dynamicFolder,
@@ -176,3 +318,12 @@ export function createSaveToObsidianTool(env: AppEnv) {
     },
   );
 }
+
+export const __test__ = {
+  buildNoteContent,
+  formatObsidianCommandForLog,
+  hasObsidianOutputError,
+  extractDescription,
+  normalizeDateString,
+  sanitizeVaultName,
+};

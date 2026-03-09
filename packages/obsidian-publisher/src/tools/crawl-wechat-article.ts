@@ -6,6 +6,7 @@ import { z } from "zod";
 type CrawlResult = {
   title: string;
   author: string | null;
+  published: string | null;
   source_url: string;
   content_markdown: string;
 };
@@ -34,6 +35,7 @@ function isMissingPlaywrightBrowserError(error: unknown): boolean {
 function toMarkdown(result: {
   title: string;
   author: string | null;
+  published: string | null;
   sourceUrl: string;
   contentBody: string;
 }): string {
@@ -42,10 +44,26 @@ function toMarkdown(result: {
     "",
     `- Source: ${result.sourceUrl}`,
     `- Author: ${result.author ?? "Unknown"}`,
+    `- Published: ${result.published ?? "Unknown"}`,
     "",
     result.contentBody,
   ];
   return lines.join("\n").trim();
+}
+
+function normalizePublishedDate(raw: string | null): string | null {
+  const text = raw?.trim() || "";
+  if (!text) {
+    return null;
+  }
+  const matched = text.match(/(\d{4})[./\-年](\d{1,2})[./\-月](\d{1,2})/);
+  if (!matched) {
+    return null;
+  }
+  const year = matched[1];
+  const month = matched[2].padStart(2, "0");
+  const day = matched[3].padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeUrl(url: string): string {
@@ -165,6 +183,13 @@ export const crawlWechatArticleTool = tool(
           document.querySelector(".rich_media_meta_text")?.textContent?.trim() ||
           null;
 
+        const published =
+          document.querySelector("#publish_time")?.textContent?.trim() ||
+          document
+            .querySelector(".rich_media_meta.rich_media_meta_text#publish_time")
+            ?.textContent?.trim() ||
+          null;
+
         const contentNode =
           document.querySelector("#js_content") ||
           document.querySelector(".rich_media_content") ||
@@ -211,7 +236,7 @@ export const crawlWechatArticleTool = tool(
           contentHtml = clone.innerHTML;
         }
 
-        return { title, author, contentHtml };
+        return { title, author, published, contentHtml };
       });
 
       const turndown = createTurndownService();
@@ -224,10 +249,12 @@ export const crawlWechatArticleTool = tool(
       return {
         title: scraped.title,
         author: scraped.author,
+        published: normalizePublishedDate(scraped.published),
         source_url: url,
         content_markdown: toMarkdown({
           title: scraped.title,
           author: scraped.author,
+          published: normalizePublishedDate(scraped.published),
           sourceUrl: url,
           contentBody,
         }),

@@ -8,7 +8,7 @@
     "@cat-crawl/obsidian-publisher": "workspace:*"
   },
   "bin": {
-    "cat-crawl": "../../dist/apps/cli/src/index.js"
+    "cat-crawl": "./bin/cat-crawl.js"
   },
-  "main": "../../dist/apps/cli/src/index.js"
+  "main": "./bin/cat-crawl.js"
 }

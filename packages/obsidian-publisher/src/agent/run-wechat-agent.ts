@@ -15,6 +15,7 @@ import { extractWechatUrl, normalizeModelText } from "../utils/text.js";
 type CrawlToolResult = {
   title: string;
   author: string | null;
+  published: string | null;
   source_url: string;
   content_markdown: string;
 };
@@ -373,61 +374,62 @@ export async function runWechatAgent(
       "爬取成功。",
       `标题：${crawlResult.title}`,
       `作者：${crawlResult.author ?? "Unknown"}`,
+      `发布时间：${crawlResult.published ?? "Unknown"}`,
       `摘要：${crawlSummary || "(空)"}`,
     ].join("\n"),
   });
 
   let dynamicFolder = "";
-  if (env.obsidianDynamicFolders.length > 0) {
+  const summary = buildClassificationSummary(crawlResult.content_markdown);
+  const policyOptions =
+    env.obsidianDynamicFolders.length > 0 ? env.obsidianDynamicFolders : ["OPC"];
+  const policyFolder = pickPolicyFolder({
+    title: crawlResult.title,
+    summary,
+    options: policyOptions,
+  });
+
+  if (policyFolder) {
+    dynamicFolder = policyFolder;
+    logger.info(`[agent] dynamic_folder policy selected=${dynamicFolder}`);
+    await emitStatus(options, {
+      stage: "classify_done",
+      message: `目录分类完成：${dynamicFolder}`,
+    });
+  } else if (env.obsidianDynamicFolders.length > 0) {
     await emitStatus(options, {
       stage: "classify_start",
       message: "正在根据文章内容选择目录分类...",
     });
     logger.info("[agent] preparing summarized context for dynamic folder classification");
-    const summary = buildClassificationSummary(crawlResult.content_markdown);
-
-    const policyFolder = pickPolicyFolder({
-      title: crawlResult.title,
-      summary,
-      options: env.obsidianDynamicFolders,
+    const classifierModel = createDeepSeekModel(env, {
+      maxTokens: 500,
+      timeout: 30000,
     });
-    if (policyFolder) {
-      dynamicFolder = policyFolder;
-      logger.info(`[agent] dynamic_folder policy selected=${dynamicFolder}`);
-      await emitStatus(options, {
-        stage: "classify_done",
-        message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
-      });
-    } else {
-      const classifierModel = createDeepSeekModel(env, {
-        maxTokens: 500,
-        timeout: 30000,
-      });
-      const classifyStart = Date.now();
-      logger.info("[agent] invoking model for dynamic_folder classification");
-      const classifyMessage = await classifierModel.invoke([
-        new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
-        new HumanMessage(
-          [
-            `Title: ${crawlResult.title}`,
-            "",
-            `Summary: ${summary}`,
-            "",
-            "Return JSON only.",
-          ].join("\n"),
-        ),
-      ]);
-      const classifyCostMs = Date.now() - classifyStart;
-      logger.info(`[agent] classification model done in ${classifyCostMs}ms`);
+    const classifyStart = Date.now();
+    logger.info("[agent] invoking model for dynamic_folder classification");
+    const classifyMessage = await classifierModel.invoke([
+      new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
+      new HumanMessage(
+        [
+          `Title: ${crawlResult.title}`,
+          "",
+          `Summary: ${summary}`,
+          "",
+          "Return JSON only.",
+        ].join("\n"),
+      ),
+    ]);
+    const classifyCostMs = Date.now() - classifyStart;
+    logger.info(`[agent] classification model done in ${classifyCostMs}ms`);
 
-      const modelOutput = normalizeModelText(classifyMessage.content);
-      dynamicFolder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
-      logger.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
-      await emitStatus(options, {
-        stage: "classify_done",
-        message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
-      });
-    }
+    const modelOutput = normalizeModelText(classifyMessage.content);
+    dynamicFolder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
+    logger.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
+    await emitStatus(options, {
+      stage: "classify_done",
+      message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
+    });
   } else {
     logger.info("[agent] dynamic folder options empty, skip classification");
     await emitStatus(options, {
@@ -447,6 +449,8 @@ export async function runWechatAgent(
     source_url: crawlResult.source_url,
     content_markdown: crawlResult.content_markdown,
     author: crawlResult.author ?? undefined,
+    published: crawlResult.published ?? undefined,
+    description: buildClassificationSummary(crawlResult.content_markdown).slice(0, 200),
     source: "WeChat",
     dynamic_folder: dynamicFolder,
   })) as SaveToolResult;
