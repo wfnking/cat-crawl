@@ -52,3 +52,32 @@ test("hasObsidianOutputError should detect vault missing output", () => {
   assert.equal(__test__.hasObsidianOutputError("ERROR: something wrong"), true);
   assert.equal(__test__.hasObsidianOutputError(""), false);
 });
+
+test("parseVaultsVerbose should parse tsv vault listings", () => {
+  assert.deepEqual(
+    __test__.parseVaultsVerbose(
+      "知识库\t/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库\nWork\t/tmp/work\n",
+    ),
+    [
+      {
+        name: "知识库",
+        path: "/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库",
+      },
+      {
+        name: "Work",
+        path: "/tmp/work",
+      },
+    ],
+  );
+});
+
+test("resolveVaultNotePath should keep notes inside vault", () => {
+  assert.equal(
+    __test__.resolveVaultNotePath("/tmp/vault", "Clippings/OPC/demo.md"),
+    "/tmp/vault/Clippings/OPC/demo.md",
+  );
+  assert.throws(
+    () => __test__.resolveVaultNotePath("/tmp/vault", "../escape.md"),
+    /cannot escape the vault/i,
+  );
+});

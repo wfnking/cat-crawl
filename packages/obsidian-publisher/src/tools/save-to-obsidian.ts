@@ -1,7 +1,8 @@
 import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
-import { basename } from "node:path";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, normalize } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
@@ -9,6 +10,7 @@ import { sanitizeFileName } from "../utils/text.js";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger();
+const OBSIDIAN_CLI_TIMEOUT_MS = 30_000;
 
 const inputSchema = z.object({
   title: z.string().min(1).describe("文章标题"),
@@ -199,6 +201,20 @@ function sanitizeVaultName(raw: string): string | undefined {
   return value;
 }
 
+function parseVaultsVerbose(output: string): Array<{ name: string; path: string }> {
+  return output
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split("\t"))
+    .filter((parts) => parts.length >= 2)
+    .map((parts) => ({
+      name: parts[0]?.trim() || "",
+      path: parts.slice(1).join("\t").trim(),
+    }))
+    .filter((entry) => entry.name && entry.path);
+}
+
 function hasObsidianOutputError(output: string): boolean {
   const lower = output.toLowerCase();
   if (!lower) {
@@ -242,6 +258,53 @@ async function resolveActiveVaultName(): Promise<string | undefined> {
   }
 }
 
+async function resolveVaultPath(vaultName?: string): Promise<string | undefined> {
+  if (vaultName) {
+    try {
+      const { stdout, stderr } = await execFileAsync("obsidian", ["vaults", "verbose"], {
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      const combined = [stdout, stderr].filter(Boolean).join("\n");
+      const entries = parseVaultsVerbose(combined);
+      const matched = entries.find((entry) => entry.name === vaultName);
+      if (matched) {
+        return matched.path;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=path"], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const output = parseObsidianPlainOutput(stdout, stderr).trim();
+    if (!output || hasObsidianOutputError(output)) {
+      return undefined;
+    }
+    return output;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveVaultNotePath(vaultPath: string, notePath: string): string {
+  if (!notePath.trim()) {
+    throw new Error("Obsidian note path cannot be empty.");
+  }
+  if (isAbsolute(notePath)) {
+    throw new Error(`Obsidian note path must be relative: ${notePath}`);
+  }
+  const normalizedRelative = normalize(notePath);
+  const parts = normalizedRelative.split(/[\\/]+/g).filter(Boolean);
+  if (parts.includes("..")) {
+    throw new Error(`Obsidian note path cannot escape the vault: ${notePath}`);
+  }
+  return join(vaultPath, normalizedRelative);
+}
+
 export function createSaveToObsidianTool(env: AppEnv) {
   return tool(
     async (input) => {
@@ -250,56 +313,51 @@ export function createSaveToObsidianTool(env: AppEnv) {
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
       const path = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
       const content = buildNoteContent(input, tags);
-
-      const args = configuredVault ? [`vault=${configuredVault}`] : [];
-      if (input.mode === "append") {
-        args.push("append", `path=${path}`, `content=${content}`);
-      } else {
-        args.push("create", `path=${path}`, `content=${content}`);
-      }
-      const commandForLog = formatObsidianCommandForLog(args);
       logger.info(
         `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${path} dynamic_folder=${dynamicFolder}`,
       );
-      logger.info(`[tool:save_to_obsidian] command=${commandForLog}`);
+      logger.info(`[tool:save_to_obsidian] content_length=${content.length}`);
+      const startedAt = Date.now();
 
-      let commandStdout = "";
-      let commandStderr = "";
+      let vaultPath = "";
       try {
-        const result = await execFileAsync("obsidian", args, { maxBuffer: 10 * 1024 * 1024 });
-        commandStdout = result.stdout || "";
-        commandStderr = result.stderr || "";
+        logger.info(
+          `[tool:save_to_obsidian] command=obsidian ${configuredVault ? "vaults verbose" : "vault info=path"}`,
+        );
+        vaultPath = (await resolveVaultPath(configuredVault)) || "";
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        const stderr =
-          typeof error === "object" && error !== null && "stderr" in error
-            ? String((error as { stderr?: unknown }).stderr ?? "")
-            : "";
-        logger.error(`[tool:save_to_obsidian] failed msg=${msg}`);
-        if (stderr.trim()) {
-          logger.error(`[tool:save_to_obsidian] stderr=${stderr.trim()}`);
-        }
-        if (msg.includes("ENOENT")) {
-          throw new Error("Obsidian CLI not found. Please ensure `obsidian` is available in PATH.");
-        }
-        throw new Error(`Obsidian CLI failed: ${msg}`);
+        logger.error(`[tool:save_to_obsidian] failed resolving_vault_path msg=${msg}`);
       }
-      const commandOutput = [commandStdout, commandStderr].filter(Boolean).join("\n").trim();
-      if (hasObsidianOutputError(commandOutput)) {
+
+      if (!vaultPath) {
         throw new Error(
-          `Obsidian CLI failed: ${parseObsidianPlainOutput(commandStdout, commandStderr) || "unknown error output"}`,
+          configuredVault
+            ? `Obsidian vault not found: ${configuredVault}`
+            : "Obsidian active vault not found. Open a vault in Obsidian or set OBSIDIAN_VAULT.",
         );
       }
 
-      if (commandStdout.trim()) {
-        logger.info(`[tool:save_to_obsidian] stdout=${commandStdout.trim()}`);
-      }
-      if (commandStderr.trim()) {
-        logger.info(`[tool:save_to_obsidian] stderr=${commandStderr.trim()}`);
+      const absolutePath = resolveVaultNotePath(vaultPath, path);
+      logger.info(`[tool:save_to_obsidian] write_path=${absolutePath}`);
+      try {
+        await mkdir(dirname(absolutePath), { recursive: true });
+        if (input.mode === "append") {
+          await appendFile(absolutePath, content, "utf8");
+        } else {
+          await writeFile(absolutePath, content, { encoding: "utf8", flag: "wx" });
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error(`[tool:save_to_obsidian] failed msg=${msg}`);
+        if (msg.includes("EEXIST")) {
+          throw new Error(`Obsidian note already exists: ${path}`);
+        }
+        throw new Error(`Failed to write Obsidian note: ${msg}`);
       }
       const effectiveVault = configuredVault || (await resolveActiveVaultName()) || "";
       logger.info(
-        `[tool:save_to_obsidian] success vault=${effectiveVault || "<active>"} path=${path}`,
+        `[tool:save_to_obsidian] success vault=${effectiveVault || "<active>"} path=${path} elapsed_ms=${Date.now() - startedAt}`,
       );
 
       return {
@@ -325,5 +383,7 @@ export const __test__ = {
   hasObsidianOutputError,
   extractDescription,
   normalizeDateString,
+  parseVaultsVerbose,
+  resolveVaultNotePath,
   sanitizeVaultName,
 };
