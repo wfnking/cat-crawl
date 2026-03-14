@@ -24,6 +24,23 @@ export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
     ];
   }
 
+  if (agent === "codex") {
+    return [
+      {
+        key: "CODEX_MODEL",
+        label: "Codex Model",
+        required: false,
+        defaultValue: "gpt-5-codex",
+      },
+      {
+        key: "CODEX_BIN",
+        label: "Codex Binary Path",
+        required: false,
+        defaultValue: "codex",
+      },
+    ];
+  }
+
   return [];
 }
 

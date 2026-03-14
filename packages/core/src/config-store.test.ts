@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createLocalConfigStore, parseChannelConfig } from "./config-store.js";
+import { createLocalConfigStore, parseAgentConfig, parseChannelConfig } from "./config-store.js";
 
 function createTempHome(): { homeDir: string; cleanup: () => void } {
   const homeDir = mkdtempSync(join(tmpdir(), "cat-crawl-config-home-"));
@@ -43,6 +43,12 @@ test("parseChannelConfig should validate supported values", () => {
   assert.equal(parseChannelConfig("telegram"), "telegram");
   assert.equal(parseChannelConfig("  all "), "all");
   assert.equal(parseChannelConfig("unknown"), null);
+});
+
+test("parseAgentConfig should validate supported values", () => {
+  assert.equal(parseAgentConfig("deepseek"), "deepseek");
+  assert.equal(parseAgentConfig(" codex "), "codex");
+  assert.equal(parseAgentConfig("unknown"), null);
 });
 
 test("remove should delete existing key", () => {

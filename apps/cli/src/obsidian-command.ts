@@ -114,7 +114,7 @@ export function parseObsidianCommand(args: string[]): ObsidianCommand | null {
       .join(" ")
       .trim();
     if (!input) {
-      throw new Error('Usage: cat-crawl obsidian run "你的消息内容或公众号链接"');
+      throw new Error('Usage: cat-crawl obsidian run "你的消息内容或文章链接"');
     }
     return {
       action: "run",
@@ -141,10 +141,10 @@ export function parseObsidianCommand(args: string[]): ObsidianCommand | null {
       "Usage:",
       "1) cat-crawl case-study <crawl|build|serve> ...",
       "2) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
-      '3) cat-crawl obsidian run "你的消息内容或公众号链接"',
+      '3) cat-crawl obsidian run "你的消息内容或文章链接"',
       "4) cat-crawl obsidian config set channel telegram",
       "5) cat-crawl obsidian config get channel [fallback]",
-      "6) cat-crawl obsidian config set agent deepseek",
+      "6) cat-crawl obsidian config set agent deepseek|codex",
       "7) cat-crawl obsidian config get agent [fallback]",
       "8) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),

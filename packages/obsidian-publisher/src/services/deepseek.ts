@@ -9,7 +9,7 @@ type DeepSeekModelOptions = {
 
 export function createDeepSeekModel(env: AppEnv, options: DeepSeekModelOptions = {}): ChatOpenAI {
   return new ChatOpenAI({
-    apiKey: env.deepseekApiKey,
+    apiKey: env.deepseekApiKey || "",
     model: env.deepseekModel,
     temperature: options.temperature ?? 0,
     maxTokens: options.maxTokens,

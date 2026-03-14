@@ -6,11 +6,11 @@ import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
 import { pickPolicyFolder } from "./folder-policy.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
-import { createDeepSeekModel } from "../services/deepseek.js";
-import { crawlWechatArticleTool } from "../tools/crawl-wechat-article.js";
+import { createAgentModel } from "../services/model.js";
+import { crawlWebArticleTool } from "../tools/crawl-web-article.js";
 import { createQuerySuccessHistoryTool, type QuerySuccessHistoryResult } from "../tools/query-success-history.js";
 import { createSaveToObsidianTool } from "../tools/save-to-obsidian.js";
-import { extractWechatUrl, normalizeModelText } from "../utils/text.js";
+import { extractArticleUrl, normalizeModelText } from "../utils/text.js";
 
 type CrawlToolResult = {
   title: string;
@@ -81,13 +81,13 @@ async function emitStatus(options: AgentRunOptions | undefined, status: AgentSta
 function buildCapabilityReply(): string {
   return [
     "我当前可以做这些事：",
-    "1. 接收微信公众号链接（mp.weixin.qq.com）。",
-    "2. 抓取文章并转换为 Markdown（尽量保留结构）。",
+    "1. 接收文章链接（已支持微信公众号、虎嗅，以及大部分普通网页文章页）。",
+    "2. 抓取正文并转换为 Markdown（尽量保留结构与图片）。",
     "3. 根据文章内容选择一个动态目录（或留空）。",
-    "4. 通过 Obsidian CLI 保存到你的 Vault。",
+    "4. 保存到你的 Obsidian Vault。",
     "5. 查询历史成功记录（全部 / 今天 / 按标签）。",
     "",
-    "直接发公众号链接，或说“查看今天成功记录 / 根据标签 ai 查询”。",
+    "直接发文章链接，或说“查看今天成功记录 / 根据标签 ai 查询”。",
   ].join("\n");
 }
 
@@ -125,7 +125,7 @@ function formatHistoryReply(result: QuerySuccessHistoryResult): string {
 
 async function detectHistoryIntent(userInput: string, env: ReturnType<typeof loadEnv>): Promise<HistoryIntent> {
   const fallback = parseHistoryIntentFromText(userInput);
-  const classifyModel = createDeepSeekModel(env, {
+  const classifyModel = createAgentModel(env, {
     maxTokens: 120,
     timeout: 15000,
     temperature: 0,
@@ -165,7 +165,7 @@ async function chatForNonWechatInput(
     return buildCapabilityReply();
   }
 
-  const chatModel = createDeepSeekModel(env, {
+  const chatModel = createAgentModel(env, {
     maxTokens: 300,
     timeout: 25000,
   });
@@ -182,7 +182,7 @@ async function chatForNonWechatInput(
       new SystemMessage(
         [
           "你是 cat-crawl 的助手。",
-          "你可以做简短聊天，但核心能力是处理微信公众号链接、保存 Obsidian、查询历史成功记录。",
+          "你可以做简短聊天，但核心能力是处理文章链接、保存 Obsidian、查询历史成功记录。",
           "回答保持简洁、友好、中文。",
         ].join("\n"),
       ),
@@ -311,11 +311,11 @@ export async function runWechatAgent(
     message: `已收到请求：${userInput.slice(0, 80)}`,
   });
 
-  const url = extractWechatUrl(userInput);
+  const url = extractArticleUrl(userInput);
   if (!url) {
     await emitStatus(options, {
       stage: "small_chat",
-      message: "检测到非公众号链接，先尝试历史查询意图，否则进入简短对话模式。",
+      message: "检测到非文章链接，先尝试历史查询意图，否则进入简短对话模式。",
     });
     if (shouldReturnCapabilityReply(userInput)) {
       return {
@@ -350,7 +350,7 @@ export async function runWechatAgent(
     const fullPath = `${existing.vault}/${existing.path}`;
     return {
       reply: [
-        "这篇文章之前已经爬取并保存过了。",
+        "这篇文章之前已经抓取并保存过了。",
         `标题：${existing.title}`,
         `保存路径：\`${fullPath}\``,
         "如果你希望强制重抓，我可以再加一个参数支持覆盖保存。",
@@ -361,12 +361,12 @@ export async function runWechatAgent(
 
   await emitStatus(options, {
     stage: "crawl_start",
-    message: `开始爬取公众号文章：${url}`,
+    message: `开始抓取文章：${url}`,
   });
-  logger.info("[agent] invoking tool=crawl_wechat_article");
-  const crawlResult = (await crawlWechatArticleTool.invoke({ url })) as CrawlToolResult;
-  usedTools.push("crawl_wechat_article");
-  logger.info("[agent] tool success: crawl_wechat_article");
+  logger.info("[agent] invoking tool=crawl_web_article");
+  const crawlResult = (await crawlWebArticleTool.invoke({ url })) as CrawlToolResult;
+  usedTools.push("crawl_web_article");
+  logger.info("[agent] tool success: crawl_web_article");
   const crawlSummary = buildClassificationSummary(crawlResult.content_markdown).slice(0, 120);
   await emitStatus(options, {
     stage: "crawl_done",
@@ -402,7 +402,7 @@ export async function runWechatAgent(
       message: "正在根据文章内容选择目录分类...",
     });
     logger.info("[agent] preparing summarized context for dynamic folder classification");
-    const classifierModel = createDeepSeekModel(env, {
+    const classifierModel = createAgentModel(env, {
       maxTokens: 500,
       timeout: 30000,
     });

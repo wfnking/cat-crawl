@@ -13,6 +13,11 @@ export function extractWechatUrl(text: string): string | null {
   return matches?.[0] ?? null;
 }
 
+export function extractArticleUrl(text: string): string | null {
+  const matches = text.match(/https?:\/\/[^\s)]+/i);
+  return matches?.[0] ?? null;
+}
+
 export function normalizeModelText(content: unknown): string {
   if (typeof content === "string") {
     return content.trim();

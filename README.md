@@ -1,18 +1,22 @@
 # cat-crawl
 
-一个把微信公众号文章抓取为 Markdown 并保存到 Obsidian 的多渠道 Agent（CLI / Feishu / Telegram / Discord）。
+一个把网页文章抓取为 Markdown 并保存到 Obsidian 的多渠道 Agent（CLI / Feishu / Telegram / Discord）。
 
 ## 功能
 
-- 抓取微信公众号文章并转为 Markdown
+- 抓取网页文章并转为 Markdown
+  - 已支持：微信公众号、虎嗅、大部分普通文章页
 - 基于文章内容自动选择动态目录（可选）
-- 保存到 Obsidian Vault（通过 Obsidian CLI）
+- 保存到 Obsidian Vault
 - 成功记录持久化到本地数据库：`~/.cat-crawl/history.db`
 - Agent 支持历史查询：
   - 查看全部成功记录
   - 查看今天成功记录
   - 按标签查询成功记录
 - 渠道支持：CLI、Feishu（WS）、Telegram（Polling）、Discord（Gateway 文本消息）
+- Agent Provider 支持：
+  - `deepseek`
+  - `codex`（通过本机 `codex` CLI / `@openai/codex-sdk`）
 
 ## 环境要求
 
@@ -29,8 +33,8 @@ pnpm install
 
 优先使用全局配置（`~/.cat-crawl/config.json`）：
 
-- 渠道：`cat-crawl set channel <feishu|telegram|discord|all>`
-- Agent：`cat-crawl set agent deepseek`
+- 渠道：`cat-crawl obsidian config set channel <feishu|telegram|discord|all>`
+- Agent：`cat-crawl obsidian config set agent <deepseek|codex>`
 
 `.env` 仅保留可选运行参数（例如 Obsidian 目录与 `MAX_TOOL_STEPS`）。如果需要，可从模板复制：
 
@@ -44,6 +48,7 @@ cp .env.example .env
 
 ```bash
 pnpm dev -- "https://mp.weixin.qq.com/s/xxxx"
+pnpm dev -- "https://m.huxiu.com/article/4794991.html"
 ```
 
 历史查询示例：
@@ -63,30 +68,31 @@ cat-crawl 的本地运行配置会保存在：
 可用命令：
 
 ```bash
-cat-crawl set channel telegram
-cat-crawl get channel
-cat-crawl get channel telegram
-cat-crawl pairing approve telegram <code>
-cat-crawl set agent deepseek
-cat-crawl get agent
-cat-crawl get agent deepseek
+cat-crawl obsidian config set channel telegram
+cat-crawl obsidian config get channel
+cat-crawl obsidian config get channel telegram
+cat-crawl obsidian pairing approve telegram <code>
+cat-crawl obsidian config set agent deepseek
+cat-crawl obsidian config set agent codex
+cat-crawl obsidian config get agent
+cat-crawl obsidian config get agent deepseek
 ```
 
 说明：
 
-- `set channel telegram`：进入交互式向导，设置 Telegram Token、策略字段与 typing 行为（Polling 模式）。
-- `set channel <value>` 支持 `feishu` / `telegram` / `discord` / `all`，其中 `feishu|discord` 也会进入对应交互式字段收集。
-- 当 `channels.telegram.dmPolicy=pairing` 时，未配对用户会收到 Pairing Code，管理员使用 `cat-crawl pairing approve telegram <code>` 完成授权。
-- `set agent deepseek`：进入交互式向导，输入 DeepSeek 配置（API Key/Model，默认 `deepseek-chat`），并写入分层 `agent` 配置。
-- `set agent <value>` 目前支持 `deepseek`，后续可扩展更多 Agent。
-- `get channel`：读取当前值。
-- `get channel telegram`：当键不存在时返回你提供的 fallback（这里是 `telegram`）。
-- `get agent`：读取当前 agent。
-- `get agent deepseek`：当键不存在时返回 fallback（这里是 `deepseek`）。
+- `obsidian config set channel telegram`：进入交互式向导，设置 Telegram Token、策略字段与 typing 行为（Polling 模式）。
+- `obsidian config set channel <value>` 支持 `feishu` / `telegram` / `discord` / `all`。
+- 当 `channels.telegram.dmPolicy=pairing` 时，未配对用户会收到 Pairing Code，管理员使用 `cat-crawl obsidian pairing approve telegram <code>` 完成授权。
+- `obsidian config set agent deepseek`：进入交互式向导，输入 DeepSeek 配置（API Key/Model，默认 `deepseek-chat`）。
+- `obsidian config set agent codex`：进入交互式向导，输入 Codex 配置（可选 `CODEX_MODEL` / `CODEX_BIN`）。
+- `obsidian config get channel`：读取当前值。
+- `obsidian config get channel telegram`：当键不存在时返回你提供的 fallback（这里是 `telegram`）。
+- `obsidian config get agent`：读取当前 agent。
+- `obsidian config get agent deepseek`：当键不存在时返回 fallback（这里是 `deepseek`）。
 
 当你不带参数直接运行 `cat-crawl` 且已设置 `channel` 时，会按该渠道启动对应通道模式。
 
-`set channel ...` 后会把 `~/.cat-crawl/config.json` 写成分层结构（接近 openclaw）：
+`obsidian config set channel ...` 后会把 `~/.cat-crawl/config.json` 写成分层结构（接近 openclaw）：
 
 ```json
 {
@@ -118,7 +124,7 @@ cat-crawl get agent deepseek
 }
 ```
 
-`set agent deepseek` 后会写入：
+`obsidian config set agent deepseek` 后会写入：
 
 ```json
 {
@@ -128,6 +134,20 @@ cat-crawl get agent deepseek
       "apiKey": "sk-xxx",
       "baseUrl": "https://api.deepseek.com",
       "model": "deepseek-chat"
+    }
+  }
+}
+```
+
+`obsidian config set agent codex` 后会写入：
+
+```json
+{
+  "agent": {
+    "provider": "codex",
+    "codex": {
+      "model": "gpt-5-codex",
+      "bin": "codex"
     }
   }
 }
@@ -190,7 +210,7 @@ npm publish
 ## 当前处理流程
 
 1. 接收用户消息
-2. 识别是否是公众号链接
+2. 识别是否是文章链接
 3. 若是：抓取 -> 分类 -> 保存 Obsidian -> 写入成功历史
 4. 若不是：
    - 优先识别是否历史查询意图并调用 `query_success_history`

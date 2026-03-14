@@ -11,10 +11,12 @@ try {
 }
 
 export type AppEnv = {
-  agent: string;
-  deepseekApiKey: string;
+  agent: "deepseek" | "codex";
+  deepseekApiKey?: string;
   deepseekBaseUrl: string;
   deepseekModel: string;
+  codexModel: string;
+  codexBin: string;
   feishuEnabled: boolean;
   feishuAppId?: string;
   feishuAppSecret?: string;
@@ -59,6 +61,8 @@ function readFromStructuredConfig(name: string): string | undefined {
     DEEPSEEK_API_KEY: ["agent", "deepseek", "apiKey"],
     DEEPSEEK_BASE_URL: ["agent", "deepseek", "baseUrl"],
     DEEPSEEK_MODEL: ["agent", "deepseek", "model"],
+    CODEX_MODEL: ["agent", "codex", "model"],
+    CODEX_BIN: ["agent", "codex", "bin"],
     TELEGRAM_BOT_TOKEN: ["channels", "telegram", "botToken"],
     TELEGRAM_DM_POLICY: ["channels", "telegram", "dmPolicy"],
     TELEGRAM_TYPING_MODE: ["channels", "telegram", "typingMode"],
@@ -171,11 +175,14 @@ function getTelegramTypingMode(): "never" | "instant" | "thinking" | "message" {
 }
 
 export function loadEnv(): AppEnv {
+  const agent = readRaw("agent")?.toLowerCase() === "codex" ? "codex" : "deepseek";
   return {
-    agent: readRaw("agent") || "deepseek",
-    deepseekApiKey: mustGet("DEEPSEEK_API_KEY"),
+    agent,
+    deepseekApiKey: agent === "deepseek" ? mustGet("DEEPSEEK_API_KEY") : undefined,
     deepseekBaseUrl: readRaw("DEEPSEEK_BASE_URL") || "https://api.deepseek.com",
     deepseekModel: readRaw("DEEPSEEK_MODEL") || "deepseek-chat",
+    codexModel: readRaw("CODEX_MODEL") || "gpt-5-codex",
+    codexBin: readRaw("CODEX_BIN") || "codex",
     feishuEnabled: getBoolean("FEISHU_ENABLED", false),
     feishuAppId: readRaw("FEISHU_APP_ID") || undefined,
     feishuAppSecret: readRaw("FEISHU_APP_SECRET") || undefined,

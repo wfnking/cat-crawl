@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
 
 export type HistoryChannel = "cli" | "feishu" | "telegram" | "discord";
-export type HistorySource = "wechat" | "x" | "unknown";
+export type HistorySource = "wechat" | "x" | "web" | "unknown";
 export type QueryScope = "all" | "today";
 
 export type SuccessRecordInput = {
@@ -122,7 +122,13 @@ function mapRow(row: DbRow): SuccessRecord {
   return {
     id: row.id,
     createdAt: row.created_at,
-    source: (row.source === "wechat" || row.source === "x" ? row.source : "unknown") as HistorySource,
+    source: (
+      row.source === "wechat" ||
+      row.source === "x" ||
+      row.source === "web"
+        ? row.source
+        : "unknown"
+    ) as HistorySource,
     channel: (
       row.channel === "cli" ||
       row.channel === "feishu" ||
@@ -264,6 +270,9 @@ export function inferSourceFromUrl(url: string): HistorySource {
     }
     if (host.includes("x.com") || host.includes("twitter.com")) {
       return "x";
+    }
+    if (host) {
+      return "web";
     }
   } catch {
     // ignore

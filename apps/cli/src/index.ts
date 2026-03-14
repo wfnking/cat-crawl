@@ -116,19 +116,32 @@ function persistStructuredAgentConfig(agent: AgentConfigValue, values: Record<st
   const store = getLocalConfigStore();
   const raw = store.readRaw();
 
-  const flatAgentKeys = ["agent", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"];
+  const flatAgentKeys = [
+    "agent",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "DEEPSEEK_MODEL",
+    "CODEX_MODEL",
+    "CODEX_BIN",
+  ];
   for (const key of flatAgentKeys) {
     delete raw[key];
   }
 
   const agentConfig = ensureObject(raw, "agent");
   agentConfig.provider = agent;
+  delete agentConfig.deepseek;
+  delete agentConfig.codex;
 
   if (agent === "deepseek") {
     const deepseek = ensureObject(agentConfig, "deepseek");
     deepseek.apiKey = values.DEEPSEEK_API_KEY || "";
     deepseek.baseUrl = values.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
     deepseek.model = values.DEEPSEEK_MODEL || "deepseek-chat";
+  } else if (agent === "codex") {
+    const codex = ensureObject(agentConfig, "codex");
+    codex.model = values.CODEX_MODEL || "gpt-5-codex";
+    codex.bin = values.CODEX_BIN || "codex";
   }
 
   store.writeRaw(raw);
@@ -159,10 +172,10 @@ function printUsage(): void {
       "Usage:",
       "1) cat-crawl case-study <crawl|build|serve> ...",
       "2) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
-      '3) cat-crawl obsidian run "你的消息内容或公众号链接"',
+      '3) cat-crawl obsidian run "你的消息内容或文章链接"',
       "4) cat-crawl obsidian config set channel telegram",
       "5) cat-crawl obsidian config get channel [fallback]",
-      "6) cat-crawl obsidian config set agent deepseek",
+      "6) cat-crawl obsidian config set agent deepseek|codex",
       "7) cat-crawl obsidian config get agent [fallback]",
       "8) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),
@@ -278,7 +291,7 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
     if (key === "agent") {
       const agent = parseAgentConfig(value);
       if (!agent) {
-        throw new Error("agent 当前只支持 deepseek");
+        throw new Error("agent 当前只支持 deepseek / codex");
       }
       const values = await promptAgentSetup(agent);
       persistStructuredAgentConfig(agent, values);
