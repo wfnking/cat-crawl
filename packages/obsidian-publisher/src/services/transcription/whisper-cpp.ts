@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
+import { createLogger } from "@cat-crawl/core";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsyncDefault = promisify(execFile);
+const logger = createLogger();
 
 type ExecFileAsync = (
   file: string,
@@ -27,6 +29,10 @@ type WhisperCppResult = {
   text: string;
 };
 
+function formatWhisperCommandForLog(bin: string, args: string[]): string {
+  return [bin, ...args].join(" ").trim();
+}
+
 export async function transcribeWithWhisperCpp(
   audioPath: string,
   options: WhisperCppOptions,
@@ -42,15 +48,18 @@ export async function transcribeWithWhisperCpp(
   }
 
   await mkdir(options.outputDir, { recursive: true });
+  logger.info(`[transcription:whisper_cpp] command=${formatWhisperCommandForLog(options.bin, args)}`);
   try {
     await execFileAsync(options.bin, args, { maxBuffer: 10 * 1024 * 1024 });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    logger.error(`[transcription:whisper_cpp] failed msg=${detail}`);
     throw new Error(`whisper.cpp failed: ${detail}`);
   }
 
   const text = (await readFileAsync(outputPath, "utf8")).trim();
   if (!text) {
+    logger.error("[transcription:whisper_cpp] failed msg=empty transcript output");
     throw new Error("whisper.cpp failed: empty transcript output");
   }
 
@@ -59,3 +68,7 @@ export async function transcribeWithWhisperCpp(
     text,
   };
 }
+
+export const __test__ = {
+  formatWhisperCommandForLog,
+};

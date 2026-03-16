@@ -24,21 +24,39 @@ type ResolvedYouTubeVideoSource = {
   adapter: "youtube";
   sourceUrl: string;
   mediaPath: string;
+  title?: string;
 };
 
-function parseDownloadedMediaPath(stdout: string, stderr: string): string {
-  const combined = [stdout, stderr]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-  if (!combined) {
-    return "";
-  }
-  const lines = combined
+function parseStdoutLines(stdout: string): string[] {
+  return stdout
     .split(/\r?\n/g)
     .map((line) => line.trim())
     .filter(Boolean);
-  return lines[lines.length - 1] || "";
+}
+
+function parseDownloadedMediaPath(stdout: string, stderr: string): string {
+  const stdoutLines = parseStdoutLines(stdout);
+  if (stdoutLines.length >= 2) {
+    return stdoutLines[stdoutLines.length - 1] || "";
+  }
+  if (stdoutLines.length > 0) {
+    return stdoutLines[stdoutLines.length - 1] || "";
+  }
+
+  const stderrLines = stderr
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^warning:/i.test(line));
+  return stderrLines[stderrLines.length - 1] || "";
+}
+
+function parseDownloadedTitle(stdout: string): string | undefined {
+  const stdoutLines = parseStdoutLines(stdout);
+  if (stdoutLines.length >= 2) {
+    return stdoutLines[0] || undefined;
+  }
+  return undefined;
 }
 
 function isMissingYtDlpError(error: unknown): boolean {
@@ -57,9 +75,10 @@ export async function resolveYouTubeVideoSource(
   try {
     const { stdout, stderr } = await execFileAsync(
       "yt-dlp",
-      ["--no-progress", "--print", "after_move:filepath", "-o", outputTemplate, sourceUrl],
+      ["--no-progress", "--print", "title", "--print", "after_move:filepath", "-o", outputTemplate, sourceUrl],
       { maxBuffer: 10 * 1024 * 1024 },
     );
+    const title = parseDownloadedTitle(stdout);
     const mediaPath = parseDownloadedMediaPath(stdout, stderr);
     if (!mediaPath) {
       throw new Error("yt-dlp did not return a downloaded file path");
@@ -68,6 +87,7 @@ export async function resolveYouTubeVideoSource(
       adapter: "youtube",
       sourceUrl,
       mediaPath,
+      title,
     };
   } catch (error) {
     if (isMissingYtDlpError(error)) {

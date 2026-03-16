@@ -9,8 +9,9 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
       assert.equal(file, "yt-dlp");
       assert.ok(args.includes("--print"));
       assert.ok(args.includes("after_move:filepath"));
+      assert.ok(args.includes("title"));
       return {
-        stdout: "/tmp/cat-crawl-video/video.mp4\n",
+        stdout: "Demo Title\n/tmp/cat-crawl-video/video.mp4\n",
         stderr: "",
       };
     },
@@ -18,6 +19,7 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
 
   assert.equal(result.adapter, "youtube");
   assert.equal(result.sourceUrl, "https://www.youtube.com/watch?v=abc123");
+  assert.equal(result.title, "Demo Title");
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video.mp4");
 });
 
@@ -45,4 +47,19 @@ test("resolveYouTubeVideoSource should surface yt-dlp failures", async () => {
       }),
     /YouTube download failed/,
   );
+});
+
+test("resolveYouTubeVideoSource should ignore yt-dlp warnings when filepath is present", async () => {
+  const result = await resolveYouTubeVideoSource("https://www.youtube.com/watch?v=abc123", {
+    outputDir: "/tmp/cat-crawl-video",
+    execFileAsync: async () => ({
+      stdout: "Warning Resistant Title\n/tmp/cat-crawl-video/video.webm\n",
+      stderr:
+        "WARNING: [youtube] abc123: nsig extraction failed: Some formats may be missing.\n" +
+        "WARNING: [youtube] abc123: n challenge solving failed.\n",
+    }),
+  });
+
+  assert.equal(result.title, "Warning Resistant Title");
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video.webm");
 });

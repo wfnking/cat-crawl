@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { transcribeWithWhisperCpp } from "./whisper-cpp.js";
+import { __test__, transcribeWithWhisperCpp } from "./whisper-cpp.js";
+
+test("formatWhisperCommandForLog should render executable and args", () => {
+  assert.equal(
+    __test__.formatWhisperCommandForLog("whisper-cli", [
+      "-f",
+      "/tmp/audio.mp3",
+      "-m",
+      "/models/ggml-base.bin",
+      "-otxt",
+      "-of",
+      "/tmp/whisper-output/transcript",
+    ]),
+    "whisper-cli -f /tmp/audio.mp3 -m /models/ggml-base.bin -otxt -of /tmp/whisper-output/transcript",
+  );
+});
 
 test("transcribeWithWhisperCpp should omit language when not configured", async () => {
   const result = await transcribeWithWhisperCpp("/tmp/audio.mp3", {

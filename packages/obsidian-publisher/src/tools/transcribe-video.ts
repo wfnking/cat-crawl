@@ -1,4 +1,5 @@
 import { tool } from "@langchain/core/tools";
+import { createLogger } from "@cat-crawl/core";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { extractAudioFromVideo } from "../services/media/extract-audio.js";
@@ -43,6 +44,8 @@ type TranscribeVideoDeps = {
   }) => Promise<SaveResult>;
 };
 
+const logger = createLogger();
+
 function extractHashtags(text: string): string[] {
   return Array.from(text.matchAll(/#([^\s#]+)/g))
     .map((match) => match[1]?.trim())
@@ -84,16 +87,22 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
 
   return tool(async (input: TranscribeVideoInput) => {
     const adapter = selectAdapter(input.source);
+    logger.info(`[tool:transcribe_video] start source=${input.source}`);
+    logger.info(`[tool:transcribe_video] adapter=${adapter.name}`);
     const resolved =
       adapter.name === "file"
         ? await resolveFile(input.source)
         : adapter.name === "youtube"
           ? await resolveYoutube(input.source, { outputDir: "/tmp/cat-crawl-youtube" })
           : await resolveDouyin(input.source, { cookieHeader: env.douyinCookie });
+    logger.info(
+      `[tool:transcribe_video] resolved source_url=${resolved.sourceUrl} media_path=${resolved.mediaPath}`,
+    );
 
     const audioPath = await extractAudio(resolved.mediaPath, {
       outputDir: "/tmp/cat-crawl-audio",
     });
+    logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
 
     const transcription = await transcribe(audioPath, {
       provider: input.provider || env.transcriptionProvider,
@@ -110,6 +119,9 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         model: env.geminiModel,
       },
     });
+    logger.info(
+      `[tool:transcribe_video] transcription provider=${transcription.providerUsed} fallback=${transcription.fallbackUsed}`,
+    );
 
     const resolvedTitle = "title" in resolved ? resolved.title?.trim() : undefined;
     const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
@@ -119,6 +131,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
     const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags]));
 
     if (!input.save) {
+      logger.info(`[tool:transcribe_video] skip save title=${title}`);
       return {
         saved: false,
         title,
@@ -136,6 +149,9 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       source: "Video",
       tags: noteTags,
     });
+    logger.info(
+      `[tool:transcribe_video] saved title=${title} path=${saveResult.path || "<unknown>"} vault=${saveResult.vault || "<active>"}`,
+    );
 
     return {
       saved: Boolean(saveResult.saved),

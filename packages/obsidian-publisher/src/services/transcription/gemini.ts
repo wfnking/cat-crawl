@@ -31,6 +31,22 @@ function extractGeminiText(payload: unknown): string {
     .trim();
 }
 
+function isLikelyNonTranscript(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+  if (normalized === "[NO_SPEECH]") {
+    return true;
+  }
+  return [
+    /^by the end of the video\b/i,
+    /^the video (shows|depicts|features)\b/i,
+    /^this video (shows|depicts|features)\b/i,
+    /^the artist (finishes|creates|crafts)\b/i,
+  ].some((pattern) => pattern.test(normalized));
+}
+
 export async function transcribeWithGemini(
   audioPath: string,
   options: GeminiOptions,
@@ -61,7 +77,10 @@ export async function transcribeWithGemini(
                 },
               },
               {
-                text: "Generate a transcript of the speech in this audio.",
+                text:
+                  "Generate a verbatim transcript of the discernible spoken language in this audio. " +
+                  "Do not summarize, describe visuals, infer context, or rewrite. " +
+                  "If there is no discernible spoken language, reply exactly [NO_SPEECH].",
               },
             ],
           },
@@ -78,6 +97,12 @@ export async function transcribeWithGemini(
     const text = extractGeminiText(payload);
     if (!text) {
       throw new Error("empty transcript response");
+    }
+    if (text === "[NO_SPEECH]") {
+      throw new Error("no discernible speech");
+    }
+    if (isLikelyNonTranscript(text)) {
+      throw new Error("non-transcript content returned");
     }
 
     return {
