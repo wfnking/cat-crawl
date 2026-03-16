@@ -1,8 +1,8 @@
 import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, normalize } from "node:path";
+import { appendFile, access, mkdir, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
@@ -83,6 +83,45 @@ function buildDefaultPath(title: string, folder: string, dynamicFolder: string):
   const allSegments = [...folderSegments, ...dynamicSegments];
   const basePath = allSegments.length > 0 ? allSegments.join("/") : "clippings";
   return `${basePath}/${date} ${safeTitle}.md`;
+}
+
+function appendNumericSuffix(notePath: string, index: number): string {
+  const extension = extname(notePath);
+  const suffixless = extension ? notePath.slice(0, -extension.length) : notePath;
+  return `${suffixless} (${index})${extension || ""}`;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function resolveAvailableNotePath(
+  vaultPath: string,
+  relativePath: string,
+  exists: (path: string) => Promise<boolean> = pathExists,
+): Promise<string> {
+  const preferredAbsolutePath = resolveVaultNotePath(vaultPath, relativePath);
+  if (!(await exists(preferredAbsolutePath))) {
+    return relativePath;
+  }
+
+  for (let index = 2; index < 1000; index += 1) {
+    const candidatePath = appendNumericSuffix(relativePath, index);
+    const candidateAbsolutePath = resolveVaultNotePath(vaultPath, candidatePath);
+    if (!(await exists(candidateAbsolutePath))) {
+      return candidatePath;
+    }
+  }
+
+  throw new Error(`Failed to allocate unique Obsidian note path for: ${relativePath}`);
 }
 
 function quoteYamlValue(value: string): string {
@@ -311,10 +350,10 @@ export function createSaveToObsidianTool(env: AppEnv) {
       const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
-      const path = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
+      const initialPath = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
       const content = buildNoteContent(input, tags);
       logger.info(
-        `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${path} dynamic_folder=${dynamicFolder}`,
+        `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${initialPath} dynamic_folder=${dynamicFolder}`,
       );
       logger.info(`[tool:save_to_obsidian] content_length=${content.length}`);
       const startedAt = Date.now();
@@ -338,6 +377,11 @@ export function createSaveToObsidianTool(env: AppEnv) {
         );
       }
 
+      const path =
+        input.mode === "create" ? await resolveAvailableNotePath(vaultPath, initialPath) : initialPath;
+      if (path !== initialPath) {
+        logger.warn(`[tool:save_to_obsidian] path exists, using next available path=${path}`);
+      }
       const absolutePath = resolveVaultNotePath(vaultPath, path);
       logger.info(`[tool:save_to_obsidian] write_path=${absolutePath}`);
       try {
@@ -350,9 +394,6 @@ export function createSaveToObsidianTool(env: AppEnv) {
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         logger.error(`[tool:save_to_obsidian] failed msg=${msg}`);
-        if (msg.includes("EEXIST")) {
-          throw new Error(`Obsidian note already exists: ${path}`);
-        }
         throw new Error(`Failed to write Obsidian note: ${msg}`);
       }
       const effectiveVault = configuredVault || (await resolveActiveVaultName()) || "";
@@ -384,6 +425,7 @@ export const __test__ = {
   extractDescription,
   normalizeDateString,
   parseVaultsVerbose,
+  resolveAvailableNotePath,
   resolveVaultNotePath,
   sanitizeVaultName,
 };

@@ -49,6 +49,7 @@ test("loadEnv should expose default transcription config", () => {
     assert.equal(env.whisperCppBin, "whisper-cli");
     assert.equal(env.whisperCppLanguage, undefined);
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
+    assert.equal(env.douyinCookie, undefined);
   } finally {
     setLocalConfigStoreForTest(null);
     cleanup();
@@ -79,6 +80,11 @@ test("loadEnv should read transcription config from structured config", () => {
         model: "gemini-3-flash-preview",
       },
     },
+    videoSources: {
+      douyin: {
+        cookie: "ttwid=test-cookie-value",
+      },
+    },
   });
 
   setLocalConfigStoreForTest(store);
@@ -91,6 +97,7 @@ test("loadEnv should read transcription config from structured config", () => {
     assert.equal(env.whisperCppLanguage, "en");
     assert.equal(env.geminiApiKey, "gemini-demo-key");
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
+    assert.equal(env.douyinCookie, "ttwid=test-cookie-value");
   } finally {
     setLocalConfigStoreForTest(null);
     cleanup();

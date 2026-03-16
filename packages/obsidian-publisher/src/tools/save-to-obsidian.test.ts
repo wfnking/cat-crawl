@@ -81,3 +81,18 @@ test("resolveVaultNotePath should keep notes inside vault", () => {
     /cannot escape the vault/i,
   );
 });
+
+test("resolveAvailableNotePath should append numeric suffix when file already exists", async () => {
+  const existing = new Set([
+    "/tmp/vault/Clippings/demo.md",
+    "/tmp/vault/Clippings/demo (2).md",
+  ]);
+
+  const resolved = await __test__.resolveAvailableNotePath(
+    "/tmp/vault",
+    "Clippings/demo.md",
+    async (path) => existing.has(path),
+  );
+
+  assert.equal(resolved, "Clippings/demo (3).md");
+});

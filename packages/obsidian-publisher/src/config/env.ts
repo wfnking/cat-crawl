@@ -24,6 +24,7 @@ export type AppEnv = {
   whisperCppLanguage?: string;
   geminiApiKey?: string;
   geminiModel: string;
+  douyinCookie?: string;
   feishuEnabled: boolean;
   feishuAppId?: string;
   feishuAppSecret?: string;
@@ -75,6 +76,7 @@ function readFromStructuredConfig(name: string): string | undefined {
     WHISPER_CPP_BIN: ["transcription", "whisperCpp", "bin"],
     WHISPER_CPP_MODEL_PATH: ["transcription", "whisperCpp", "modelPath"],
     WHISPER_CPP_LANGUAGE: ["transcription", "whisperCpp", "language"],
+    DOUYIN_COOKIE: ["videoSources", "douyin", "cookie"],
     GEMINI_API_KEY: ["transcription", "gemini", "apiKey"],
     GEMINI_MODEL: ["transcription", "gemini", "model"],
     TELEGRAM_BOT_TOKEN: ["channels", "telegram", "botToken"],
@@ -221,6 +223,7 @@ export function loadEnv(): AppEnv {
     whisperCppLanguage: readRaw("WHISPER_CPP_LANGUAGE") || undefined,
     geminiApiKey: readRaw("GEMINI_API_KEY") || undefined,
     geminiModel: readRaw("GEMINI_MODEL") || "gemini-3-flash-preview",
+    douyinCookie: readRaw("DOUYIN_COOKIE") || undefined,
     feishuEnabled: getBoolean("FEISHU_ENABLED", false),
     feishuAppId: readRaw("FEISHU_APP_ID") || undefined,
     feishuAppSecret: readRaw("FEISHU_APP_SECRET") || undefined,

@@ -39,13 +39,29 @@ type TranscribeVideoDeps = {
     source_url: string;
     content_markdown: string;
     source?: string;
-    description?: string;
     tags?: string[];
   }) => Promise<SaveResult>;
 };
 
-function buildTranscriptMarkdown(title: string, sourceUrl: string, transcript: string): string {
-  return [`# ${title}`, "", `- Source: ${sourceUrl}`, "", transcript.trim()].join("\n").trim();
+function extractHashtags(text: string): string[] {
+  return Array.from(text.matchAll(/#([^\s#]+)/g))
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value));
+}
+
+function normalizeVideoTitle(rawTitle: string): { title: string; tags: string[] } {
+  const tags = Array.from(new Set(extractHashtags(rawTitle)));
+  const withoutTags = rawTitle.replace(/#([^\s#]+)/g, " ");
+  const withoutSourceSuffix = withoutTags.replace(/\s*-\s*抖音\s*$/u, " ");
+  const title = withoutSourceSuffix.replace(/\s+/g, " ").trim();
+  return {
+    title: title || rawTitle.trim(),
+    tags,
+  };
+}
+
+function buildTranscriptMarkdown(sourceUrl: string, transcript: string): string {
+  return [`- Source: ${sourceUrl}`, "", transcript.trim()].join("\n").trim();
 }
 
 export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps = {}) {
@@ -73,7 +89,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         ? await resolveFile(input.source)
         : adapter.name === "youtube"
           ? await resolveYoutube(input.source, { outputDir: "/tmp/cat-crawl-youtube" })
-          : await resolveDouyin(input.source);
+          : await resolveDouyin(input.source, { cookieHeader: env.douyinCookie });
 
     const audioPath = await extractAudio(resolved.mediaPath, {
       outputDir: "/tmp/cat-crawl-audio",
@@ -96,8 +112,11 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
     });
 
     const resolvedTitle = "title" in resolved ? resolved.title?.trim() : undefined;
-    const title = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
-    const transcriptMarkdown = buildTranscriptMarkdown(title, resolved.sourceUrl, transcription.text);
+    const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
+    const normalized = normalizeVideoTitle(rawTitle);
+    const title = normalized.title;
+    const transcriptMarkdown = buildTranscriptMarkdown(resolved.sourceUrl, transcription.text);
+    const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags]));
 
     if (!input.save) {
       return {
@@ -115,8 +134,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       source_url: resolved.sourceUrl,
       content_markdown: transcriptMarkdown,
       source: "Video",
-      description: transcription.text.slice(0, 200),
-      tags: ["video", "transcript"],
+      tags: noteTags,
     });
 
     return {
@@ -137,3 +155,9 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
     schema: inputSchema,
   });
 }
+
+export const __test__ = {
+  buildTranscriptMarkdown,
+  extractHashtags,
+  normalizeVideoTitle,
+};
