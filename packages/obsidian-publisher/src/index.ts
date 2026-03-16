@@ -13,3 +13,4 @@ export {
   type ChannelConfigValue,
 } from "@cat-crawl/core";
 export { approveTelegramPairingCode } from "./config/telegram-pairing.js";
+export { createTranscribeVideoTool } from "./tools/transcribe-video.js";

@@ -7,9 +7,11 @@ import { pickPolicyFolder } from "./folder-policy.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
 import { createAgentModel } from "../services/model.js";
+import { selectVideoSourceAdapter } from "../services/video-sources/index.js";
 import { crawlWebArticleTool } from "../tools/crawl-web-article.js";
 import { createQuerySuccessHistoryTool, type QuerySuccessHistoryResult } from "../tools/query-success-history.js";
 import { createSaveToObsidianTool } from "../tools/save-to-obsidian.js";
+import { createTranscribeVideoTool } from "../tools/transcribe-video.js";
 import { extractArticleUrl, normalizeModelText } from "../utils/text.js";
 
 type CrawlToolResult = {
@@ -26,6 +28,14 @@ type SaveToolResult = {
   path?: string;
   tags?: string[];
   dynamic_folder?: string;
+};
+
+type TranscribeVideoToolResult = SaveToolResult & {
+  title: string;
+  source_url: string;
+  transcript_markdown: string;
+  provider_used: "whisper_cpp" | "gemini";
+  fallback_used: boolean;
 };
 
 const logger = createLogger();
@@ -58,6 +68,16 @@ export type AgentRequestContext = {
 export type AgentRunOptions = {
   onStatus?: (status: AgentStatusUpdate) => void | Promise<void>;
   context?: AgentRequestContext;
+};
+
+type AgentDeps = {
+  loadEnv?: typeof loadEnv;
+  findExistingSavedRecordByUrl?: typeof findExistingSavedRecordByUrl;
+  crawlWebArticleTool?: Pick<typeof crawlWebArticleTool, "invoke">;
+  createSaveToObsidianTool?: typeof createSaveToObsidianTool;
+  createTranscribeVideoTool?: typeof createTranscribeVideoTool;
+  persistSuccessHistory?: typeof persistSuccessHistory;
+  getHistoryStore?: typeof getHistoryStore;
 };
 
 type HistoryIntent = {
@@ -256,11 +276,19 @@ function pickDynamicFolder(modelOutput: string, options: string[]): string {
   return "";
 }
 
-function formatSuccessReply(saveResult: SaveToolResult): string {
+function formatSuccessReply(subject: string, saveResult: SaveToolResult): string {
   const vault = saveResult.vault ?? "";
   const path = saveResult.path ?? "";
   const fullPath = vault && path ? `${vault}/${path}` : path || "(unknown path)";
-  return `文章已成功保存到 Obsidian！\n\n保存路径：\`${fullPath}\``;
+  return `${subject}已成功保存到 Obsidian！\n\n保存路径：\`${fullPath}\``;
+}
+
+function isSupportedVideoUrl(url: string): boolean {
+  try {
+    return selectVideoSourceAdapter(url).name !== "file";
+  } catch {
+    return false;
+  }
 }
 
 function persistSuccessHistory(
@@ -302,9 +330,15 @@ function persistSuccessHistory(
 export async function runWechatAgent(
   userInput: string,
   options?: AgentRunOptions,
+  deps: AgentDeps = {},
 ): Promise<AgentRunResult> {
   logger.info("[agent] start processing input");
-  const env = loadEnv();
+  const env = (deps.loadEnv || loadEnv)();
+  const existingChecker = deps.findExistingSavedRecordByUrl || findExistingSavedRecordByUrl;
+  const articleTool = deps.crawlWebArticleTool || crawlWebArticleTool;
+  const buildSaveTool = deps.createSaveToObsidianTool || createSaveToObsidianTool;
+  const buildTranscribeTool = deps.createTranscribeVideoTool || createTranscribeVideoTool;
+  const persistHistory = deps.persistSuccessHistory || persistSuccessHistory;
   const usedTools: string[] = [];
   await emitStatus(options, {
     stage: "received",
@@ -345,16 +379,50 @@ export async function runWechatAgent(
     };
   }
 
-  const existing = await findExistingSavedRecordByUrl(url);
+  const isVideoUrl = isSupportedVideoUrl(url);
+  const existing = await existingChecker(url);
   if (existing) {
     const fullPath = `${existing.vault}/${existing.path}`;
     return {
       reply: [
-        "这篇文章之前已经抓取并保存过了。",
+        "这个链接之前已经处理并保存过了。",
         `标题：${existing.title}`,
         `保存路径：\`${fullPath}\``,
         "如果你希望强制重抓，我可以再加一个参数支持覆盖保存。",
       ].join("\n"),
+      usedTools,
+    };
+  }
+
+  if (isVideoUrl) {
+    await emitStatus(options, {
+      stage: "crawl_start",
+      message: `开始提取视频并转写：${url}`,
+    });
+    logger.info("[agent] invoking tool=transcribe_video");
+    const transcribeTool = buildTranscribeTool(env);
+    const transcribeResult = (await transcribeTool.invoke({
+      source: url,
+      save: true,
+    })) as TranscribeVideoToolResult;
+    usedTools.push("transcribe_video");
+    persistHistory(
+      {
+        title: transcribeResult.title,
+        author: null,
+        published: null,
+        source_url: transcribeResult.source_url,
+        content_markdown: transcribeResult.transcript_markdown,
+      },
+      transcribeResult,
+      options?.context,
+    );
+    await emitStatus(options, {
+      stage: "save_done",
+      message: `视频转写已保存：${transcribeResult.vault ?? ""}/${transcribeResult.path ?? "(unknown path)"}`,
+    });
+    return {
+      reply: formatSuccessReply("视频转写", transcribeResult),
       usedTools,
     };
   }
@@ -364,7 +432,7 @@ export async function runWechatAgent(
     message: `开始抓取文章：${url}`,
   });
   logger.info("[agent] invoking tool=crawl_web_article");
-  const crawlResult = (await crawlWebArticleTool.invoke({ url })) as CrawlToolResult;
+  const crawlResult = (await articleTool.invoke({ url })) as CrawlToolResult;
   usedTools.push("crawl_web_article");
   logger.info("[agent] tool success: crawl_web_article");
   const crawlSummary = buildClassificationSummary(crawlResult.content_markdown).slice(0, 120);
@@ -438,7 +506,7 @@ export async function runWechatAgent(
     });
   }
 
-  const saveToObsidianTool = createSaveToObsidianTool(env);
+  const saveToObsidianTool = buildSaveTool(env);
   await emitStatus(options, {
     stage: "save_start",
     message: "正在保存到 Obsidian...",
@@ -455,7 +523,7 @@ export async function runWechatAgent(
     dynamic_folder: dynamicFolder,
   })) as SaveToolResult;
   usedTools.push("save_to_obsidian");
-  persistSuccessHistory(crawlResult, saveResult, options?.context);
+  persistHistory(crawlResult, saveResult, options?.context);
 
   logger.info("[agent] tool success: save_to_obsidian");
   logger.info("[agent] finalize response");
@@ -465,7 +533,7 @@ export async function runWechatAgent(
   });
 
   return {
-    reply: formatSuccessReply(saveResult),
+    reply: formatSuccessReply("文章", saveResult),
     usedTools,
   };
 }

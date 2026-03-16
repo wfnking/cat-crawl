@@ -1,0 +1,139 @@
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import type { AppEnv } from "../config/env.js";
+import { extractAudioFromVideo } from "../services/media/extract-audio.js";
+import { transcribeAudio } from "../services/transcription/index.js";
+import { resolveDouyinVideoSource } from "../services/video-sources/douyin.js";
+import { resolveFileVideoSource } from "../services/video-sources/file.js";
+import { selectVideoSourceAdapter } from "../services/video-sources/index.js";
+import { resolveYouTubeVideoSource } from "../services/video-sources/youtube.js";
+import { createSaveToObsidianTool } from "./save-to-obsidian.js";
+
+const inputSchema = z.object({
+  source: z.string().min(1).describe("视频 URL 或本地文件路径"),
+  provider: z.enum(["whisper_cpp", "gemini"]).optional(),
+  language: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  save: z.boolean().default(true),
+});
+
+type TranscribeVideoInput = z.infer<typeof inputSchema>;
+
+type SaveResult = {
+  saved?: boolean;
+  vault?: string;
+  path?: string;
+  tags?: string[];
+  dynamic_folder?: string;
+};
+
+type TranscribeVideoDeps = {
+  selectVideoSourceAdapter?: typeof selectVideoSourceAdapter;
+  resolveFileVideoSource?: typeof resolveFileVideoSource;
+  resolveYouTubeVideoSource?: typeof resolveYouTubeVideoSource;
+  resolveDouyinVideoSource?: typeof resolveDouyinVideoSource;
+  extractAudioFromVideo?: typeof extractAudioFromVideo;
+  transcribeAudio?: typeof transcribeAudio;
+  saveToObsidian?: (input: {
+    title: string;
+    source_url: string;
+    content_markdown: string;
+    source?: string;
+    description?: string;
+    tags?: string[];
+  }) => Promise<SaveResult>;
+};
+
+function buildTranscriptMarkdown(title: string, sourceUrl: string, transcript: string): string {
+  return [`# ${title}`, "", `- Source: ${sourceUrl}`, "", transcript.trim()].join("\n").trim();
+}
+
+export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps = {}) {
+  const saveTool = createSaveToObsidianTool(env);
+  const selectAdapter = deps.selectVideoSourceAdapter || selectVideoSourceAdapter;
+  const resolveFile = deps.resolveFileVideoSource || resolveFileVideoSource;
+  const resolveYoutube = deps.resolveYouTubeVideoSource || resolveYouTubeVideoSource;
+  const resolveDouyin = deps.resolveDouyinVideoSource || resolveDouyinVideoSource;
+  const extractAudio = deps.extractAudioFromVideo || extractAudioFromVideo;
+  const transcribe = deps.transcribeAudio || transcribeAudio;
+  const saveToObsidian =
+    deps.saveToObsidian ||
+    (async (input) => {
+      return (await saveTool.invoke({
+        ...input,
+        source: input.source || "Video",
+        mode: "create",
+      })) as SaveResult;
+    });
+
+  return tool(async (input: TranscribeVideoInput) => {
+    const adapter = selectAdapter(input.source);
+    const resolved =
+      adapter.name === "file"
+        ? await resolveFile(input.source)
+        : adapter.name === "youtube"
+          ? await resolveYoutube(input.source, { outputDir: "/tmp/cat-crawl-youtube" })
+          : await resolveDouyin(input.source);
+
+    const audioPath = await extractAudio(resolved.mediaPath, {
+      outputDir: "/tmp/cat-crawl-audio",
+    });
+
+    const transcription = await transcribe(audioPath, {
+      provider: input.provider || env.transcriptionProvider,
+      fallbackProvider: input.provider ? undefined : env.transcriptionFallbackProvider,
+      forceProvider: Boolean(input.provider),
+      whisperCpp: {
+        bin: env.whisperCppBin,
+        modelPath: env.whisperCppModelPath,
+        language: input.language || env.whisperCppLanguage,
+        outputDir: "/tmp/cat-crawl-whisper",
+      },
+      gemini: {
+        apiKey: env.geminiApiKey,
+        model: env.geminiModel,
+      },
+    });
+
+    const resolvedTitle = "title" in resolved ? resolved.title?.trim() : undefined;
+    const title = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
+    const transcriptMarkdown = buildTranscriptMarkdown(title, resolved.sourceUrl, transcription.text);
+
+    if (!input.save) {
+      return {
+        saved: false,
+        title,
+        source_url: resolved.sourceUrl,
+        provider_used: transcription.providerUsed,
+        fallback_used: transcription.fallbackUsed,
+        transcript_markdown: transcriptMarkdown,
+      };
+    }
+
+    const saveResult = await saveToObsidian({
+      title,
+      source_url: resolved.sourceUrl,
+      content_markdown: transcriptMarkdown,
+      source: "Video",
+      description: transcription.text.slice(0, 200),
+      tags: ["video", "transcript"],
+    });
+
+    return {
+      saved: Boolean(saveResult.saved),
+      title,
+      source_url: resolved.sourceUrl,
+      vault: saveResult.vault,
+      path: saveResult.path,
+      tags: saveResult.tags,
+      dynamic_folder: saveResult.dynamic_folder,
+      provider_used: transcription.providerUsed,
+      fallback_used: transcription.fallbackUsed,
+      transcript_markdown: transcriptMarkdown,
+    };
+  }, {
+    name: "transcribe_video",
+    description: "提取视频语音并转写为文本，可选择保存到 Obsidian",
+    schema: inputSchema,
+  });
+}
