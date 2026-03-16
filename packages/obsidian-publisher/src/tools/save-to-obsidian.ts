@@ -6,6 +6,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize } from "node:pa
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
+import { generateDescriptionWithGemini } from "../services/description/gemini.js";
 import { sanitizeFileName } from "../utils/text.js";
 
 const execFileAsync = promisify(execFile);
@@ -35,6 +36,10 @@ const inputSchema = z.object({
 });
 
 type SaveInput = z.infer<typeof inputSchema>;
+type DescriptionGenerator = (markdown: string) => Promise<string>;
+type SaveToObsidianDeps = {
+  generateDescription?: DescriptionGenerator;
+};
 
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
@@ -128,31 +133,128 @@ function quoteYamlValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-function extractDescription(markdown: string): string {
-  const text = markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter(
-      (line) =>
-        !line.startsWith("#") &&
-        !line.startsWith("- Source:") &&
-        !line.startsWith("- Author:") &&
-        !line.startsWith("- Published:"),
-    )
-    .map((line) =>
-      line
-        .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-        .replace(/[`*_>#-]/g, " "),
-    )
-    .join(" ")
+function cleanMarkdownParagraph(paragraph: string): string {
+  return paragraph
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[`*_>]/g, " ")
+    .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (!text) {
+}
+
+function isMetadataParagraph(paragraph: string): boolean {
+  return /^(source|author|published|created|title|tags)\s*:/i.test(paragraph);
+}
+
+function isTimestampParagraph(paragraph: string): boolean {
+  return /^\d{1,2}:\d{2}(?:\s*[-–]\s*\d{1,2}:\d{2})?$/.test(paragraph);
+}
+
+function isNoiseParagraph(paragraph: string): boolean {
+  if (!paragraph) {
+    return true;
+  }
+  if (paragraph.startsWith("#")) {
+    return true;
+  }
+  if (isMetadataParagraph(paragraph)) {
+    return true;
+  }
+  if (isTimestampParagraph(paragraph)) {
+    return true;
+  }
+  if (/^https?:\/\//i.test(paragraph)) {
+    return true;
+  }
+  if (/^(sure!?|here(?:'|’)s)\b/i.test(paragraph)) {
+    return true;
+  }
+  if (/^the following table provides/i.test(paragraph)) {
+    return true;
+  }
+  if (/^(本文来自|文章来源|原文链接|题图来自|本文转载|微信公众号[:：]?)/u.test(paragraph)) {
+    return true;
+  }
+  return false;
+}
+
+function extractLeadSentence(paragraph: string): string {
+  const normalized = cleanMarkdownParagraph(paragraph);
+  if (!normalized) {
     return "";
   }
-  return text.slice(0, 200);
+  const matched = normalized.match(/^(.+?[。！？.!?])/u);
+  const sentence = matched?.[1]?.trim() || normalized;
+  return sentence.slice(0, 200).trim();
+}
+
+function extractDescriptionCandidate(markdown: string): string {
+  const paragraphs = markdown
+    .split(/\n\s*\n/g)
+    .map((paragraph) => cleanMarkdownParagraph(paragraph))
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    if (isNoiseParagraph(paragraph)) {
+      continue;
+    }
+    const leadSentence = extractLeadSentence(paragraph);
+    if (leadSentence) {
+      return leadSentence;
+    }
+  }
+
+  return "";
+}
+
+function shouldFallbackToGeneratedDescription(candidate: string): boolean {
+  const text = candidate.trim();
+  if (!text) {
+    return true;
+  }
+  if (text.length < 24) {
+    return true;
+  }
+  if (/https?:\/\//i.test(text)) {
+    return true;
+  }
+  if (/\b(source|author|published|created|title|tags)\s*:/i.test(text)) {
+    return true;
+  }
+  if (/\b\d{1,2}:\d{2}\b/.test(text)) {
+    return true;
+  }
+  if (/^(sure!?|here(?:'|’)s)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+async function resolveDescription(
+  input: Pick<SaveInput, "content_markdown" | "description">,
+  generateDescription?: DescriptionGenerator,
+): Promise<string> {
+  const explicit = input.description?.trim();
+  if (explicit) {
+    return explicit.slice(0, 200);
+  }
+
+  const candidate = extractDescriptionCandidate(input.content_markdown);
+  if (!shouldFallbackToGeneratedDescription(candidate) || !generateDescription) {
+    return candidate.slice(0, 200);
+  }
+
+  let generated = "";
+  try {
+    generated = (await generateDescription(input.content_markdown)).trim();
+  } catch {
+    return candidate.slice(0, 200);
+  }
+  if (!generated) {
+    return candidate.slice(0, 200);
+  }
+  return cleanMarkdownParagraph(generated).slice(0, 200);
 }
 
 function normalizeDateString(value: string): string {
@@ -167,11 +269,11 @@ function normalizeDateString(value: string): string {
   return `${matched[1]}-${matched[2].padStart(2, "0")}-${matched[3].padStart(2, "0")}`;
 }
 
-function buildNoteContent(input: SaveInput, tags: string[]): string {
+function buildNoteContent(input: SaveInput, tags: string[], description?: string): string {
   const safeAuthor = input.author?.trim() || "Unknown";
   const created = formatLocalDate(new Date());
   const published = normalizeDateString(input.published?.trim() || created);
-  const description = input.description?.trim() || extractDescription(input.content_markdown);
+  const resolvedDescription = description?.trim() || input.description?.trim() || "";
   const tagInline = tags.map((t) => quoteYamlValue(t)).join(", ");
 
   const frontmatter = [
@@ -181,7 +283,7 @@ function buildNoteContent(input: SaveInput, tags: string[]): string {
     `author: ${quoteYamlValue(safeAuthor)}`,
     `published: ${quoteYamlValue(published)}`,
     `created: ${quoteYamlValue(created)}`,
-    `description: ${quoteYamlValue(description)}`,
+    `description: ${quoteYamlValue(resolvedDescription)}`,
     `tags: [${tagInline}]`,
     "---",
     "",
@@ -344,14 +446,25 @@ function resolveVaultNotePath(vaultPath: string, notePath: string): string {
   return join(vaultPath, normalizedRelative);
 }
 
-export function createSaveToObsidianTool(env: AppEnv) {
+export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps = {}) {
+  const generateDescription =
+    deps.generateDescription ||
+    (env.geminiApiKey
+      ? async (markdown: string) =>
+          generateDescriptionWithGemini(markdown, {
+            apiKey: env.geminiApiKey || "",
+            model: env.geminiModel,
+          })
+      : undefined);
+
   return tool(
     async (input) => {
       const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
       const initialPath = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
-      const content = buildNoteContent(input, tags);
+      const description = await resolveDescription(input, generateDescription);
+      const content = buildNoteContent(input, tags, description);
       logger.info(
         `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${initialPath} dynamic_folder=${dynamicFolder}`,
       );
@@ -422,7 +535,9 @@ export const __test__ = {
   buildNoteContent,
   formatObsidianCommandForLog,
   hasObsidianOutputError,
-  extractDescription,
+  extractDescriptionCandidate,
+  shouldFallbackToGeneratedDescription,
+  resolveDescription,
   normalizeDateString,
   parseVaultsVerbose,
   resolveAvailableNotePath,
