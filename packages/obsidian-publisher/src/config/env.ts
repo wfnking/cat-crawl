@@ -17,6 +17,13 @@ export type AppEnv = {
   deepseekModel: string;
   codexModel: string;
   codexBin: string;
+  transcriptionProvider: "whisper_cpp" | "gemini";
+  transcriptionFallbackProvider?: "whisper_cpp" | "gemini";
+  whisperCppBin: string;
+  whisperCppModelPath?: string;
+  whisperCppLanguage?: string;
+  geminiApiKey?: string;
+  geminiModel: string;
   feishuEnabled: boolean;
   feishuAppId?: string;
   feishuAppSecret?: string;
@@ -63,6 +70,13 @@ function readFromStructuredConfig(name: string): string | undefined {
     DEEPSEEK_MODEL: ["agent", "deepseek", "model"],
     CODEX_MODEL: ["agent", "codex", "model"],
     CODEX_BIN: ["agent", "codex", "bin"],
+    TRANSCRIPTION_PROVIDER: ["transcription", "provider"],
+    TRANSCRIPTION_FALLBACK_PROVIDER: ["transcription", "fallbackProvider"],
+    WHISPER_CPP_BIN: ["transcription", "whisperCpp", "bin"],
+    WHISPER_CPP_MODEL_PATH: ["transcription", "whisperCpp", "modelPath"],
+    WHISPER_CPP_LANGUAGE: ["transcription", "whisperCpp", "language"],
+    GEMINI_API_KEY: ["transcription", "gemini", "apiKey"],
+    GEMINI_MODEL: ["transcription", "gemini", "model"],
     TELEGRAM_BOT_TOKEN: ["channels", "telegram", "botToken"],
     TELEGRAM_DM_POLICY: ["channels", "telegram", "dmPolicy"],
     TELEGRAM_TYPING_MODE: ["channels", "telegram", "typingMode"],
@@ -174,6 +188,20 @@ function getTelegramTypingMode(): "never" | "instant" | "thinking" | "message" {
   throw new Error(`Invalid TELEGRAM_TYPING_MODE: ${raw}`);
 }
 
+function getTranscriptionProvider(
+  name: "TRANSCRIPTION_PROVIDER" | "TRANSCRIPTION_FALLBACK_PROVIDER",
+  defaultValue?: "whisper_cpp" | "gemini",
+): "whisper_cpp" | "gemini" | undefined {
+  const raw = readRaw(name)?.toLowerCase();
+  if (!raw) {
+    return defaultValue;
+  }
+  if (raw === "whisper_cpp" || raw === "gemini") {
+    return raw;
+  }
+  throw new Error(`Invalid ${name}: ${raw}`);
+}
+
 export function loadEnv(): AppEnv {
   const agent = readRaw("agent")?.toLowerCase() === "codex" ? "codex" : "deepseek";
   return {
@@ -183,6 +211,16 @@ export function loadEnv(): AppEnv {
     deepseekModel: readRaw("DEEPSEEK_MODEL") || "deepseek-chat",
     codexModel: readRaw("CODEX_MODEL") || "gpt-5-codex",
     codexBin: readRaw("CODEX_BIN") || "codex",
+    transcriptionProvider: getTranscriptionProvider("TRANSCRIPTION_PROVIDER", "whisper_cpp") || "whisper_cpp",
+    transcriptionFallbackProvider: getTranscriptionProvider(
+      "TRANSCRIPTION_FALLBACK_PROVIDER",
+      "gemini",
+    ),
+    whisperCppBin: readRaw("WHISPER_CPP_BIN") || "whisper-cli",
+    whisperCppModelPath: readRaw("WHISPER_CPP_MODEL_PATH") || undefined,
+    whisperCppLanguage: readRaw("WHISPER_CPP_LANGUAGE") || undefined,
+    geminiApiKey: readRaw("GEMINI_API_KEY") || undefined,
+    geminiModel: readRaw("GEMINI_MODEL") || "gemini-3-flash-preview",
     feishuEnabled: getBoolean("FEISHU_ENABLED", false),
     feishuAppId: readRaw("FEISHU_APP_ID") || undefined,
     feishuAppSecret: readRaw("FEISHU_APP_SECRET") || undefined,
