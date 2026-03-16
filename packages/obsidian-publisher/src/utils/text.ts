@@ -2,9 +2,8 @@ export function sanitizeFileName(input: string): string {
   return input
     .trim()
     .replace(/[\\/:*?"<>|]/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^\s*-\s*|\s*-\s*$/g, "")
     .slice(0, 80);
 }
 

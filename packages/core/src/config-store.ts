@@ -17,7 +17,7 @@ export type LocalConfigStore = {
 type LocalConfig = Record<string, unknown>;
 
 export type ChannelConfigValue = "feishu" | "telegram" | "discord" | "all";
-export type AgentConfigValue = "deepseek" | "codex";
+export type AgentConfigValue = "deepseek" | "gemini";
 
 export function createLocalConfigStore(options?: { homeDir?: string }): LocalConfigStore {
   const homeDir = options?.homeDir || homedir();
@@ -128,7 +128,7 @@ export function parseAgentConfig(input: string | undefined): AgentConfigValue | 
   if (!value) {
     return null;
   }
-  if (value === "deepseek" || value === "codex") {
+  if (value === "deepseek" || value === "gemini") {
     return value;
   }
   return null;

@@ -27,6 +27,7 @@ type WhisperCppOptions = {
 type WhisperCppResult = {
   provider: "whisper_cpp";
   text: string;
+  srt: string;
 };
 
 function formatWhisperCommandForLog(bin: string, args: string[]): string {
@@ -41,7 +42,8 @@ export async function transcribeWithWhisperCpp(
   const readFileAsync = options.readFileAsync || readFile;
   const outputBase = join(options.outputDir, "transcript");
   const outputPath = `${outputBase}.txt`;
-  const args = ["-f", audioPath, "-m", options.modelPath, "-otxt", "-of", outputBase];
+  const srtPath = `${outputBase}.srt`;
+  const args = ["-f", audioPath, "-m", options.modelPath, "-otxt", "-osrt", "-of", outputBase];
 
   if (options.language?.trim()) {
     args.push("-l", options.language.trim());
@@ -63,9 +65,16 @@ export async function transcribeWithWhisperCpp(
     throw new Error("whisper.cpp failed: empty transcript output");
   }
 
+  const srt = (await readFileAsync(srtPath, "utf8")).trim();
+  if (!srt) {
+    logger.error("[transcription:whisper_cpp] failed msg=empty srt output");
+    throw new Error("whisper.cpp failed: empty srt output");
+  }
+
   return {
     provider: "whisper_cpp",
     text,
+    srt,
   };
 }
 

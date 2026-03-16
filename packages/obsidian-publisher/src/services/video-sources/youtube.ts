@@ -71,11 +71,22 @@ export async function resolveYouTubeVideoSource(
   await mkdir(options.outputDir, { recursive: true });
 
   const execFileAsync = options.execFileAsync || execFileAsyncDefault;
-  const outputTemplate = join(options.outputDir, "video.%(ext)s");
+  const outputTemplate = join(options.outputDir, "audio.%(ext)s");
   try {
     const { stdout, stderr } = await execFileAsync(
       "yt-dlp",
-      ["--no-progress", "--print", "title", "--print", "after_move:filepath", "-o", outputTemplate, sourceUrl],
+      [
+        "--no-progress",
+        "-f",
+        "bestaudio/best",
+        "--print",
+        "title",
+        "--print",
+        "after_move:filepath",
+        "-o",
+        outputTemplate,
+        sourceUrl,
+      ],
       { maxBuffer: 10 * 1024 * 1024 },
     );
     const title = parseDownloadedTitle(stdout);

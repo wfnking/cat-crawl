@@ -14,13 +14,18 @@ test("transcribeAudio should use configured default provider", async () => {
       apiKey: "gemini-demo-key",
     },
     providers: {
-      whisperCpp: async () => ({ provider: "whisper_cpp", text: "local transcript" }),
+      whisperCpp: async () => ({
+        provider: "whisper_cpp",
+        text: "local transcript",
+        srt: "1\n00:00:00,000 --> 00:00:01,000\nlocal transcript\n",
+      }),
       gemini: async () => ({ provider: "gemini", text: "gemini transcript" }),
     },
   });
 
   assert.equal(result.providerUsed, "whisper_cpp");
   assert.equal(result.text, "local transcript");
+  assert.match(result.srt || "", /00:00:00,000 --> 00:00:01,000/);
   assert.equal(result.fallbackUsed, false);
 });
 

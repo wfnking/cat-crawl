@@ -24,19 +24,18 @@ export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
     ];
   }
 
-  if (agent === "codex") {
+  if (agent === "gemini") {
     return [
       {
-        key: "CODEX_MODEL",
-        label: "Codex Model",
-        required: false,
-        defaultValue: "gpt-5-codex",
+        key: "GEMINI_API_KEY",
+        label: "Gemini API Key",
+        required: true,
       },
       {
-        key: "CODEX_BIN",
-        label: "Codex Binary Path",
-        required: false,
-        defaultValue: "codex",
+        key: "GEMINI_MODEL",
+        label: "Gemini Model",
+        required: true,
+        defaultValue: "gemini-3-flash-preview",
       },
     ];
   }

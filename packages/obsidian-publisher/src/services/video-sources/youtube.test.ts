@@ -7,11 +7,13 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
     outputDir: "/tmp/cat-crawl-video",
     execFileAsync: async (file, args) => {
       assert.equal(file, "yt-dlp");
+      assert.ok(args.includes("-f"));
+      assert.ok(args.includes("bestaudio/best"));
       assert.ok(args.includes("--print"));
       assert.ok(args.includes("after_move:filepath"));
       assert.ok(args.includes("title"));
       return {
-        stdout: "Demo Title\n/tmp/cat-crawl-video/video.mp4\n",
+        stdout: "Demo Title\n/tmp/cat-crawl-video/audio.webm\n",
         stderr: "",
       };
     },
@@ -20,7 +22,7 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
   assert.equal(result.adapter, "youtube");
   assert.equal(result.sourceUrl, "https://www.youtube.com/watch?v=abc123");
   assert.equal(result.title, "Demo Title");
-  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video.mp4");
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/audio.webm");
 });
 
 test("resolveYouTubeVideoSource should report missing yt-dlp", async () => {

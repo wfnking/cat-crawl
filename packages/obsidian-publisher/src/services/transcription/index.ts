@@ -18,6 +18,7 @@ type GeminiConfig = {
 type ProviderResult = {
   provider: ProviderName;
   text: string;
+  srt?: string;
 };
 
 type TranscribeAudioOptions = {
@@ -35,6 +36,7 @@ type TranscribeAudioOptions = {
 type TranscribeAudioResult = {
   providerUsed: ProviderName;
   text: string;
+  srt?: string;
   fallbackUsed: boolean;
 };
 
@@ -87,6 +89,7 @@ export async function transcribeAudio(
     return {
       providerUsed: primary.provider,
       text: primary.text,
+      srt: primary.srt,
       fallbackUsed: false,
     };
   } catch (error) {
@@ -97,6 +100,7 @@ export async function transcribeAudio(
     return {
       providerUsed: fallback.provider,
       text: fallback.text,
+      srt: fallback.srt,
       fallbackUsed: true,
     };
   }

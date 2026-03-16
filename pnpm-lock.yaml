@@ -18,17 +18,17 @@ importers:
         specifier: workspace:*
         version: link:packages/obsidian-publisher
       '@langchain/core':
-        specifier: ^1.1.29
-        version: 1.1.29(openai@6.25.0(ws@8.19.0)(zod@4.3.6))
+        specifier: ^1.1.32
+        version: 1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6))
+      '@langchain/google-genai':
+        specifier: ^2.1.25
+        version: 2.1.25(@langchain/core@1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6)))
       '@langchain/openai':
         specifier: ^1.2.11
-        version: 1.2.11(@langchain/core@1.1.29(openai@6.25.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)
+        version: 1.2.11(@langchain/core@1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)
       '@larksuiteoapi/node-sdk':
         specifier: ^1.58.0
         version: 1.59.0
-      '@openai/codex-sdk':
-        specifier: ^0.114.0
-        version: 0.114.0
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
@@ -273,9 +273,19 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@langchain/core@1.1.29':
-    resolution: {integrity: sha512-BPoegTtIdZX4gl2kxcSXAlLrrJFl1cxeRsk9DM/wlIuvyPrFwjWqrEK5NwF5diDt5XSArhQxIFaifGAl4F7fgw==}
+  '@google/generative-ai@0.24.1':
+    resolution: {integrity: sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q==}
+    engines: {node: '>=18.0.0'}
+
+  '@langchain/core@1.1.32':
+    resolution: {integrity: sha512-ZZNiER5tceFXqZOghfrxNHzM60gcQL5XK/8Ow5+o4OuKHrP1p/RUQBDM9Y1nddi/VmKQj+ncaXXM5KovXTEGGQ==}
     engines: {node: '>=20'}
+
+  '@langchain/google-genai@2.1.25':
+    resolution: {integrity: sha512-OGqitjcjqXOxbeXmmA6P++bZ/q1QDK5ojzfSQO0YZPWvQJhi+6hw2/tRd4MT57651NKyAiUdACG/r6+SYp3kIA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.1.32
 
   '@langchain/openai@1.2.11':
     resolution: {integrity: sha512-//a3OcvHKuz9QXAn3QJjASdtSyyF1JmsZKVzuUa2uR2YLFAS+XMZYLfel9RaNdt8LWkwhSpCiVvegqUGRBU+uw==}
@@ -288,51 +298,6 @@ packages:
 
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
-
-  '@openai/codex-sdk@0.114.0':
-    resolution: {integrity: sha512-28tV+pvoQhhoRADBCtlg24fR6LDTyeUA6C65NBTvYFnDoQVPJcHcAwRrbuWmUMcXdLrXwY2bmiMxyfXlUWQzgw==}
-    engines: {node: '>=18'}
-
-  '@openai/codex@0.114.0':
-    resolution: {integrity: sha512-HMo8LRR6CtfKkaa28xvFK6eOarmBFTDfsrS9GJtEoaspGGemFok494CpafDspiTZaHZZGHfSUe5SWTUxYq7OaA==}
-    engines: {node: '>=16'}
-    hasBin: true
-
-  '@openai/codex@0.114.0-darwin-arm64':
-    resolution: {integrity: sha512-c9dlgo9O+66alr3s3G36fKE3KaO2+xrLZ/QcU3oujDruV86pqgVSEK2njHi+WIyyOa6m2AyWxdaHLEbKxPCNRg==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@openai/codex@0.114.0-darwin-x64':
-    resolution: {integrity: sha512-oPAPeZSaJZ1AQneFPSJu44uqbZr63Bxut9FOTWZwuSqYx4YEees7i0HJmJcqQc0XnCbYtHJdqo/i07Uv374NLw==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@openai/codex@0.114.0-linux-arm64':
-    resolution: {integrity: sha512-oUFZGZgMiEqmo85C+dfhckpVApH25alLWfwBgfKr2IRgdx/tovy8vN101f6kj01E6nDDe4LfJdNSZGtZht4fRA==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
-    os: [linux]
-
-  '@openai/codex@0.114.0-linux-x64':
-    resolution: {integrity: sha512-MF6RhxfBoccccd5CYII2C7TL2TvYzombBQhanDZfQAajr6n7IuoazCmoHDlrFHS4AcSw9bYA4MRlrwEjbEjgsw==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [linux]
-
-  '@openai/codex@0.114.0-win32-arm64':
-    resolution: {integrity: sha512-CnRMHopj3en9aqQ2UaDW7EgpEGkxHdZVLLRq2cOy5D0HyuzF6Qb6595ADoFVJHEmPeN5Iz/KUbiGs5GLDjUwOA==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@openai/codex@0.114.0-win32-x64':
-    resolution: {integrity: sha512-ztRsH5Z+gPVZ5ZInx6HzXsTFFkuEdjk3Ay0UGVOhRRCWvevXQi/SL4eU8hwysCYrs8K/WRq3mo4c95w9zQ2wLw==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [win32]
 
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
@@ -375,6 +340,9 @@ packages:
   '@sapphire/snowflake@3.5.3':
     resolution: {integrity: sha512-jjmJywLAFoWeBi1W7994zZyiNWPIiqRRNAmSERxyg93xRGzNYvGjlZ0gR6x0F4gPRi2+0O6S71kOZYyr3cxaIQ==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
+  '@standard-schema/spec@1.1.0':
+    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@types/better-sqlite3@7.6.13':
     resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
@@ -965,9 +933,12 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@langchain/core@1.1.29(openai@6.25.0(ws@8.19.0)(zod@4.3.6))':
+  '@google/generative-ai@0.24.1': {}
+
+  '@langchain/core@1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6))':
     dependencies:
       '@cfworker/json-schema': 4.1.1
+      '@standard-schema/spec': 1.1.0
       ansi-styles: 5.2.0
       camelcase: 6.3.0
       decamelize: 1.2.0
@@ -983,9 +954,15 @@ snapshots:
       - '@opentelemetry/sdk-trace-base'
       - openai
 
-  '@langchain/openai@1.2.11(@langchain/core@1.1.29(openai@6.25.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)':
+  '@langchain/google-genai@2.1.25(@langchain/core@1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6)))':
     dependencies:
-      '@langchain/core': 1.1.29(openai@6.25.0(ws@8.19.0)(zod@4.3.6))
+      '@google/generative-ai': 0.24.1
+      '@langchain/core': 1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6))
+      uuid: 11.1.0
+
+  '@langchain/openai@1.2.11(@langchain/core@1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)':
+    dependencies:
+      '@langchain/core': 1.1.32(openai@6.25.0(ws@8.19.0)(zod@4.3.6))
       js-tiktoken: 1.0.21
       openai: 6.25.0(ws@8.19.0)(zod@4.3.6)
       zod: 4.3.6
@@ -1007,37 +984,6 @@ snapshots:
       - utf-8-validate
 
   '@mixmark-io/domino@2.2.0': {}
-
-  '@openai/codex-sdk@0.114.0':
-    dependencies:
-      '@openai/codex': 0.114.0
-
-  '@openai/codex@0.114.0':
-    optionalDependencies:
-      '@openai/codex-darwin-arm64': '@openai/codex@0.114.0-darwin-arm64'
-      '@openai/codex-darwin-x64': '@openai/codex@0.114.0-darwin-x64'
-      '@openai/codex-linux-arm64': '@openai/codex@0.114.0-linux-arm64'
-      '@openai/codex-linux-x64': '@openai/codex@0.114.0-linux-x64'
-      '@openai/codex-win32-arm64': '@openai/codex@0.114.0-win32-arm64'
-      '@openai/codex-win32-x64': '@openai/codex@0.114.0-win32-x64'
-
-  '@openai/codex@0.114.0-darwin-arm64':
-    optional: true
-
-  '@openai/codex@0.114.0-darwin-x64':
-    optional: true
-
-  '@openai/codex@0.114.0-linux-arm64':
-    optional: true
-
-  '@openai/codex@0.114.0-linux-x64':
-    optional: true
-
-  '@openai/codex@0.114.0-win32-arm64':
-    optional: true
-
-  '@openai/codex@0.114.0-win32-x64':
-    optional: true
 
   '@protobufjs/aspromise@1.1.2': {}
 
@@ -1070,6 +1016,8 @@ snapshots:
       lodash: 4.17.23
 
   '@sapphire/snowflake@3.5.3': {}
+
+  '@standard-schema/spec@1.1.0': {}
 
   '@types/better-sqlite3@7.6.13':
     dependencies:

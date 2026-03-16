@@ -9,11 +9,11 @@ test("deepseek agent should expose required setup steps", () => {
   assert.equal(steps[1]?.defaultValue, "deepseek-chat");
 });
 
-test("codex agent should expose optional model and binary setup steps", () => {
-  const steps = getAgentSetupSteps("codex");
-  assert.deepEqual(steps.map((item) => item.key), ["CODEX_MODEL", "CODEX_BIN"]);
-  assert.equal(steps[0]?.defaultValue, "gpt-5-codex");
-  assert.equal(steps[1]?.defaultValue, "codex");
+test("gemini agent should expose required api key and model steps", () => {
+  const steps = getAgentSetupSteps("gemini");
+  assert.deepEqual(steps.map((item) => item.key), ["GEMINI_API_KEY", "GEMINI_MODEL"]);
+  assert.equal(steps[0]?.required, true);
+  assert.equal(steps[1]?.defaultValue, "gemini-3-flash-preview");
 });
 
 test("buildAgentSetupConfig should include selected agent", () => {
@@ -26,13 +26,13 @@ test("buildAgentSetupConfig should include selected agent", () => {
   assert.equal(config.DEEPSEEK_MODEL, "deepseek-chat");
 });
 
-test("buildAgentSetupConfig should include codex values", () => {
-  const config = buildAgentSetupConfig("codex", {
-    CODEX_MODEL: "gpt-5-codex",
-    CODEX_BIN: "codex",
+test("buildAgentSetupConfig should include gemini values", () => {
+  const config = buildAgentSetupConfig("gemini", {
+    GEMINI_API_KEY: "gemini-demo-key",
+    GEMINI_MODEL: "gemini-3-flash-preview",
   });
 
-  assert.equal(config.agent, "codex");
-  assert.equal(config.CODEX_MODEL, "gpt-5-codex");
-  assert.equal(config.CODEX_BIN, "codex");
+  assert.equal(config.agent, "gemini");
+  assert.equal(config.GEMINI_API_KEY, "gemini-demo-key");
+  assert.equal(config.GEMINI_MODEL, "gemini-3-flash-preview");
 });

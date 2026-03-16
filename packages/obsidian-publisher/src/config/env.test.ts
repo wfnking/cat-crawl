@@ -43,12 +43,14 @@ test("loadEnv should expose default transcription config", () => {
 
   setLocalConfigStoreForTest(store);
   try {
-    const env = withEnv({ agent: "codex" }, () => loadEnv());
+    const env = withEnv({ agent: "gemini", GEMINI_API_KEY: "gemini-demo-key" }, () => loadEnv());
+    assert.equal(env.agent, "gemini");
     assert.equal(env.transcriptionProvider, "whisper_cpp");
     assert.equal(env.transcriptionFallbackProvider, "gemini");
     assert.equal(env.whisperCppBin, "whisper-cli");
     assert.equal(env.whisperCppLanguage, undefined);
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
+    assert.equal(env.geminiApiKey, "gemini-demo-key");
     assert.equal(env.douyinCookie, undefined);
   } finally {
     setLocalConfigStoreForTest(null);
@@ -61,10 +63,10 @@ test("loadEnv should read transcription config from structured config", () => {
   const store = createLocalConfigStore({ homeDir });
   store.writeRaw({
     agent: {
-      provider: "codex",
-      codex: {
-        model: "gpt-5-codex",
-        bin: "codex",
+      provider: "gemini",
+      gemini: {
+        apiKey: "agent-gemini-key",
+        model: "gemini-3-flash-preview",
       },
     },
     transcription: {
@@ -90,12 +92,13 @@ test("loadEnv should read transcription config from structured config", () => {
   setLocalConfigStoreForTest(store);
   try {
     const env = loadEnv();
+    assert.equal(env.agent, "gemini");
     assert.equal(env.transcriptionProvider, "gemini");
     assert.equal(env.transcriptionFallbackProvider, "whisper_cpp");
     assert.equal(env.whisperCppBin, "/opt/homebrew/bin/whisper-cli");
     assert.equal(env.whisperCppModelPath, "/models/ggml-large-v3.bin");
     assert.equal(env.whisperCppLanguage, "en");
-    assert.equal(env.geminiApiKey, "gemini-demo-key");
+    assert.equal(env.geminiApiKey, "agent-gemini-key");
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
     assert.equal(env.douyinCookie, "ttwid=test-cookie-value");
   } finally {

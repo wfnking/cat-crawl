@@ -11,12 +11,10 @@ try {
 }
 
 export type AppEnv = {
-  agent: "deepseek" | "codex";
+  agent: "deepseek" | "gemini";
   deepseekApiKey?: string;
   deepseekBaseUrl: string;
   deepseekModel: string;
-  codexModel: string;
-  codexBin: string;
   transcriptionProvider: "whisper_cpp" | "gemini";
   transcriptionFallbackProvider?: "whisper_cpp" | "gemini";
   whisperCppBin: string;
@@ -69,16 +67,11 @@ function readFromStructuredConfig(name: string): string | undefined {
     DEEPSEEK_API_KEY: ["agent", "deepseek", "apiKey"],
     DEEPSEEK_BASE_URL: ["agent", "deepseek", "baseUrl"],
     DEEPSEEK_MODEL: ["agent", "deepseek", "model"],
-    CODEX_MODEL: ["agent", "codex", "model"],
-    CODEX_BIN: ["agent", "codex", "bin"],
     TRANSCRIPTION_PROVIDER: ["transcription", "provider"],
     TRANSCRIPTION_FALLBACK_PROVIDER: ["transcription", "fallbackProvider"],
     WHISPER_CPP_BIN: ["transcription", "whisperCpp", "bin"],
     WHISPER_CPP_MODEL_PATH: ["transcription", "whisperCpp", "modelPath"],
     WHISPER_CPP_LANGUAGE: ["transcription", "whisperCpp", "language"],
-    DOUYIN_COOKIE: ["videoSources", "douyin", "cookie"],
-    GEMINI_API_KEY: ["transcription", "gemini", "apiKey"],
-    GEMINI_MODEL: ["transcription", "gemini", "model"],
     TELEGRAM_BOT_TOKEN: ["channels", "telegram", "botToken"],
     TELEGRAM_DM_POLICY: ["channels", "telegram", "dmPolicy"],
     TELEGRAM_TYPING_MODE: ["channels", "telegram", "typingMode"],
@@ -99,6 +92,31 @@ function readFromStructuredConfig(name: string): string | undefined {
   const path = mappings[name];
   if (path) {
     const value = readFromPath(raw, path);
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  if (name === "GEMINI_API_KEY" || name === "GEMINI_MODEL") {
+    const candidatePaths =
+      name === "GEMINI_API_KEY"
+        ? [
+            ["agent", "gemini", "apiKey"],
+            ["transcription", "gemini", "apiKey"],
+          ]
+        : [
+            ["agent", "gemini", "model"],
+            ["transcription", "gemini", "model"],
+          ];
+    for (const candidatePath of candidatePaths) {
+      const value = readFromPath(raw, candidatePath);
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    return undefined;
+  }
+
+  if (name === "DOUYIN_COOKIE") {
+    const value = readFromPath(raw, ["videoSources", "douyin", "cookie"]);
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
   }
 
@@ -205,14 +223,13 @@ function getTranscriptionProvider(
 }
 
 export function loadEnv(): AppEnv {
-  const agent = readRaw("agent")?.toLowerCase() === "codex" ? "codex" : "deepseek";
+  const rawAgent = readRaw("agent")?.toLowerCase();
+  const agent = rawAgent === "gemini" ? "gemini" : "deepseek";
   return {
     agent,
     deepseekApiKey: agent === "deepseek" ? mustGet("DEEPSEEK_API_KEY") : undefined,
     deepseekBaseUrl: readRaw("DEEPSEEK_BASE_URL") || "https://api.deepseek.com",
     deepseekModel: readRaw("DEEPSEEK_MODEL") || "deepseek-chat",
-    codexModel: readRaw("CODEX_MODEL") || "gpt-5-codex",
-    codexBin: readRaw("CODEX_BIN") || "codex",
     transcriptionProvider: getTranscriptionProvider("TRANSCRIPTION_PROVIDER", "whisper_cpp") || "whisper_cpp",
     transcriptionFallbackProvider: getTranscriptionProvider(
       "TRANSCRIPTION_FALLBACK_PROVIDER",

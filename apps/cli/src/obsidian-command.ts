@@ -144,7 +144,7 @@ export function parseObsidianCommand(args: string[]): ObsidianCommand | null {
       '3) cat-crawl obsidian run "你的消息内容或文章链接"',
       "4) cat-crawl obsidian config set channel telegram",
       "5) cat-crawl obsidian config get channel [fallback]",
-      "6) cat-crawl obsidian config set agent deepseek|codex",
+      "6) cat-crawl obsidian config set agent deepseek|gemini",
       "7) cat-crawl obsidian config get agent [fallback]",
       "8) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),

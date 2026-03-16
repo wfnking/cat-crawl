@@ -16,7 +16,7 @@
 - 渠道支持：CLI、Feishu（WS）、Telegram（Polling）、Discord（Gateway 文本消息）
 - Agent Provider 支持：
   - `deepseek`
-  - `codex`（通过本机 `codex` CLI / `@openai/codex-sdk`）
+  - `gemini`（通过 LangChain Gemini 封装）
 
 ## 环境要求
 
@@ -34,7 +34,7 @@ pnpm install
 优先使用全局配置（`~/.cat-crawl/config.json`）：
 
 - 渠道：`cat-crawl obsidian config set channel <feishu|telegram|discord|all>`
-- Agent：`cat-crawl obsidian config set agent <deepseek|codex>`
+- Agent：`cat-crawl obsidian config set agent <deepseek|gemini>`
 
 `.env` 仅保留可选运行参数（例如 Obsidian 目录与 `MAX_TOOL_STEPS`）。如果需要，可从模板复制：
 
@@ -73,7 +73,7 @@ cat-crawl obsidian config get channel
 cat-crawl obsidian config get channel telegram
 cat-crawl obsidian pairing approve telegram <code>
 cat-crawl obsidian config set agent deepseek
-cat-crawl obsidian config set agent codex
+cat-crawl obsidian config set agent gemini
 cat-crawl obsidian config get agent
 cat-crawl obsidian config get agent deepseek
 ```
@@ -84,7 +84,7 @@ cat-crawl obsidian config get agent deepseek
 - `obsidian config set channel <value>` 支持 `feishu` / `telegram` / `discord` / `all`。
 - 当 `channels.telegram.dmPolicy=pairing` 时，未配对用户会收到 Pairing Code，管理员使用 `cat-crawl obsidian pairing approve telegram <code>` 完成授权。
 - `obsidian config set agent deepseek`：进入交互式向导，输入 DeepSeek 配置（API Key/Model，默认 `deepseek-chat`）。
-- `obsidian config set agent codex`：进入交互式向导，输入 Codex 配置（可选 `CODEX_MODEL` / `CODEX_BIN`）。
+- `obsidian config set agent gemini`：进入交互式向导，输入 Gemini 配置（API Key/Model，默认 `gemini-3-flash-preview`）。
 - `obsidian config get channel`：读取当前值。
 - `obsidian config get channel telegram`：当键不存在时返回你提供的 fallback（这里是 `telegram`）。
 - `obsidian config get agent`：读取当前 agent。
@@ -139,15 +139,15 @@ cat-crawl obsidian config get agent deepseek
 }
 ```
 
-`obsidian config set agent codex` 后会写入：
+`obsidian config set agent gemini` 后会写入：
 
 ```json
 {
   "agent": {
-    "provider": "codex",
-    "codex": {
-      "model": "gpt-5-codex",
-      "bin": "codex"
+    "provider": "gemini",
+    "gemini": {
+      "apiKey": "gemini-key",
+      "model": "gemini-3-flash-preview"
     }
   }
 }

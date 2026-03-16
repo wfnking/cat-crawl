@@ -26,8 +26,15 @@ test("transcribe video tool should transcribe local file and skip save when disa
       transcribeAudio: async () => ({
         providerUsed: "whisper_cpp",
         text: "hello transcript",
+        srt: "1\n00:00:00,000 --> 00:00:02,000\nhello transcript\n",
         fallbackUsed: false,
       }),
+      buildTranscriptMarkdown: async ({ sourceUrl, transcriptText, transcriptSrt }) => {
+        assert.equal(sourceUrl, "/tmp/input.mp4");
+        assert.equal(transcriptText, "hello transcript");
+        assert.match(transcriptSrt || "", /00:00:00,000 --> 00:00:02,000/);
+        return "## Local Video（00:00）\n\nhello transcript";
+      },
     },
   );
 
@@ -39,7 +46,7 @@ test("transcribe video tool should transcribe local file and skip save when disa
 
   assert.equal(result.saved, false);
   assert.equal(result.provider_used, "whisper_cpp");
-  assert.match(result.transcript_markdown, /- Source: \/tmp\/input\.mp4/);
+  assert.match(result.transcript_markdown, /## Local Video（00:00）/);
   assert.match(result.transcript_markdown, /hello transcript/);
 });
 
@@ -68,8 +75,10 @@ test("transcribe video tool should save transcript when enabled", async () => {
       transcribeAudio: async () => ({
         providerUsed: "gemini",
         text: "saved transcript",
+        srt: undefined,
         fallbackUsed: true,
       }),
+      buildTranscriptMarkdown: async ({ transcriptText }) => `## Saved Video\n\n${transcriptText}`,
       saveToObsidian: async (input) => {
         saveCalled = true;
         assert.equal(input.title, "Saved Video");
@@ -123,8 +132,10 @@ test("transcribe video tool should pass Douyin cookie to resolver", async () => 
       transcribeAudio: async () => ({
         providerUsed: "whisper_cpp",
         text: "hello transcript",
+        srt: "1\n00:00:00,000 --> 00:00:02,000\nhello transcript\n",
         fallbackUsed: false,
       }),
+      buildTranscriptMarkdown: async () => "## Douyin Video（00:00）\n\nhello transcript",
     },
   );
 
@@ -146,5 +157,16 @@ test("normalizeVideoTitle should strip hashtags and source suffix into tags", ()
       title: "一个很绝的英文写作开头手法：“钩子开头”,钩子使得好，读者跑不了。",
       tags: ["幼儿英语", "少儿英语启蒙", "英语写作", "美国小学"],
     },
+  );
+});
+
+test("extractJsonPayload should unwrap noisy model output around json", () => {
+  assert.equal(
+    __test__.extractJsonPayload('Using response format.\n```json\n{"title":"A","body":"B"}\n```'),
+    '{"title":"A","body":"B"}',
+  );
+  assert.equal(
+    __test__.extractJsonPayload('prefix [{"title":"A","startSeconds":0,"body":"B"}] suffix'),
+    '[{"title":"A","startSeconds":0,"body":"B"}]',
   );
 });
