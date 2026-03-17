@@ -43,6 +43,8 @@ type TranscribeVideoDeps = {
     title: string;
     source_url: string;
     content_markdown: string;
+    published?: string;
+    description?: string;
     source?: string;
     tags?: string[];
   }) => Promise<SaveResult>;
@@ -50,7 +52,7 @@ type TranscribeVideoDeps = {
     sourceUrl: string;
     transcriptText: string;
     transcriptSrt?: string;
-  }) => Promise<string>;
+  }) => Promise<{ markdown: string; description?: string }>;
 };
 
 const logger = createLogger();
@@ -91,8 +93,11 @@ function shouldTranslateToChinese(sourceText: string): boolean {
   return latinMatches.length > cjkMatches.length;
 }
 
-function pickGeminiSummarizeModel(translateToChinese: boolean): string {
-  return translateToChinese ? "gemini-2.5-pro" : "gemini-2.5-pro";
+function pickGeminiSummarizeModel(env: AppEnv, translateToChinese: boolean): string {
+  if (translateToChinese && env.geminiModel) {
+    return env.geminiModel;
+  }
+  return env.geminiModel || "gemini-2.5-pro";
 }
 
 async function buildTranscriptMarkdownWithModel(
@@ -102,7 +107,7 @@ async function buildTranscriptMarkdownWithModel(
     transcriptText: string;
     transcriptSrt?: string;
   },
-): Promise<string> {
+): Promise<{ markdown: string; description?: string }> {
   logger.info(`[tool:transcribe_video] chapterize start source_url=${input.sourceUrl}`);
   const sourceMaterial = input.transcriptSrt?.trim() || input.transcriptText.trim();
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
@@ -110,7 +115,7 @@ async function buildTranscriptMarkdownWithModel(
   const summarizeModel =
     configuredProvider === "deepseek"
       ? env.deepseekModel
-      : pickGeminiSummarizeModel(translateToChinese);
+      : pickGeminiSummarizeModel(env, translateToChinese);
   const summarizeTimeoutMs = Math.max(
     60000,
     Math.min(300000, Math.ceil(sourceMaterial.length / 40) * 1000),
@@ -133,7 +138,8 @@ async function buildTranscriptMarkdownWithModel(
           "你是视频 SRT 转文章助手。",
           "把输入的 SRT/转写文本整理为可直接保存的 Markdown 文章。",
           "必须直接输出最终 Markdown，不要输出 JSON，不要输出解释，不要输出代码块。",
-          `第一行必须是：- Source: ${input.sourceUrl}`,
+          "第一行必须是：[Description] 一两句话的视频摘要内容。",
+          `第二行必须是：- Source: ${input.sourceUrl}`,
           "按主题分章节，章节标题格式：## 标题",
           "每章先写整理后的原文内容（原始语言），再写对应的中文翻译内容。",
           "长内容需要拆成多章，避免整篇只有一章或一段。",
@@ -149,12 +155,18 @@ async function buildTranscriptMarkdownWithModel(
         ].join("\n"),
       ),
     ]);
-    const markdown = String(message.content ?? "").trim();
+    let markdown = String(message.content ?? "").trim();
     if (!markdown) {
       throw new Error("chapter summarize empty markdown");
     }
-    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length}`);
-    return markdown;
+    let description: string | undefined;
+    const descMatch = markdown.match(/^[ \t]*\[Description\][ \t]*[:：]?[ \t]*(.+)/i);
+    if (descMatch) {
+      description = descMatch[1].trim();
+      markdown = markdown.replace(/^[ \t]*\[Description\].*\n?/i, "").trim();
+    }
+    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length} has_description=${!!description}`);
+    return { markdown, description };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     logger.error(`[tool:transcribe_video] chapterize failed msg=${detail}`);
@@ -229,11 +241,12 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
       const normalized = normalizeVideoTitle(rawTitle);
       const title = normalized.title;
-      const transcriptMarkdown = await buildTranscriptMarkdown({
-        sourceUrl: resolved.sourceUrl,
-        transcriptText: transcription.text,
-        transcriptSrt: transcription.srt,
-      });
+      const { markdown: transcriptMarkdown, description: transcriptDescription } =
+        await buildTranscriptMarkdown({
+          sourceUrl: resolved.sourceUrl,
+          transcriptText: transcription.text,
+          transcriptSrt: transcription.srt,
+        });
       const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags]));
 
       if (!input.save) {
@@ -245,6 +258,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           provider_used: transcription.providerUsed,
           fallback_used: transcription.fallbackUsed,
           published: resolved.adapter === "youtube" ? resolved.published : undefined,
+          description: transcriptDescription,
           transcript_markdown: transcriptMarkdown,
         };
       }
@@ -254,6 +268,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         source_url: resolved.sourceUrl,
         content_markdown: transcriptMarkdown,
         published: resolved.adapter === "youtube" ? resolved.published : undefined,
+        description: transcriptDescription,
         source: "Video",
         tags: noteTags,
       });
@@ -270,6 +285,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         tags: saveResult.tags,
         dynamic_folder: saveResult.dynamic_folder,
         published: resolved.adapter === "youtube" ? resolved.published : undefined,
+        description: transcriptDescription,
         provider_used: transcription.providerUsed,
         fallback_used: transcription.fallbackUsed,
         transcript_markdown: transcriptMarkdown,

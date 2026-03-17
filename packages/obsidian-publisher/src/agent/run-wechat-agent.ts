@@ -27,6 +27,7 @@ type CrawlToolResult = {
   published: string | null;
   source_url: string;
   content_markdown: string;
+  description?: string | null;
 };
 
 type SaveToolResult = {
@@ -41,6 +42,7 @@ type TranscribeVideoToolResult = SaveToolResult & {
   title: string;
   source_url: string;
   published?: string;
+  description?: string;
   transcript_markdown: string;
   provider_used: "whisper_cpp";
   fallback_used: boolean;
@@ -427,6 +429,7 @@ export async function runAgent(
         published: transcribeResult.published ?? null,
         source_url: transcribeResult.source_url,
         content_markdown: transcribeResult.transcript_markdown,
+        description: transcribeResult.description,
       },
       transcribeResult,
       options?.context,
