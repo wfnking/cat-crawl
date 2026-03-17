@@ -1,349 +1,366 @@
-import process from "node:process";
-import { getLocalConfigStore } from "@cat-crawl/core";
+import process from 'node:process'
+import { getLocalConfigStore } from '@cat-crawl/core'
 
 try {
-  process.loadEnvFile?.();
+  process.loadEnvFile?.()
 } catch (error) {
-  const code = (error as NodeJS.ErrnoException).code;
-  if (code !== "ENOENT") {
-    throw error;
+  const code = (error as NodeJS.ErrnoException).code
+  if (code !== 'ENOENT') {
+    throw error
   }
 }
 
 export type AppEnv = {
-  agent: "deepseek" | "gemini";
-  aiProvider: "deepseek" | "gemini";
-  aiChatProvider?: "deepseek" | "gemini";
-  aiClassifyProvider?: "deepseek" | "gemini";
-  aiSummarizeProvider?: "deepseek" | "gemini";
-  deepseekApiKey?: string;
-  deepseekBaseUrl: string;
-  deepseekModel: string;
-  transcriptionProvider: "whisper_cpp" | "gemini";
-  transcriptionFallbackProvider?: "whisper_cpp" | "gemini";
-  whisperCppBin: string;
-  whisperCppModelPath?: string;
-  whisperCppLanguage?: string;
-  geminiApiKey?: string;
-  geminiApiKeySource?: "GEMINI_API_KEY" | "GOOGLE_API_KEY" | "VERTEX_API_KEY";
-  geminiModel: string;
-  douyinCookie?: string;
-  feishuEnabled: boolean;
-  feishuAppId?: string;
-  feishuAppSecret?: string;
-  feishuDomain: "feishu" | "lark";
-  telegramEnabled: boolean;
-  telegramDmPolicy: string;
-  telegramBotToken?: string;
-  telegramTypingMode: "never" | "instant" | "thinking" | "message";
-  telegramTypingIntervalSeconds: number;
-  discordEnabled: boolean;
-  discordBotToken?: string;
-  obsidianVault?: string;
-  obsidianFolder: string;
-  obsidianDynamicFolders: string[];
-  maxToolSteps: number;
-};
+  agent: 'deepseek' | 'gemini' | 'vertex'
+  aiProvider: 'deepseek' | 'gemini' | 'vertex'
+  aiChatProvider?: 'deepseek' | 'gemini' | 'vertex'
+  aiClassifyProvider?: 'deepseek' | 'gemini' | 'vertex'
+  aiSummarizeProvider?: 'deepseek' | 'gemini' | 'vertex'
+  deepseekApiKey?: string
+  deepseekBaseUrl: string
+  deepseekModel: string
+  transcriptionProvider: 'whisper_cpp' | 'gemini'
+  transcriptionFallbackProvider?: 'whisper_cpp' | 'gemini'
+  whisperCppBin: string
+  whisperCppModelPath?: string
+  whisperCppLanguage?: string
+  geminiApiKey?: string
+  geminiApiKeySource?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'
+  geminiModel: string
+  douyinCookie?: string
+  feishuEnabled: boolean
+  feishuAppId?: string
+  feishuAppSecret?: string
+  feishuDomain: 'feishu' | 'lark'
+  telegramEnabled: boolean
+  telegramDmPolicy: string
+  telegramBotToken?: string
+  telegramTypingMode: 'never' | 'instant' | 'thinking' | 'message'
+  telegramTypingIntervalSeconds: number
+  discordEnabled: boolean
+  discordBotToken?: string
+  obsidianVault?: string
+  obsidianFolder: string
+  obsidianDynamicFolders: string[]
+  maxToolSteps: number
+}
 
 function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
   }
-  return value as Record<string, unknown>;
+  return value as Record<string, unknown>
 }
 
 function readFromPath(root: Record<string, unknown>, path: string[]): unknown {
-  let current: unknown = root;
+  let current: unknown = root
   for (const segment of path) {
-    const obj = asObject(current);
+    const obj = asObject(current)
     if (!obj) {
-      return undefined;
+      return undefined
     }
-    current = obj[segment];
+    current = obj[segment]
   }
-  return current;
+  return current
 }
 
 function readStringFromPaths(root: Record<string, unknown>, paths: string[][]): string | undefined {
   for (const path of paths) {
-    const value = readFromPath(root, path);
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
+    const value = readFromPath(root, path)
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
     }
   }
-  return undefined;
+  return undefined
 }
 
 function readFromStructuredConfig(name: string): string | undefined {
-  const raw = getLocalConfigStore().readRaw();
-  if (name === "agent" || name === "AI_PROVIDER") {
-    return readStringFromPaths(raw, [["ai", "provider"], ["agent", "provider"]]);
+  const raw = getLocalConfigStore().readRaw()
+  if (name === 'agent' || name === 'AI_PROVIDER') {
+    return readStringFromPaths(raw, [
+      ['ai', 'provider'],
+      ['agent', 'provider']
+    ])
   }
-  if (name === "AI_CHAT_PROVIDER") {
-    return readStringFromPaths(raw, [["ai", "tasks", "chat", "provider"]]);
+  if (name === 'AI_CHAT_PROVIDER') {
+    return readStringFromPaths(raw, [['ai', 'tasks', 'chat', 'provider']])
   }
-  if (name === "AI_CLASSIFY_PROVIDER") {
-    return readStringFromPaths(raw, [["ai", "tasks", "classify", "provider"]]);
+  if (name === 'AI_CLASSIFY_PROVIDER') {
+    return readStringFromPaths(raw, [['ai', 'tasks', 'classify', 'provider']])
   }
-  if (name === "AI_SUMMARIZE_PROVIDER") {
-    return readStringFromPaths(raw, [["ai", "tasks", "summarize", "provider"]]);
+  if (name === 'AI_SUMMARIZE_PROVIDER') {
+    return readStringFromPaths(raw, [['ai', 'tasks', 'summarize', 'provider']])
   }
-  if (name === "DEEPSEEK_API_KEY") {
-    return readStringFromPaths(raw, [["ai", "deepseek", "apiKey"], ["agent", "deepseek", "apiKey"]]);
+  if (name === 'DEEPSEEK_API_KEY') {
+    return readStringFromPaths(raw, [
+      ['ai', 'deepseek', 'apiKey'],
+      ['agent', 'deepseek', 'apiKey']
+    ])
   }
-  if (name === "DEEPSEEK_BASE_URL") {
-    return readStringFromPaths(raw, [["ai", "deepseek", "baseUrl"], ["agent", "deepseek", "baseUrl"]]);
+  if (name === 'DEEPSEEK_BASE_URL') {
+    return readStringFromPaths(raw, [
+      ['ai', 'deepseek', 'baseUrl'],
+      ['agent', 'deepseek', 'baseUrl']
+    ])
   }
-  if (name === "DEEPSEEK_MODEL") {
-    return readStringFromPaths(raw, [["ai", "deepseek", "model"], ["agent", "deepseek", "model"]]);
+  if (name === 'DEEPSEEK_MODEL') {
+    return readStringFromPaths(raw, [
+      ['ai', 'deepseek', 'model'],
+      ['agent', 'deepseek', 'model']
+    ])
   }
   const mappings: Record<string, string[]> = {
-    channel: ["channel"],
-    TRANSCRIPTION_PROVIDER: ["transcription", "provider"],
-    TRANSCRIPTION_FALLBACK_PROVIDER: ["transcription", "fallbackProvider"],
-    WHISPER_CPP_BIN: ["transcription", "whisperCpp", "bin"],
-    WHISPER_CPP_MODEL_PATH: ["transcription", "whisperCpp", "modelPath"],
-    WHISPER_CPP_LANGUAGE: ["transcription", "whisperCpp", "language"],
-    TELEGRAM_BOT_TOKEN: ["channels", "telegram", "botToken"],
-    TELEGRAM_DM_POLICY: ["channels", "telegram", "dmPolicy"],
-    TELEGRAM_TYPING_MODE: ["channels", "telegram", "typingMode"],
-    DISCORD_BOT_TOKEN: ["channels", "discord", "token"],
-    FEISHU_APP_ID: ["channels", "feishu", "accounts", "main", "appId"],
-    FEISHU_APP_SECRET: ["channels", "feishu", "accounts", "main", "appSecret"],
-    FEISHU_DOMAIN: ["channels", "feishu", "accounts", "main", "domain"],
-  };
+    channel: ['channel'],
+    TRANSCRIPTION_PROVIDER: ['transcription', 'provider'],
+    TRANSCRIPTION_FALLBACK_PROVIDER: ['transcription', 'fallbackProvider'],
+    WHISPER_CPP_BIN: ['transcription', 'whisperCpp', 'bin'],
+    WHISPER_CPP_MODEL_PATH: ['transcription', 'whisperCpp', 'modelPath'],
+    WHISPER_CPP_LANGUAGE: ['transcription', 'whisperCpp', 'language'],
+    TELEGRAM_BOT_TOKEN: ['channels', 'telegram', 'botToken'],
+    TELEGRAM_DM_POLICY: ['channels', 'telegram', 'dmPolicy'],
+    TELEGRAM_TYPING_MODE: ['channels', 'telegram', 'typingMode'],
+    DISCORD_BOT_TOKEN: ['channels', 'discord', 'token'],
+    FEISHU_APP_ID: ['channels', 'feishu', 'accounts', 'main', 'appId'],
+    FEISHU_APP_SECRET: ['channels', 'feishu', 'accounts', 'main', 'appSecret'],
+    FEISHU_DOMAIN: ['channels', 'feishu', 'accounts', 'main', 'domain']
+  }
   const boolMappings: Record<string, string[]> = {
-    TELEGRAM_ENABLED: ["channels", "telegram", "enabled"],
-    DISCORD_ENABLED: ["channels", "discord", "enabled"],
-    FEISHU_ENABLED: ["channels", "feishu", "accounts", "main", "enabled"],
-  };
+    TELEGRAM_ENABLED: ['channels', 'telegram', 'enabled'],
+    DISCORD_ENABLED: ['channels', 'discord', 'enabled'],
+    FEISHU_ENABLED: ['channels', 'feishu', 'accounts', 'main', 'enabled']
+  }
   const numberMappings: Record<string, string[]> = {
-    TELEGRAM_TYPING_INTERVAL_SECONDS: ["channels", "telegram", "typingIntervalSeconds"],
-  };
-
-  const path = mappings[name];
-  if (path) {
-    const value = readFromPath(raw, path);
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+    TELEGRAM_TYPING_INTERVAL_SECONDS: ['channels', 'telegram', 'typingIntervalSeconds']
   }
 
-  if (name === "GEMINI_API_KEY" || name === "GEMINI_MODEL") {
+  const path = mappings[name]
+  if (path) {
+    const value = readFromPath(raw, path)
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  }
+
+  if (name === 'GEMINI_API_KEY' || name === 'GEMINI_MODEL') {
     const candidatePaths =
-      name === "GEMINI_API_KEY"
+      name === 'GEMINI_API_KEY'
         ? [
-            ["ai", "gemini", "apiKey"],
-            ["agent", "gemini", "apiKey"],
-            ["transcription", "gemini", "apiKey"],
+            ['ai', 'gemini', 'apiKey'],
+            ['agent', 'gemini', 'apiKey'],
+            ['transcription', 'gemini', 'apiKey']
           ]
         : [
-            ["ai", "gemini", "model"],
-            ["agent", "gemini", "model"],
-            ["transcription", "gemini", "model"],
-          ];
+            ['ai', 'gemini', 'model'],
+            ['agent', 'gemini', 'model'],
+            ['transcription', 'gemini', 'model']
+          ]
     for (const candidatePath of candidatePaths) {
-      const value = readFromPath(raw, candidatePath);
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
+      const value = readFromPath(raw, candidatePath)
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim()
       }
     }
-    return undefined;
+    return undefined
   }
 
-  if (name === "DOUYIN_COOKIE") {
-    const value = readFromPath(raw, ["videoSources", "douyin", "cookie"]);
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  if (name === 'DOUYIN_COOKIE') {
+    const value = readFromPath(raw, ['videoSources', 'douyin', 'cookie'])
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined
   }
 
-  const boolPath = boolMappings[name];
+  const boolPath = boolMappings[name]
   if (boolPath) {
-    const value = readFromPath(raw, boolPath);
-    if (typeof value === "boolean") {
-      return value ? "true" : "false";
+    const value = readFromPath(raw, boolPath)
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false'
     }
   }
 
-  const numberPath = numberMappings[name];
+  const numberPath = numberMappings[name]
   if (numberPath) {
-    const value = readFromPath(raw, numberPath);
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return String(value);
+    const value = readFromPath(raw, numberPath)
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value)
     }
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
     }
   }
 
-  return undefined;
+  return undefined
 }
 
 function readRaw(name: string): string | undefined {
-  const structuredValue = readFromStructuredConfig(name);
+  const structuredValue = readFromStructuredConfig(name)
   if (structuredValue) {
-    return structuredValue;
+    return structuredValue
   }
-  const localValue = getLocalConfigStore().get(name)?.trim();
+  const localValue = getLocalConfigStore().get(name)?.trim()
   if (localValue) {
-    return localValue;
+    return localValue
   }
-  const envValue = process.env[name]?.trim();
+  const envValue = process.env[name]?.trim()
   if (envValue) {
-    return envValue;
+    return envValue
   }
-  return undefined;
+  return undefined
 }
 
 function mustGet(name: string): string {
-  const value = readRaw(name);
+  const value = readRaw(name)
   if (!value) {
-    throw new Error(`Missing required config: ${name}`);
+    throw new Error(`Missing required config: ${name}`)
   }
-  return value;
+  return value
 }
 
 function getNumber(name: string, defaultValue: number): number {
-  const raw = readRaw(name);
+  const raw = readRaw(name)
   if (!raw) {
-    return defaultValue;
+    return defaultValue
   }
-  const n = Number(raw);
+  const n = Number(raw)
   if (!Number.isFinite(n) || n <= 0) {
-    throw new Error(`Invalid numeric env var ${name}: ${raw}`);
+    throw new Error(`Invalid numeric env var ${name}: ${raw}`)
   }
-  return n;
+  return n
 }
 
 function getList(name: string): string[] {
-  const raw = readRaw(name);
+  const raw = readRaw(name)
   if (!raw) {
-    return [];
+    return []
   }
   return raw
-    .split(",")
+    .split(',')
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter(Boolean)
 }
 
 function getBoolean(name: string, defaultValue: boolean): boolean {
-  const raw = readRaw(name);
+  const raw = readRaw(name)
   if (!raw) {
-    return defaultValue;
+    return defaultValue
   }
-  return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+  return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase())
 }
 
-function getTelegramTypingMode(): "never" | "instant" | "thinking" | "message" {
-  const raw = readRaw("TELEGRAM_TYPING_MODE")?.toLowerCase();
+function getTelegramTypingMode(): 'never' | 'instant' | 'thinking' | 'message' {
+  const raw = readRaw('TELEGRAM_TYPING_MODE')?.toLowerCase()
   if (!raw) {
-    return "thinking";
+    return 'thinking'
   }
-  if (raw === "never" || raw === "instant" || raw === "thinking" || raw === "message") {
-    return raw;
+  if (raw === 'never' || raw === 'instant' || raw === 'thinking' || raw === 'message') {
+    return raw
   }
-  throw new Error(`Invalid TELEGRAM_TYPING_MODE: ${raw}`);
+  throw new Error(`Invalid TELEGRAM_TYPING_MODE: ${raw}`)
 }
 
 function getTranscriptionProvider(
-  name: "TRANSCRIPTION_PROVIDER" | "TRANSCRIPTION_FALLBACK_PROVIDER",
-  defaultValue?: "whisper_cpp" | "gemini",
-): "whisper_cpp" | "gemini" | undefined {
-  const raw = readRaw(name)?.toLowerCase();
+  name: 'TRANSCRIPTION_PROVIDER' | 'TRANSCRIPTION_FALLBACK_PROVIDER',
+  defaultValue?: 'whisper_cpp' | 'gemini'
+): 'whisper_cpp' | 'gemini' | undefined {
+  const raw = readRaw(name)?.toLowerCase()
   if (!raw) {
-    return defaultValue;
+    return defaultValue
   }
-  if (raw === "whisper_cpp" || raw === "gemini") {
-    return raw;
+  if (raw === 'whisper_cpp' || raw === 'gemini') {
+    return raw
   }
-  throw new Error(`Invalid ${name}: ${raw}`);
+  throw new Error(`Invalid ${name}: ${raw}`)
 }
 
 function getAiProvider(
-  name: "AI_PROVIDER" | "AI_CHAT_PROVIDER" | "AI_CLASSIFY_PROVIDER" | "AI_SUMMARIZE_PROVIDER",
-  defaultValue?: "deepseek" | "gemini",
-): "deepseek" | "gemini" | undefined {
-  const raw = readRaw(name)?.toLowerCase();
+  name: 'AI_PROVIDER' | 'AI_CHAT_PROVIDER' | 'AI_CLASSIFY_PROVIDER' | 'AI_SUMMARIZE_PROVIDER',
+  defaultValue?: 'deepseek' | 'gemini' | 'vertex'
+): 'deepseek' | 'gemini' | 'vertex' | undefined {
+  const raw = readRaw(name)?.toLowerCase()
   if (!raw) {
-    return defaultValue;
+    return defaultValue
   }
-  if (raw === "deepseek" || raw === "gemini") {
-    return raw;
+  if (raw === 'deepseek' || raw === 'gemini' || raw === 'vertex') {
+    return raw
   }
-  throw new Error(`Invalid ${name}: ${raw}`);
+  throw new Error(`Invalid ${name}: ${raw}`)
 }
 
 function readFirstRaw(names: string[]): string | undefined {
   for (const name of names) {
-    const value = readRaw(name);
+    const value = readRaw(name)
     if (value) {
-      return value;
+      return value
     }
   }
-  return undefined;
+  return undefined
 }
 
 function readFirstRawWithSource(
-  names: Array<"GEMINI_API_KEY" | "GOOGLE_API_KEY" | "VERTEX_API_KEY">,
+  names: Array<'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'>
 ): {
-  value?: string;
-  source?: "GEMINI_API_KEY" | "GOOGLE_API_KEY" | "VERTEX_API_KEY";
+  value?: string
+  source?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'
 } {
   for (const name of names) {
-    const value = readRaw(name);
+    const value = readRaw(name)
     if (value) {
       return {
         value,
-        source: name,
-      };
+        source: name
+      }
     }
   }
-  return {};
+  return {}
 }
 
 export function loadEnv(): AppEnv {
-  const legacyAgent = readRaw("agent")?.toLowerCase();
-  const aiProvider = getAiProvider("AI_PROVIDER") || (legacyAgent === "gemini" ? "gemini" : "deepseek");
-  const aiChatProvider = getAiProvider("AI_CHAT_PROVIDER");
-  const aiClassifyProvider = getAiProvider("AI_CLASSIFY_PROVIDER");
-  const aiSummarizeProvider = getAiProvider("AI_SUMMARIZE_PROVIDER");
-  const geminiAuth = readFirstRawWithSource(["GEMINI_API_KEY", "GOOGLE_API_KEY", "VERTEX_API_KEY"]);
-  const needDeepseekApiKey = aiProvider === "deepseek" ||
-    aiChatProvider === "deepseek" ||
-    aiClassifyProvider === "deepseek" ||
-    aiSummarizeProvider === "deepseek";
+  const legacyAgent = readRaw('agent')?.toLowerCase()
+  const aiProvider =
+    getAiProvider('AI_PROVIDER') || (legacyAgent === 'gemini' ? 'gemini' : legacyAgent === 'vertex' ? 'vertex' : 'deepseek')
+  const aiChatProvider = getAiProvider('AI_CHAT_PROVIDER')
+  const aiClassifyProvider = getAiProvider('AI_CLASSIFY_PROVIDER')
+  const aiSummarizeProvider = getAiProvider('AI_SUMMARIZE_PROVIDER')
+  const geminiAuth = readFirstRawWithSource(['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'VERTEX_API_KEY'])
+  const needDeepseekApiKey =
+    aiProvider === 'deepseek' ||
+    aiChatProvider === 'deepseek' ||
+    aiClassifyProvider === 'deepseek' ||
+    aiSummarizeProvider === 'deepseek'
   return {
     agent: aiProvider,
     aiProvider,
     aiChatProvider,
     aiClassifyProvider,
     aiSummarizeProvider,
-    deepseekApiKey: needDeepseekApiKey ? mustGet("DEEPSEEK_API_KEY") : readRaw("DEEPSEEK_API_KEY") || undefined,
-    deepseekBaseUrl: readRaw("DEEPSEEK_BASE_URL") || "https://api.deepseek.com",
-    deepseekModel: readRaw("DEEPSEEK_MODEL") || "deepseek-chat",
-    transcriptionProvider: getTranscriptionProvider("TRANSCRIPTION_PROVIDER", "whisper_cpp") || "whisper_cpp",
+    deepseekApiKey: needDeepseekApiKey
+      ? mustGet('DEEPSEEK_API_KEY')
+      : readRaw('DEEPSEEK_API_KEY') || undefined,
+    deepseekBaseUrl: readRaw('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com',
+    deepseekModel: readRaw('DEEPSEEK_MODEL') || 'deepseek-chat',
+    transcriptionProvider:
+      getTranscriptionProvider('TRANSCRIPTION_PROVIDER', 'whisper_cpp') || 'whisper_cpp',
     transcriptionFallbackProvider: getTranscriptionProvider(
-      "TRANSCRIPTION_FALLBACK_PROVIDER",
-      "gemini",
+      'TRANSCRIPTION_FALLBACK_PROVIDER',
+      'gemini'
     ),
-    whisperCppBin: readRaw("WHISPER_CPP_BIN") || "whisper-cli",
-    whisperCppModelPath: readRaw("WHISPER_CPP_MODEL_PATH") || undefined,
-    whisperCppLanguage: readRaw("WHISPER_CPP_LANGUAGE") || undefined,
+    whisperCppBin: readRaw('WHISPER_CPP_BIN') || 'whisper-cli',
+    whisperCppModelPath: readRaw('WHISPER_CPP_MODEL_PATH') || undefined,
+    whisperCppLanguage: readRaw('WHISPER_CPP_LANGUAGE') || undefined,
     geminiApiKey: geminiAuth.value || undefined,
     geminiApiKeySource: geminiAuth.source,
-    geminiModel: readRaw("GEMINI_MODEL") || "gemini-3-flash-preview",
-    douyinCookie: readRaw("DOUYIN_COOKIE") || undefined,
-    feishuEnabled: getBoolean("FEISHU_ENABLED", false),
-    feishuAppId: readRaw("FEISHU_APP_ID") || undefined,
-    feishuAppSecret: readRaw("FEISHU_APP_SECRET") || undefined,
-    feishuDomain: readRaw("FEISHU_DOMAIN")?.toLowerCase() === "lark" ? "lark" : "feishu",
-    telegramEnabled: getBoolean("TELEGRAM_ENABLED", false),
-    telegramDmPolicy: readRaw("TELEGRAM_DM_POLICY") || "pairing",
-    telegramBotToken: readRaw("TELEGRAM_BOT_TOKEN") || undefined,
+    geminiModel: readRaw('GEMINI_MODEL') || 'gemini-3.1-flash-lite-preview',
+    douyinCookie: readRaw('DOUYIN_COOKIE') || undefined,
+    feishuEnabled: getBoolean('FEISHU_ENABLED', false),
+    feishuAppId: readRaw('FEISHU_APP_ID') || undefined,
+    feishuAppSecret: readRaw('FEISHU_APP_SECRET') || undefined,
+    feishuDomain: readRaw('FEISHU_DOMAIN')?.toLowerCase() === 'lark' ? 'lark' : 'feishu',
+    telegramEnabled: getBoolean('TELEGRAM_ENABLED', false),
+    telegramDmPolicy: readRaw('TELEGRAM_DM_POLICY') || 'pairing',
+    telegramBotToken: readRaw('TELEGRAM_BOT_TOKEN') || undefined,
     telegramTypingMode: getTelegramTypingMode(),
-    telegramTypingIntervalSeconds: getNumber("TELEGRAM_TYPING_INTERVAL_SECONDS", 6),
-    discordEnabled: getBoolean("DISCORD_ENABLED", false),
-    discordBotToken: readRaw("DISCORD_BOT_TOKEN") || undefined,
-    obsidianVault: readRaw("OBSIDIAN_VAULT") || undefined,
-    obsidianFolder: readRaw("OBSIDIAN_FOLDER") || "Clippings",
-    obsidianDynamicFolders: getList("OBSIDIAN_DYNAMIC_FOLDERS"),
-    maxToolSteps: getNumber("MAX_TOOL_STEPS", 4),
-  };
+    telegramTypingIntervalSeconds: getNumber('TELEGRAM_TYPING_INTERVAL_SECONDS', 6),
+    discordEnabled: getBoolean('DISCORD_ENABLED', false),
+    discordBotToken: readRaw('DISCORD_BOT_TOKEN') || undefined,
+    obsidianVault: readRaw('OBSIDIAN_VAULT') || undefined,
+    obsidianFolder: readRaw('OBSIDIAN_FOLDER') || 'Clippings',
+    obsidianDynamicFolders: getList('OBSIDIAN_DYNAMIC_FOLDERS'),
+    maxToolSteps: getNumber('MAX_TOOL_STEPS', 4)
+  }
 }

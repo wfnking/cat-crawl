@@ -2,7 +2,6 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 import { createLogger } from "@cat-crawl/core";
 import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from "./history-intent.js";
 import { appendConversationRound, getRecentConversationMessages } from "./chat-memory.js";
-import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
 import { pickPolicyFolder } from "./folder-policy.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
@@ -72,7 +71,6 @@ export type AgentRunOptions = {
 
 type AgentDeps = {
   loadEnv?: typeof loadEnv;
-  findExistingSavedRecordByUrl?: typeof findExistingSavedRecordByUrl;
   crawlWebArticleTool?: Pick<typeof crawlWebArticleTool, "invoke">;
   createSaveToObsidianTool?: typeof createSaveToObsidianTool;
   createTranscribeVideoTool?: typeof createTranscribeVideoTool;
@@ -336,7 +334,6 @@ export async function runAgent(
 ): Promise<AgentRunResult> {
   logger.info("[agent] start processing input");
   const env = (deps.loadEnv || loadEnv)();
-  const existingChecker = deps.findExistingSavedRecordByUrl || findExistingSavedRecordByUrl;
   const articleTool = deps.crawlWebArticleTool || crawlWebArticleTool;
   const buildSaveTool = deps.createSaveToObsidianTool || createSaveToObsidianTool;
   const buildTranscribeTool = deps.createTranscribeVideoTool || createTranscribeVideoTool;
@@ -382,19 +379,6 @@ export async function runAgent(
   }
 
   const isVideoUrl = isSupportedVideoUrl(url);
-  const existing = await existingChecker(url);
-  if (existing) {
-    const fullPath = `${existing.vault}/${existing.path}`;
-    return {
-      reply: [
-        "这个链接之前已经处理并保存过了。",
-        `标题：${existing.title}`,
-        `保存路径：\`${fullPath}\``,
-        "如果你希望强制重抓，我可以再加一个参数支持覆盖保存。",
-      ].join("\n"),
-      usedTools,
-    };
-  }
 
   if (isVideoUrl) {
     await emitStatus(options, {

@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@cat-crawl/case-study": "workspace:*",
     "@cat-crawl/obsidian-publisher": "workspace:*"
   },
   "bin": {

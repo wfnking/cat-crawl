@@ -1,18 +1,25 @@
 # Video Transcription Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan
+> task-by-task.
 
-**Goal:** Build a general video transcription flow for Douyin URLs, YouTube URLs, and local media files using `whisper.cpp` first and Gemini fallback.
+**Goal:** Build a general video transcription flow for Douyin URLs, YouTube URLs, and local media
+files using `whisper.cpp` first and Gemini fallback.
 
-**Architecture:** Introduce a new `transcribe_video` tool that resolves a source adapter, produces a local media file, extracts audio with `ffmpeg`, and then sends the audio through a provider abstraction. The first provider is local `whisper.cpp`, with Gemini as optional fallback. The transcript output then reuses the existing Obsidian save pipeline.
+**Architecture:** Introduce a new `transcribe_video` tool that resolves a source adapter, produces a
+local media file, extracts audio with `ffmpeg`, and then sends the audio through a provider
+abstraction. The first provider is local `whisper.cpp`, with Gemini as optional fallback. The
+transcript output then reuses the existing Obsidian save pipeline.
 
-**Tech Stack:** TypeScript, Playwright, `ffmpeg`, `yt-dlp`, local `whisper.cpp`, Gemini API, existing `cat-crawl` config store and Obsidian publisher package.
+**Tech Stack:** TypeScript, Playwright, `ffmpeg`, `yt-dlp`, local `whisper.cpp`, Gemini API,
+existing `cat-crawl` config store and Obsidian publisher package.
 
 ---
 
 ### Task 1: Extend transcription configuration
 
 **Files:**
+
 - Modify: `packages/obsidian-publisher/src/config/env.ts`
 - Modify: `.env.example`
 - Test: `packages/obsidian-publisher/src/config/env.test.ts` or new targeted config test file
@@ -47,7 +54,7 @@ Default values:
 
 - `transcriptionProvider = whisper_cpp`
 - `transcriptionFallbackProvider = gemini`
-- `geminiModel = gemini-3-flash-preview`
+- `geminiModel = gemini-3.1-flash-lite-preview`
 - `whisperCppLanguage` optional
 
 **Step 4: Run test to verify it passes**
@@ -70,6 +77,7 @@ git commit -m "feat(transcription): add provider config"
 ### Task 2: Add source adapter selection
 
 **Files:**
+
 - Create: `packages/obsidian-publisher/src/services/video-sources/index.ts`
 - Create: `packages/obsidian-publisher/src/services/video-sources/file.ts`
 - Create: `packages/obsidian-publisher/src/services/video-sources/youtube.ts`
@@ -97,7 +105,8 @@ Expected: FAIL because selector does not exist.
 
 **Step 3: Write minimal implementation**
 
-Create a small adapter registry with explicit hostname checks. Do not implement full download logic yet.
+Create a small adapter registry with explicit hostname checks. Do not implement full download logic
+yet.
 
 **Step 4: Run test to verify it passes**
 
@@ -119,6 +128,7 @@ git commit -m "feat(transcription): add video source adapter selection"
 ### Task 3: Implement YouTube file resolution with `yt-dlp`
 
 **Files:**
+
 - Modify: `packages/obsidian-publisher/src/services/video-sources/youtube.ts`
 - Test: `packages/obsidian-publisher/src/services/video-sources/youtube.test.ts`
 
@@ -142,7 +152,8 @@ Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-Wrap `yt-dlp` in a small helper that downloads to a temporary path and returns metadata plus local file path.
+Wrap `yt-dlp` in a small helper that downloads to a temporary path and returns metadata plus local
+file path.
 
 **Step 4: Run test to verify it passes**
 
@@ -164,6 +175,7 @@ git commit -m "feat(transcription): add youtube downloader"
 ### Task 4: Implement Douyin file resolution with Playwright
 
 **Files:**
+
 - Modify: `packages/obsidian-publisher/src/services/video-sources/douyin.ts`
 - Test: `packages/obsidian-publisher/src/services/video-sources/douyin.test.ts`
 
@@ -187,7 +199,8 @@ Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-Launch Playwright, load the Douyin page, inspect network responses or DOM-driven media URLs, then download the selected media file to temp storage.
+Launch Playwright, load the Douyin page, inspect network responses or DOM-driven media URLs, then
+download the selected media file to temp storage.
 
 **Step 4: Run test to verify it passes**
 
@@ -209,6 +222,7 @@ git commit -m "feat(transcription): add douyin downloader"
 ### Task 5: Add audio extraction helper
 
 **Files:**
+
 - Create: `packages/obsidian-publisher/src/services/media/extract-audio.ts`
 - Test: `packages/obsidian-publisher/src/services/media/extract-audio.test.ts`
 
@@ -232,7 +246,8 @@ Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-Use `ffmpeg` to generate a deterministic audio file path in temp storage and validate that the output exists and is non-empty.
+Use `ffmpeg` to generate a deterministic audio file path in temp storage and validate that the
+output exists and is non-empty.
 
 **Step 4: Run test to verify it passes**
 
@@ -254,6 +269,7 @@ git commit -m "feat(transcription): add audio extraction helper"
 ### Task 6: Add `whisper.cpp` provider
 
 **Files:**
+
 - Create: `packages/obsidian-publisher/src/services/transcription/whisper-cpp.ts`
 - Test: `packages/obsidian-publisher/src/services/transcription/whisper-cpp.test.ts`
 
@@ -300,6 +316,7 @@ git commit -m "feat(transcription): add whisper cpp provider"
 ### Task 7: Add Gemini transcription provider
 
 **Files:**
+
 - Create: `packages/obsidian-publisher/src/services/transcription/gemini.ts`
 - Test: `packages/obsidian-publisher/src/services/transcription/gemini.test.ts`
 
@@ -308,7 +325,7 @@ git commit -m "feat(transcription): add whisper cpp provider"
 Cover:
 
 - upload + generate flow using configured API key
-- default model `gemini-3-flash-preview`
+- default model `gemini-3.1-flash-lite-preview`
 - provider error normalization
 
 **Step 2: Run test to verify it fails**
@@ -345,6 +362,7 @@ git commit -m "feat(transcription): add gemini fallback provider"
 ### Task 8: Compose providers with fallback rules
 
 **Files:**
+
 - Create: `packages/obsidian-publisher/src/services/transcription/index.ts`
 - Test: `packages/obsidian-publisher/src/services/transcription/index.test.ts`
 
@@ -369,7 +387,8 @@ Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-Compose the provider wrappers and return a normalized result with `providerUsed` and optional fallback metadata.
+Compose the provider wrappers and return a normalized result with `providerUsed` and optional
+fallback metadata.
 
 **Step 4: Run test to verify it passes**
 
@@ -391,6 +410,7 @@ git commit -m "feat(transcription): add provider fallback orchestration"
 ### Task 9: Add `transcribe_video` tool
 
 **Files:**
+
 - Create: `packages/obsidian-publisher/src/tools/transcribe-video.ts`
 - Test: `packages/obsidian-publisher/src/tools/transcribe-video.test.ts`
 
@@ -415,7 +435,8 @@ Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-Wire source adapter + audio extraction + provider selection into a single tool with normalized output.
+Wire source adapter + audio extraction + provider selection into a single tool with normalized
+output.
 
 **Step 4: Run test to verify it passes**
 
@@ -437,6 +458,7 @@ git commit -m "feat(transcription): add transcribe video tool"
 ### Task 10: Integrate transcript saving with the agent flow
 
 **Files:**
+
 - Modify: `packages/obsidian-publisher/src/agent/run-wechat-agent.ts`
 - Modify: `packages/obsidian-publisher/src/utils/text.ts`
 - Test: `packages/obsidian-publisher/src/agent/run-wechat-agent.test.ts` or new targeted tests
@@ -461,7 +483,8 @@ Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-Extend URL detection logic and branch video sources into the new tool path without disturbing article flow.
+Extend URL detection logic and branch video sources into the new tool path without disturbing
+article flow.
 
 **Step 4: Run test to verify it passes**
 
@@ -483,6 +506,7 @@ git commit -m "feat(transcription): connect video transcripts to agent flow"
 ### Task 11: Run full verification and document setup
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `.env.example`
 

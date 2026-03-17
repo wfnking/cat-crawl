@@ -11,13 +11,13 @@ test("createLogger prefixes string messages when scope is provided", () => {
     error: (...args: unknown[]) => calls.push({ level: "error", args }),
   };
 
-  const logger = createLogger("case-study", sink, () => new Date("2026-03-13T14:50:00"));
+  const logger = createLogger("test-scope", sink, () => new Date("2026-03-13T14:50:00"));
   logger.info("build started");
 
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0], {
     level: "info",
-    args: ["[2026-03-13 14:50:00] [case-study] build started"],
+    args: ["[2026-03-13 14:50:00] [test-scope] build started"],
   });
 });
 

@@ -1,6 +1,7 @@
 # cat-crawl
 
-一个把网页文章抓取为 Markdown 并保存到 Obsidian 的多渠道 Agent（CLI / Feishu / Telegram / Discord）。
+一个把网页文章抓取为 Markdown 并保存到 Obsidian 的多渠道 Agent（CLI / Feishu / Telegram /
+Discord）。
 
 ## 功能
 
@@ -80,11 +81,15 @@ cat-crawl obsidian config get agent deepseek
 
 说明：
 
-- `obsidian config set channel telegram`：进入交互式向导，设置 Telegram Token、策略字段与 typing 行为（Polling 模式）。
+- `obsidian config set channel telegram`：进入交互式向导，设置 Telegram
+  Token、策略字段与 typing 行为（Polling 模式）。
 - `obsidian config set channel <value>` 支持 `feishu` / `telegram` / `discord` / `all`。
-- 当 `channels.telegram.dmPolicy=pairing` 时，未配对用户会收到 Pairing Code，管理员使用 `cat-crawl obsidian pairing approve telegram <code>` 完成授权。
-- `obsidian config set agent deepseek`：进入交互式向导，输入 DeepSeek 配置（API Key/Model，默认 `deepseek-chat`）。
-- `obsidian config set agent gemini`：进入交互式向导，输入 Gemini 配置（API Key/Model，默认 `gemini-3-flash-preview`）。
+- 当 `channels.telegram.dmPolicy=pairing` 时，未配对用户会收到 Pairing Code，管理员使用
+  `cat-crawl obsidian pairing approve telegram <code>` 完成授权。
+- `obsidian config set agent deepseek`：进入交互式向导，输入 DeepSeek 配置（API Key/Model，默认
+  `deepseek-chat`）。
+- `obsidian config set agent gemini`：进入交互式向导，输入 Gemini 配置（API Key/Model，默认
+  `gemini-3.1-flash-lite-preview`）。
 - `obsidian config get channel`：读取当前值。
 - `obsidian config get channel telegram`：当键不存在时返回你提供的 fallback（这里是 `telegram`）。
 - `obsidian config get agent`：读取当前 agent。
@@ -147,7 +152,7 @@ cat-crawl obsidian config get agent deepseek
     "provider": "gemini",
     "gemini": {
       "apiKey": "gemini-key",
-      "model": "gemini-3-flash-preview"
+      "model": "gemini-3.1-flash-lite-preview"
     }
   }
 }
@@ -177,7 +182,7 @@ cat-crawl obsidian config get agent deepseek
     },
     "gemini": {
       "apiKey": "gemini-key",
-      "model": "gemini-3-flash-preview"
+      "model": "gemini-3.1-flash-lite-preview"
     }
   }
 }

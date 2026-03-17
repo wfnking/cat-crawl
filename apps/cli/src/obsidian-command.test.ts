@@ -46,7 +46,7 @@ test("parseObsidianCommand parses pairing approve command", () => {
 });
 
 test("parseObsidianCommand returns null for non-obsidian command", () => {
-  assert.equal(parseObsidianCommand(["case-study", "build"]), null);
+  assert.equal(parseObsidianCommand(["hello", "build"]), null);
 });
 
 test("hasAnyChannelMode reports false for empty modes", () => {

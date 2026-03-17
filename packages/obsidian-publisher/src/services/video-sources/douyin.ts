@@ -1,10 +1,13 @@
 import { createLogger } from "@cat-crawl/core";
+import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { loadChromeCookiesForDomains } from "./chrome-cookies.js";
 
 const logger = createLogger();
+const execFileAsync = promisify(execFile);
 
 export const douyinVideoSourceAdapter = {
   name: "douyin",
@@ -13,6 +16,7 @@ export const douyinVideoSourceAdapter = {
 type ExtractedDouyinVideo = {
   pageUrl: string;
   mediaUrl: string;
+  mediaUrls?: string[];
   title?: string;
 };
 
@@ -50,6 +54,7 @@ type ResolveDouyinVideoSourceOptions = {
     loadChromeCookies?: typeof loadChromeCookiesForDomains,
   ) => Promise<ExtractedDouyinVideo>;
   downloadVideo?: (mediaUrl: string, outputDir: string) => Promise<string>;
+  hasAudioTrack?: (mediaPath: string) => Promise<boolean>;
 };
 
 type ResolvedDouyinVideoSource = {
@@ -75,22 +80,72 @@ function isExecutionContextDestroyedError(error: unknown): boolean {
 
 async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinVideo> {
   return page.evaluate(() => {
-    const ogVideo =
-      document.querySelector('meta[property="og:video"]')?.getAttribute("content")?.trim() || "";
-    const videoSource =
-      document.querySelector("video")?.getAttribute("src")?.trim() ||
-      document.querySelector("video source")?.getAttribute("src")?.trim() ||
-      "";
+    const toAbsolute = (value: string): string => {
+      if (!value) {
+        return "";
+      }
+      if (value.startsWith("//")) {
+        return `${window.location.protocol}${value}`;
+      }
+      return value;
+    };
+    const ogVideo = toAbsolute(
+      document.querySelector('meta[property="og:video"]')?.getAttribute("content")?.trim() || "",
+    );
+    const videoSource = toAbsolute(document.querySelector("video")?.getAttribute("src")?.trim() || "");
+    const sourceUrls = Array.from(document.querySelectorAll("video source"))
+      .map((node) => toAbsolute(node.getAttribute("src")?.trim() || ""))
+      .filter(Boolean);
     const title =
       document.querySelector('meta[property="og:title"]')?.getAttribute("content")?.trim() ||
       document.title ||
       "";
+    const mediaUrls = Array.from(new Set([ogVideo, ...sourceUrls, videoSource].filter(Boolean)));
     return {
       pageUrl: window.location.href,
-      mediaUrl: videoSource || ogVideo,
+      mediaUrl: mediaUrls[0] || "",
+      mediaUrls,
       title,
     };
   });
+}
+
+function collectMediaCandidates(extracted: ExtractedDouyinVideo): string[] {
+  const primary = extracted.mediaUrl?.trim() || "";
+  const extras = extracted.mediaUrls || [];
+  return Array.from(new Set([primary, ...extras].map((item) => item.trim()).filter(Boolean)));
+}
+
+async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "a",
+        "-show_entries",
+        "stream=codec_type",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        mediaPath,
+      ],
+      { maxBuffer: 2 * 1024 * 1024 },
+    );
+    return stdout
+      .split(/\r?\n/g)
+      .map((line) => line.trim().toLowerCase())
+      .some((line) => line === "audio");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (detail.includes("spawn ffprobe ENOENT")) {
+      logger.warn("[video-source:douyin] ffprobe not found, skip audio-track verification");
+      return true;
+    }
+    logger.warn(`[video-source:douyin] ffprobe check failed msg=${detail}`);
+    return false;
+  }
 }
 
 async function waitForDouyinPageReady(page: DouyinPage, sourceUrl: string): Promise<void> {
@@ -292,15 +347,41 @@ export async function resolveDouyinVideoSource(
 
   logger.info(`[video-source:douyin] start source=${sourceUrl}`);
   const extracted = await extractVideo(sourceUrl, options.cookieHeader, options.loadChromeCookies);
-  if (!extracted.mediaUrl.trim()) {
+  const candidates = collectMediaCandidates(extracted);
+  if (candidates.length === 0) {
     throw new Error("Douyin video URL not found.");
   }
+  logger.info(`[video-source:douyin] media candidates=${candidates.length}`);
 
-  const mediaPath = await downloadVideo(extracted.mediaUrl, outputDir);
+  const hasAudioTrack =
+    options.hasAudioTrack || (!options.downloadVideo ? hasAudioTrackDefault : async () => true);
+  let selectedPath = "";
+  let selectedCandidate = "";
+  for (const candidate of candidates) {
+    try {
+      const mediaPath = await downloadVideo(candidate, outputDir);
+      const hasAudio = await hasAudioTrack(mediaPath);
+      if (hasAudio) {
+        selectedPath = mediaPath;
+        selectedCandidate = candidate;
+        break;
+      }
+      logger.warn(`[video-source:douyin] candidate has no audio, retry next url=${candidate}`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      logger.warn(`[video-source:douyin] candidate download failed url=${candidate} msg=${detail}`);
+    }
+  }
+  if (!selectedPath) {
+    throw new Error(
+      "Douyin video URL resolved, but all downloaded candidates have no audio track. The source may be silent-only.",
+    );
+  }
+  logger.info(`[video-source:douyin] selected media candidate=${selectedCandidate}`);
   return {
     adapter: "douyin",
     sourceUrl: extracted.pageUrl || sourceUrl,
-    mediaPath,
+    mediaPath: selectedPath,
     title: extracted.title?.trim() || undefined,
   };
 }

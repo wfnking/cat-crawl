@@ -139,14 +139,13 @@ export function parseObsidianCommand(args: string[]): ObsidianCommand | null {
   throw new Error(
     [
       "Usage:",
-      "1) cat-crawl case-study <crawl|build|serve> ...",
-      "2) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
-      '3) cat-crawl obsidian run "你的消息内容或文章链接"',
-      "4) cat-crawl obsidian config set channel telegram",
-      "5) cat-crawl obsidian config get channel [fallback]",
-      "6) cat-crawl obsidian config set agent deepseek|gemini",
-      "7) cat-crawl obsidian config get agent [fallback]",
-      "8) cat-crawl obsidian pairing approve telegram <code>",
+      "1) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
+      '2) cat-crawl obsidian run "你的消息内容或文章链接"',
+      "3) cat-crawl obsidian config set channel telegram",
+      "4) cat-crawl obsidian config get channel [fallback]",
+      "5) cat-crawl obsidian config set agent deepseek|gemini|vertex",
+      "6) cat-crawl obsidian config get agent [fallback]",
+      "7) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),
   );
 }

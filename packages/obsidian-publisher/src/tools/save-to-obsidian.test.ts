@@ -164,6 +164,22 @@ https://example.com/frame.jpg`,
   assert.equal(description, "这段视频讲解了如何用提问式钩子提升英文写作开头的吸引力。");
 });
 
+test("resolveDescription should prefer generator even when candidate looks clean", async () => {
+  const description = await __test__.resolveDescription(
+    {
+      content_markdown: `福建省连江县晓澳镇的晓兴村，是一个有着千余户人家的富庶村。1987年12月，陈志出生在这里。`,
+    },
+    async () => {
+      return "中国籍诈骗犯陈志在美国被司法部扣押巨额比特币资产，引发对跨境执法与追赃的关注。";
+    },
+  );
+
+  assert.equal(
+    description,
+    "中国籍诈骗犯陈志在美国被司法部扣押巨额比特币资产，引发对跨境执法与追赃的关注。",
+  );
+});
+
 test("resolveDescription should keep rule-based candidate when generator fails", async () => {
   const description = await __test__.resolveDescription(
     {

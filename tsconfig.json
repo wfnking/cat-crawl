@@ -9,9 +9,6 @@
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "@cat-crawl/case-study": [
-        "packages/case-study/src/index.ts"
-      ],
       "@cat-crawl/obsidian-publisher": [
         "packages/obsidian-publisher/src/index.ts"
       ],

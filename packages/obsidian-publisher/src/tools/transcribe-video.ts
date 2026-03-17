@@ -98,6 +98,29 @@ function extractJsonPayload(raw: string): string {
   return normalized.slice(start, end + 1).trim();
 }
 
+function shouldTranslateToChinese(chapters: Array<{ rawText: string }>): boolean {
+  const sample = chapters
+    .map((chapter) => chapter.rawText || "")
+    .join(" ")
+    .slice(0, 8000);
+  if (!sample.trim()) {
+    return false;
+  }
+  const latinMatches = sample.match(/[A-Za-z]/g) || [];
+  const cjkMatches = sample.match(/[\u3400-\u9fff]/g) || [];
+  if (latinMatches.length === 0) {
+    return false;
+  }
+  if (cjkMatches.length === 0) {
+    return true;
+  }
+  return latinMatches.length > cjkMatches.length;
+}
+
+function pickGeminiSummarizeModel(translateToChinese: boolean): string {
+  return translateToChinese ? "gemini-3.1-pro-preview" : "gemini-3.1-flash-lite-preview";
+}
+
 async function buildTranscriptMarkdownWithModel(
   env: AppEnv,
   input: {
@@ -116,8 +139,16 @@ async function buildTranscriptMarkdownWithModel(
         `[tool:transcribe_video] chapter summarize batch start count=${chapters.length}`,
       );
       try {
+        const translateToChinese = shouldTranslateToChinese(chapters);
+        const geminiModel = pickGeminiSummarizeModel(translateToChinese);
+        const canUseGemini = Boolean(env.geminiApiKey);
+        logger.info(
+          `[tool:transcribe_video] chapter summarize mode translate_to_zh=${translateToChinese} provider=${canUseGemini ? "gemini" : env.aiSummarizeProvider || env.aiProvider || env.agent} model=${canUseGemini ? geminiModel : env.deepseekModel}`,
+        );
         const model = createModel(env, {
           task: "summarize",
+          provider: canUseGemini ? "gemini" : undefined,
+          model: canUseGemini ? geminiModel : undefined,
           maxTokens: 1600,
           timeout: 60000,
           temperature: 0,
@@ -320,6 +351,8 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
 
 export const __test__ = {
   buildTranscriptMarkdownWithModel,
+  shouldTranslateToChinese,
+  pickGeminiSummarizeModel,
   extractJsonPayload,
   extractHashtags,
   normalizeModelJsonText,

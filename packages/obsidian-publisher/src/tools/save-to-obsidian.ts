@@ -241,7 +241,7 @@ async function resolveDescription(
   }
 
   const candidate = extractDescriptionCandidate(input.content_markdown);
-  if (!shouldFallbackToGeneratedDescription(candidate) || !generateDescription) {
+  if (!generateDescription) {
     return candidate.slice(0, 200);
   }
 
@@ -254,7 +254,11 @@ async function resolveDescription(
   if (!generated) {
     return candidate.slice(0, 200);
   }
-  return cleanMarkdownParagraph(generated).slice(0, 200);
+  const cleaned = cleanMarkdownParagraph(generated).slice(0, 200);
+  if (cleaned) {
+    return cleaned;
+  }
+  return candidate.slice(0, 200);
 }
 
 function normalizeDateString(value: string): string {

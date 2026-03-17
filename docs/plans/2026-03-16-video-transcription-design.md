@@ -2,7 +2,8 @@
 
 **Date:** 2026-03-16
 
-**Goal:** Add a general video transcription pipeline to `cat-crawl` that can accept Douyin URLs, YouTube URLs, and local media files, then transcribe speech and save the result into Obsidian.
+**Goal:** Add a general video transcription pipeline to `cat-crawl` that can accept Douyin URLs,
+YouTube URLs, and local media files, then transcribe speech and save the result into Obsidian.
 
 ## Scope
 
@@ -39,7 +40,8 @@ The tool should accept a single `source` input and decide internally how to hand
 - YouTube URL -> YouTube adapter
 - Local path -> local file adapter
 
-This keeps the public interface stable while allowing source-specific extraction logic under the hood.
+This keeps the public interface stable while allowing source-specific extraction logic under the
+hood.
 
 ### Provider Strategy
 
@@ -150,7 +152,7 @@ New config group:
     },
     "gemini": {
       "apiKey": "AIza...",
-      "model": "gemini-3-flash-preview"
+      "model": "gemini-3.1-flash-lite-preview"
     }
   }
 }

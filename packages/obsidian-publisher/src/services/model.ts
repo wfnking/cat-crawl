@@ -4,12 +4,13 @@ import type { AppEnv } from "../config/env.js";
 import { createDeepSeekModel } from "./deepseek.js";
 import { createGeminiModel } from "./gemini-chat.js";
 
-export type AgentProvider = "deepseek" | "gemini";
+export type AgentProvider = "deepseek" | "gemini" | "vertex";
 export type ModelTask = "chat" | "classify" | "summarize";
 
 type ModelOptions = {
   provider?: AgentProvider;
   task?: ModelTask;
+  model?: string;
   maxTokens?: number;
   timeout?: number;
   temperature?: number;
@@ -55,15 +56,25 @@ function createProviderModel(
   env: AppEnv,
   options: Omit<ModelOptions, "provider" | "task">,
 ): InvokableModel {
-  if (provider === "gemini") {
-    const model = createGeminiModel(env, options);
+  if (provider === "gemini" || provider === "vertex") {
+    const model = createGeminiModel(env, {
+      model: options.model,
+      maxTokens: options.maxTokens,
+      timeout: options.timeout,
+      temperature: options.temperature,
+    });
     return {
       invoke(messages) {
         return model.invoke(messages);
       },
     };
   }
-  const model = createDeepSeekModel(env, options);
+  const model = createDeepSeekModel(env, {
+    model: options.model,
+    maxTokens: options.maxTokens,
+    timeout: options.timeout,
+    temperature: options.temperature,
+  });
   return {
     invoke(messages) {
       return model.invoke(messages);
@@ -73,12 +84,14 @@ function createProviderModel(
 
 export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableModel {
   const provider = resolveModelProvider(env, options);
-  if (provider === "gemini") {
+  if (provider === "gemini" || provider === "vertex") {
     logger.info(
-      `[model] task=${options.task || "default"} provider=gemini using=${env.geminiApiKeySource || "UNKNOWN"}`,
+      `[model] task=${options.task || "default"} provider=${provider} using=${env.geminiApiKeySource || "UNKNOWN"} model=${options.model || env.geminiModel}`,
     );
   } else {
-    logger.info(`[model] task=${options.task || "default"} provider=deepseek`);
+    logger.info(
+      `[model] task=${options.task || "default"} provider=deepseek model=${options.model || env.deepseekModel}`,
+    );
   }
   const model = createProviderModel(provider, env, options);
   return {
