@@ -53,7 +53,7 @@ type TranscribeVideoDeps = {
     sourceUrl: string;
     transcriptText: string;
     transcriptSrt?: string;
-  }) => Promise<{ markdown: string; description?: string }>;
+  }) => Promise<{ markdown: string; description?: string; tags?: string[] }>;
 };
 
 const logger = createLogger();
@@ -108,7 +108,7 @@ async function buildTranscriptMarkdownWithModel(
     transcriptText: string;
     transcriptSrt?: string;
   },
-): Promise<{ markdown: string; description?: string }> {
+): Promise<{ markdown: string; description?: string; tags?: string[] }> {
   logger.info(`[tool:transcribe_video] chapterize start source_url=${input.sourceUrl}`);
   const sourceMaterial = input.transcriptSrt?.trim() || input.transcriptText.trim();
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
@@ -140,10 +140,12 @@ async function buildTranscriptMarkdownWithModel(
           "把输入的 SRT/转写文本整理为可直接保存的 Markdown 文章。",
           "必须直接输出最终 Markdown，不要输出 JSON，不要输出解释，不要输出代码块。",
           "第一行必须是：[Description] 一两句话的视频摘要内容。",
-          `第二行必须是：- Source: ${input.sourceUrl}`,
+          "第二行必须是：[Tags] 3-5个相关标签，用逗号分隔，标签应该反映视频的主题和关键概念。",
+          `第三行必须是：- Source: ${input.sourceUrl}`,
           "按主题分章节，章节标题格式：## 标题",
+          "章节标题和第一段之间必须有一个空行。",
           "章节必须按内容大意和主题转折拆分，不要按固定时长或固定字数机械切分。",
-          "每章先写整理后的原文内容（原始语言），再写对应的中文翻译内容。",
+          "每章先写整理后的原文内容（原始语言），紧接着写对应的中文翻译内容，原文和译文之间不要加分隔线。",
           "整体文风参考微信公众号文章：结构清晰、节奏舒适、适合手机阅读。",
           "长内容需要拆成多章，避免整篇只有一章或一段。",
           "每个章节内部要自然分段，不要把整章写成一整段。",
@@ -167,13 +169,25 @@ async function buildTranscriptMarkdownWithModel(
       throw new Error("chapter summarize empty markdown");
     }
     let description: string | undefined;
+    let tags: string[] | undefined;
+    
     const descMatch = markdown.match(/^[ \t]*\[Description\][ \t]*[:：]?[ \t]*(.+)/i);
     if (descMatch) {
       description = descMatch[1].trim();
       markdown = markdown.replace(/^[ \t]*\[Description\].*\n?/i, "").trim();
     }
-    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length} has_description=${!!description}`);
-    return { markdown, description };
+    
+    const tagsMatch = markdown.match(/^[ \t]*\[Tags\][ \t]*[:：]?[ \t]*(.+)/i);
+    if (tagsMatch) {
+      tags = tagsMatch[1]
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+      markdown = markdown.replace(/^[ \t]*\[Tags\].*\n?/i, "").trim();
+    }
+    
+    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length} has_description=${!!description} tags=${tags?.length || 0}`);
+    return { markdown, description, tags };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     logger.error(`[tool:transcribe_video] chapterize failed msg=${detail}`);
@@ -248,13 +262,13 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
       const normalized = normalizeVideoTitle(rawTitle);
       const title = normalized.title;
-      const { markdown: transcriptMarkdown, description: transcriptDescription } =
+      const { markdown: transcriptMarkdown, description: transcriptDescription, tags: aiGeneratedTags } =
         await buildTranscriptMarkdown({
           sourceUrl: resolved.sourceUrl,
           transcriptText: transcription.text,
           transcriptSrt: transcription.srt,
         });
-      const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags]));
+      const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags, ...(aiGeneratedTags || [])]));
 
       if (!input.save) {
         logger.info(`[tool:transcribe_video] skip save title=${title}`);
@@ -264,8 +278,8 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           source_url: resolved.sourceUrl,
           provider_used: transcription.providerUsed,
           fallback_used: transcription.fallbackUsed,
-          published: resolved.adapter === "youtube" ? resolved.published : undefined,
-          author: resolved.adapter === "youtube" ? resolved.author : undefined,
+          published: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.published : undefined,
+          author: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.author : undefined,
           description: transcriptDescription,
           transcript_markdown: transcriptMarkdown,
         };
@@ -275,8 +289,8 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         title,
         source_url: resolved.sourceUrl,
         content_markdown: transcriptMarkdown,
-        published: resolved.adapter === "youtube" ? resolved.published : undefined,
-        author: resolved.adapter === "youtube" ? resolved.author : undefined,
+        published: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.published : undefined,
+        author: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.author : undefined,
         description: transcriptDescription,
         source: "Video",
         tags: noteTags,
@@ -293,8 +307,8 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         path: saveResult.path,
         tags: saveResult.tags,
         dynamic_folder: saveResult.dynamic_folder,
-        published: resolved.adapter === "youtube" ? resolved.published : undefined,
-        author: resolved.adapter === "youtube" ? resolved.author : undefined,
+        published: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.published : undefined,
+        author: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.author : undefined,
         description: transcriptDescription,
         provider_used: transcription.providerUsed,
         fallback_used: transcription.fallbackUsed,

@@ -18,6 +18,8 @@ type ExtractedDouyinVideo = {
   mediaUrl: string;
   mediaUrls?: string[];
   title?: string;
+  author?: string;
+  published?: string;
 };
 
 type DouyinPage = {
@@ -62,6 +64,8 @@ type ResolvedDouyinVideoSource = {
   sourceUrl: string;
   mediaPath: string;
   title?: string;
+  author?: string;
+  published?: string;
 };
 
 type DouyinExtractAttemptOptions = {
@@ -100,12 +104,38 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
       document.querySelector('meta[property="og:title"]')?.getAttribute("content")?.trim() ||
       document.title ||
       "";
+    
+    // Extract author from meta tags or page content
+    const author =
+      document.querySelector('meta[name="author"]')?.getAttribute("content")?.trim() ||
+      document.querySelector('meta[property="og:author"]')?.getAttribute("content")?.trim() ||
+      document.querySelector('[data-e2e="user-info"] .arnSiSbK')?.textContent?.trim() ||
+      document.querySelector('[class*="author"]')?.textContent?.trim() ||
+      undefined;
+    
+    // Extract published date from meta tags or page content
+    let published: string | undefined;
+    const publishedRaw =
+      document.querySelector('meta[property="article:published_time"]')?.getAttribute("content")?.trim() ||
+      document.querySelector('meta[name="publish_time"]')?.getAttribute("content")?.trim() ||
+      document.querySelector('[data-e2e="detail-video-publish-time"]')?.textContent?.trim() ||
+      document.querySelector('[class*="publish"]')?.textContent?.trim() ||
+      undefined;
+    
+    if (publishedRaw) {
+      // Parse "发布时间：2026-03-09 21:00" format
+      const match = publishedRaw.match(/(\d{4}-\d{2}-\d{2})/);
+      published = match ? match[1] : publishedRaw;
+    }
+    
     const mediaUrls = Array.from(new Set([ogVideo, ...sourceUrls, videoSource].filter(Boolean)));
     return {
       pageUrl: window.location.href,
       mediaUrl: mediaUrls[0] || "",
       mediaUrls,
       title,
+      author,
+      published,
     };
   });
 }
@@ -383,6 +413,8 @@ export async function resolveDouyinVideoSource(
     sourceUrl: extracted.pageUrl || sourceUrl,
     mediaPath: selectedPath,
     title: extracted.title?.trim() || undefined,
+    author: extracted.author?.trim() || undefined,
+    published: extracted.published?.trim() || undefined,
   };
 }
 
