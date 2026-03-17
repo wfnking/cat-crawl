@@ -1,4 +1,5 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { createDeepSeekModel } from "./deepseek.js";
 import { createGeminiModel } from "./gemini-chat.js";
@@ -17,6 +18,7 @@ type ModelOptions = {
 type InvokableModel = {
   invoke: (messages: BaseMessage[]) => Promise<{ content: unknown }>;
 };
+const logger = createLogger();
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): Promise<T> {
   if (!timeoutMs || timeoutMs <= 0) {
@@ -71,6 +73,13 @@ function createProviderModel(
 
 export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableModel {
   const provider = resolveModelProvider(env, options);
+  if (provider === "gemini") {
+    logger.info(
+      `[model] task=${options.task || "default"} provider=gemini using=${env.geminiApiKeySource || "UNKNOWN"}`,
+    );
+  } else {
+    logger.info(`[model] task=${options.task || "default"} provider=deepseek`);
+  }
   const model = createProviderModel(provider, env, options);
   return {
     invoke(messages) {

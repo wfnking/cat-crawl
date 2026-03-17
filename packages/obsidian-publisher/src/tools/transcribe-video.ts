@@ -240,6 +240,11 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       outputDir: "/tmp/cat-crawl-audio",
     });
     logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
+    if (env.geminiApiKey) {
+      logger.info(
+        `[tool:transcribe_video] transcription_gemini_auth using=${env.geminiApiKeySource || "UNKNOWN"} model=${env.geminiModel}`,
+      );
+    }
 
     const transcription = await transcribe(audioPath, {
       provider: input.provider || env.transcriptionProvider,

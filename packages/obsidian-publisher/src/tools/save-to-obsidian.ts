@@ -451,10 +451,15 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
     deps.generateDescription ||
     (env.geminiApiKey
       ? async (markdown: string) =>
-          generateDescriptionWithGemini(markdown, {
-            apiKey: env.geminiApiKey || "",
-            model: env.geminiModel,
-          })
+          {
+            logger.info(
+              `[tool:save_to_obsidian] description_model=gemini using=${env.geminiApiKeySource || "UNKNOWN"} model=${env.geminiModel}`,
+            );
+            return generateDescriptionWithGemini(markdown, {
+              apiKey: env.geminiApiKey || "",
+              model: env.geminiModel,
+            });
+          }
       : undefined);
 
   return tool(

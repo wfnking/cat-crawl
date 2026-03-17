@@ -55,6 +55,7 @@ test("loadEnv should expose default transcription config", () => {
     assert.equal(env.whisperCppLanguage, undefined);
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
     assert.equal(env.geminiApiKey, "gemini-demo-key");
+    assert.equal(env.geminiApiKeySource, "GEMINI_API_KEY");
     assert.equal(env.douyinCookie, undefined);
   } finally {
     setLocalConfigStoreForTest(null);
@@ -104,6 +105,7 @@ test("loadEnv should read transcription config from structured config", () => {
     assert.equal(env.whisperCppModelPath, "/models/ggml-large-v3.bin");
     assert.equal(env.whisperCppLanguage, "en");
     assert.equal(env.geminiApiKey, "agent-gemini-key");
+    assert.equal(env.geminiApiKeySource, "GEMINI_API_KEY");
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
     assert.equal(env.douyinCookie, "ttwid=test-cookie-value");
   } finally {
@@ -143,6 +145,51 @@ test("loadEnv should support ai namespace with task-level provider overrides", (
     assert.equal(env.aiSummarizeProvider, "gemini");
     assert.equal(env.deepseekApiKey, "deepseek-key");
     assert.equal(env.geminiApiKey, "gemini-key");
+    assert.equal(env.geminiApiKeySource, "GEMINI_API_KEY");
+  } finally {
+    setLocalConfigStoreForTest(null);
+    cleanup();
+  }
+});
+
+test("loadEnv should fallback to VERTEX_API_KEY when GEMINI_API_KEY is missing", () => {
+  const { homeDir, cleanup } = createTempHome();
+  const store = createLocalConfigStore({ homeDir });
+
+  setLocalConfigStoreForTest(store);
+  try {
+    const env = withEnv(
+      {
+        agent: "gemini",
+        GEMINI_API_KEY: undefined,
+        VERTEX_API_KEY: "vertex-demo-key",
+      },
+      () => loadEnv(),
+    );
+    assert.equal(env.geminiApiKey, "vertex-demo-key");
+    assert.equal(env.geminiApiKeySource, "VERTEX_API_KEY");
+  } finally {
+    setLocalConfigStoreForTest(null);
+    cleanup();
+  }
+});
+
+test("loadEnv should prefer GEMINI_API_KEY over VERTEX_API_KEY", () => {
+  const { homeDir, cleanup } = createTempHome();
+  const store = createLocalConfigStore({ homeDir });
+
+  setLocalConfigStoreForTest(store);
+  try {
+    const env = withEnv(
+      {
+        agent: "gemini",
+        GEMINI_API_KEY: "gemini-demo-key",
+        VERTEX_API_KEY: "vertex-demo-key",
+      },
+      () => loadEnv(),
+    );
+    assert.equal(env.geminiApiKey, "gemini-demo-key");
+    assert.equal(env.geminiApiKeySource, "GEMINI_API_KEY");
   } finally {
     setLocalConfigStoreForTest(null);
     cleanup();

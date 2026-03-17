@@ -25,6 +25,7 @@ export type AppEnv = {
   whisperCppModelPath?: string;
   whisperCppLanguage?: string;
   geminiApiKey?: string;
+  geminiApiKeySource?: "GEMINI_API_KEY" | "GOOGLE_API_KEY" | "VERTEX_API_KEY";
   geminiModel: string;
   douyinCookie?: string;
   feishuEnabled: boolean;
@@ -269,12 +270,41 @@ function getAiProvider(
   throw new Error(`Invalid ${name}: ${raw}`);
 }
 
+function readFirstRaw(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = readRaw(name);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readFirstRawWithSource(
+  names: Array<"GEMINI_API_KEY" | "GOOGLE_API_KEY" | "VERTEX_API_KEY">,
+): {
+  value?: string;
+  source?: "GEMINI_API_KEY" | "GOOGLE_API_KEY" | "VERTEX_API_KEY";
+} {
+  for (const name of names) {
+    const value = readRaw(name);
+    if (value) {
+      return {
+        value,
+        source: name,
+      };
+    }
+  }
+  return {};
+}
+
 export function loadEnv(): AppEnv {
   const legacyAgent = readRaw("agent")?.toLowerCase();
   const aiProvider = getAiProvider("AI_PROVIDER") || (legacyAgent === "gemini" ? "gemini" : "deepseek");
   const aiChatProvider = getAiProvider("AI_CHAT_PROVIDER");
   const aiClassifyProvider = getAiProvider("AI_CLASSIFY_PROVIDER");
   const aiSummarizeProvider = getAiProvider("AI_SUMMARIZE_PROVIDER");
+  const geminiAuth = readFirstRawWithSource(["GEMINI_API_KEY", "GOOGLE_API_KEY", "VERTEX_API_KEY"]);
   const needDeepseekApiKey = aiProvider === "deepseek" ||
     aiChatProvider === "deepseek" ||
     aiClassifyProvider === "deepseek" ||
@@ -296,7 +326,8 @@ export function loadEnv(): AppEnv {
     whisperCppBin: readRaw("WHISPER_CPP_BIN") || "whisper-cli",
     whisperCppModelPath: readRaw("WHISPER_CPP_MODEL_PATH") || undefined,
     whisperCppLanguage: readRaw("WHISPER_CPP_LANGUAGE") || undefined,
-    geminiApiKey: readRaw("GEMINI_API_KEY") || undefined,
+    geminiApiKey: geminiAuth.value || undefined,
+    geminiApiKeySource: geminiAuth.source,
     geminiModel: readRaw("GEMINI_MODEL") || "gemini-3-flash-preview",
     douyinCookie: readRaw("DOUYIN_COOKIE") || undefined,
     feishuEnabled: getBoolean("FEISHU_ENABLED", false),
