@@ -1,4 +1,4 @@
-import { runWechatAgent } from "../agent/run-wechat-agent.js";
+import { runAgent } from "../agent/run-wechat-agent.js";
 import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { ensureTelegramPairingCodeForUser, isTelegramUserApproved } from "../config/telegram-pairing.js";
@@ -244,7 +244,7 @@ async function handleIncomingTextMessage(
       await sendTypingOnce(botToken, chatId);
     }
 
-    const result = await runWechatAgent(text, {
+    const result = await runAgent(text, {
       context: {
         channel: "telegram",
         senderId: senderId ? String(senderId) : undefined,

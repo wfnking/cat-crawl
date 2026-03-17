@@ -1,4 +1,4 @@
-export { runWechatAgent } from "./agent/run-wechat-agent.js";
+export { runAgent, runWechatAgent } from "./agent/run-wechat-agent.js";
 export { startDiscordBridge } from "./channels/discord-bridge.js";
 export { startFeishuBridge } from "./channels/feishu-bridge.js";
 export { startTelegramPollingChannel } from "./channels/telegram-webhook.js";

@@ -6,7 +6,7 @@ import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
 import { pickPolicyFolder } from "./folder-policy.js";
 import { loadEnv } from "../config/env.js";
 import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
-import { createAgentModel } from "../services/model.js";
+import { createModel } from "../services/model.js";
 import { selectVideoSourceAdapter } from "../services/video-sources/index.js";
 import { crawlWebArticleTool } from "../tools/crawl-web-article.js";
 import { createQuerySuccessHistoryTool, type QuerySuccessHistoryResult } from "../tools/query-success-history.js";
@@ -145,7 +145,8 @@ function formatHistoryReply(result: QuerySuccessHistoryResult): string {
 
 async function detectHistoryIntent(userInput: string, env: ReturnType<typeof loadEnv>): Promise<HistoryIntent> {
   const fallback = parseHistoryIntentFromText(userInput);
-  const classifyModel = createAgentModel(env, {
+  const classifyModel = createModel(env, {
+    task: "classify",
     maxTokens: 120,
     timeout: 15000,
     temperature: 0,
@@ -185,7 +186,8 @@ async function chatForNonWechatInput(
     return buildCapabilityReply();
   }
 
-  const chatModel = createAgentModel(env, {
+  const chatModel = createModel(env, {
+    task: "chat",
     maxTokens: 300,
     timeout: 25000,
   });
@@ -327,7 +329,7 @@ function persistSuccessHistory(
   }
 }
 
-export async function runWechatAgent(
+export async function runAgent(
   userInput: string,
   options?: AgentRunOptions,
   deps: AgentDeps = {},
@@ -470,7 +472,8 @@ export async function runWechatAgent(
       message: "正在根据文章内容选择目录分类...",
     });
     logger.info("[agent] preparing summarized context for dynamic folder classification");
-    const classifierModel = createAgentModel(env, {
+    const classifierModel = createModel(env, {
+      task: "classify",
       maxTokens: 500,
       timeout: 30000,
     });
@@ -536,4 +539,12 @@ export async function runWechatAgent(
     reply: formatSuccessReply("文章", saveResult),
     usedTools,
   };
+}
+
+export async function runWechatAgent(
+  userInput: string,
+  options?: AgentRunOptions,
+  deps: AgentDeps = {},
+): Promise<AgentRunResult> {
+  return runAgent(userInput, options, deps);
 }

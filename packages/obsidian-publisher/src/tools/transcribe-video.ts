@@ -4,7 +4,7 @@ import { createLogger } from "@cat-crawl/core";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { extractAudioFromVideo } from "../services/media/extract-audio.js";
-import { createAgentModel } from "../services/model.js";
+import { createModel } from "../services/model.js";
 import { transcribeAudio } from "../services/transcription/index.js";
 import { createReadableVideoMarkdown } from "../services/video-chapters.js";
 import { resolveDouyinVideoSource } from "../services/video-sources/douyin.js";
@@ -116,7 +116,8 @@ async function buildTranscriptMarkdownWithModel(
         `[tool:transcribe_video] chapter summarize batch start count=${chapters.length}`,
       );
       try {
-        const model = createAgentModel(env, {
+        const model = createModel(env, {
+          task: "summarize",
           maxTokens: 1600,
           timeout: 60000,
           temperature: 0,

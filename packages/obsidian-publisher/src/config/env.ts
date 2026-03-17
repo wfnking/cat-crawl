@@ -12,6 +12,10 @@ try {
 
 export type AppEnv = {
   agent: "deepseek" | "gemini";
+  aiProvider: "deepseek" | "gemini";
+  aiChatProvider?: "deepseek" | "gemini";
+  aiClassifyProvider?: "deepseek" | "gemini";
+  aiSummarizeProvider?: "deepseek" | "gemini";
   deepseekApiKey?: string;
   deepseekBaseUrl: string;
   deepseekModel: string;
@@ -59,14 +63,41 @@ function readFromPath(root: Record<string, unknown>, path: string[]): unknown {
   return current;
 }
 
+function readStringFromPaths(root: Record<string, unknown>, paths: string[][]): string | undefined {
+  for (const path of paths) {
+    const value = readFromPath(root, path);
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
 function readFromStructuredConfig(name: string): string | undefined {
   const raw = getLocalConfigStore().readRaw();
+  if (name === "agent" || name === "AI_PROVIDER") {
+    return readStringFromPaths(raw, [["ai", "provider"], ["agent", "provider"]]);
+  }
+  if (name === "AI_CHAT_PROVIDER") {
+    return readStringFromPaths(raw, [["ai", "tasks", "chat", "provider"]]);
+  }
+  if (name === "AI_CLASSIFY_PROVIDER") {
+    return readStringFromPaths(raw, [["ai", "tasks", "classify", "provider"]]);
+  }
+  if (name === "AI_SUMMARIZE_PROVIDER") {
+    return readStringFromPaths(raw, [["ai", "tasks", "summarize", "provider"]]);
+  }
+  if (name === "DEEPSEEK_API_KEY") {
+    return readStringFromPaths(raw, [["ai", "deepseek", "apiKey"], ["agent", "deepseek", "apiKey"]]);
+  }
+  if (name === "DEEPSEEK_BASE_URL") {
+    return readStringFromPaths(raw, [["ai", "deepseek", "baseUrl"], ["agent", "deepseek", "baseUrl"]]);
+  }
+  if (name === "DEEPSEEK_MODEL") {
+    return readStringFromPaths(raw, [["ai", "deepseek", "model"], ["agent", "deepseek", "model"]]);
+  }
   const mappings: Record<string, string[]> = {
-    agent: ["agent", "provider"],
     channel: ["channel"],
-    DEEPSEEK_API_KEY: ["agent", "deepseek", "apiKey"],
-    DEEPSEEK_BASE_URL: ["agent", "deepseek", "baseUrl"],
-    DEEPSEEK_MODEL: ["agent", "deepseek", "model"],
     TRANSCRIPTION_PROVIDER: ["transcription", "provider"],
     TRANSCRIPTION_FALLBACK_PROVIDER: ["transcription", "fallbackProvider"],
     WHISPER_CPP_BIN: ["transcription", "whisperCpp", "bin"],
@@ -99,10 +130,12 @@ function readFromStructuredConfig(name: string): string | undefined {
     const candidatePaths =
       name === "GEMINI_API_KEY"
         ? [
+            ["ai", "gemini", "apiKey"],
             ["agent", "gemini", "apiKey"],
             ["transcription", "gemini", "apiKey"],
           ]
         : [
+            ["ai", "gemini", "model"],
             ["agent", "gemini", "model"],
             ["transcription", "gemini", "model"],
           ];
@@ -222,12 +255,37 @@ function getTranscriptionProvider(
   throw new Error(`Invalid ${name}: ${raw}`);
 }
 
+function getAiProvider(
+  name: "AI_PROVIDER" | "AI_CHAT_PROVIDER" | "AI_CLASSIFY_PROVIDER" | "AI_SUMMARIZE_PROVIDER",
+  defaultValue?: "deepseek" | "gemini",
+): "deepseek" | "gemini" | undefined {
+  const raw = readRaw(name)?.toLowerCase();
+  if (!raw) {
+    return defaultValue;
+  }
+  if (raw === "deepseek" || raw === "gemini") {
+    return raw;
+  }
+  throw new Error(`Invalid ${name}: ${raw}`);
+}
+
 export function loadEnv(): AppEnv {
-  const rawAgent = readRaw("agent")?.toLowerCase();
-  const agent = rawAgent === "gemini" ? "gemini" : "deepseek";
+  const legacyAgent = readRaw("agent")?.toLowerCase();
+  const aiProvider = getAiProvider("AI_PROVIDER") || (legacyAgent === "gemini" ? "gemini" : "deepseek");
+  const aiChatProvider = getAiProvider("AI_CHAT_PROVIDER");
+  const aiClassifyProvider = getAiProvider("AI_CLASSIFY_PROVIDER");
+  const aiSummarizeProvider = getAiProvider("AI_SUMMARIZE_PROVIDER");
+  const needDeepseekApiKey = aiProvider === "deepseek" ||
+    aiChatProvider === "deepseek" ||
+    aiClassifyProvider === "deepseek" ||
+    aiSummarizeProvider === "deepseek";
   return {
-    agent,
-    deepseekApiKey: agent === "deepseek" ? mustGet("DEEPSEEK_API_KEY") : undefined,
+    agent: aiProvider,
+    aiProvider,
+    aiChatProvider,
+    aiClassifyProvider,
+    aiSummarizeProvider,
+    deepseekApiKey: needDeepseekApiKey ? mustGet("DEEPSEEK_API_KEY") : readRaw("DEEPSEEK_API_KEY") || undefined,
     deepseekBaseUrl: readRaw("DEEPSEEK_BASE_URL") || "https://api.deepseek.com",
     deepseekModel: readRaw("DEEPSEEK_MODEL") || "deepseek-chat",
     transcriptionProvider: getTranscriptionProvider("TRANSCRIPTION_PROVIDER", "whisper_cpp") || "whisper_cpp",

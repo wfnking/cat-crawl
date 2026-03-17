@@ -153,6 +153,42 @@ cat-crawl obsidian config get agent deepseek
 }
 ```
 
+也支持统一的 `ai` 命名空间（用于更灵活地切换 provider）：
+
+```json
+{
+  "ai": {
+    "provider": "gemini",
+    "tasks": {
+      "chat": {
+        "provider": "gemini"
+      },
+      "classify": {
+        "provider": "deepseek"
+      },
+      "summarize": {
+        "provider": "gemini"
+      }
+    },
+    "deepseek": {
+      "apiKey": "sk-xxx",
+      "baseUrl": "https://api.deepseek.com",
+      "model": "deepseek-chat"
+    },
+    "gemini": {
+      "apiKey": "gemini-key",
+      "model": "gemini-3-flash-preview"
+    }
+  }
+}
+```
+
+说明：
+
+- 若同时存在 `ai.provider` 与 `agent.provider`，优先使用 `ai.provider`。
+- 若配置了 `ai.tasks.<task>.provider`，该任务会覆盖默认 provider。
+- 旧的 `agent.*` 配置继续兼容。
+
 ### Feishu
 
 ```bash

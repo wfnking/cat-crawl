@@ -45,6 +45,10 @@ test("loadEnv should expose default transcription config", () => {
   try {
     const env = withEnv({ agent: "gemini", GEMINI_API_KEY: "gemini-demo-key" }, () => loadEnv());
     assert.equal(env.agent, "gemini");
+    assert.equal(env.aiProvider, "gemini");
+    assert.equal(env.aiChatProvider, undefined);
+    assert.equal(env.aiClassifyProvider, undefined);
+    assert.equal(env.aiSummarizeProvider, undefined);
     assert.equal(env.transcriptionProvider, "whisper_cpp");
     assert.equal(env.transcriptionFallbackProvider, "gemini");
     assert.equal(env.whisperCppBin, "whisper-cli");
@@ -93,6 +97,7 @@ test("loadEnv should read transcription config from structured config", () => {
   try {
     const env = loadEnv();
     assert.equal(env.agent, "gemini");
+    assert.equal(env.aiProvider, "gemini");
     assert.equal(env.transcriptionProvider, "gemini");
     assert.equal(env.transcriptionFallbackProvider, "whisper_cpp");
     assert.equal(env.whisperCppBin, "/opt/homebrew/bin/whisper-cli");
@@ -101,6 +106,43 @@ test("loadEnv should read transcription config from structured config", () => {
     assert.equal(env.geminiApiKey, "agent-gemini-key");
     assert.equal(env.geminiModel, "gemini-3-flash-preview");
     assert.equal(env.douyinCookie, "ttwid=test-cookie-value");
+  } finally {
+    setLocalConfigStoreForTest(null);
+    cleanup();
+  }
+});
+
+test("loadEnv should support ai namespace with task-level provider overrides", () => {
+  const { homeDir, cleanup } = createTempHome();
+  const store = createLocalConfigStore({ homeDir });
+  store.writeRaw({
+    ai: {
+      provider: "gemini",
+      tasks: {
+        classify: { provider: "deepseek" },
+        summarize: { provider: "gemini" },
+      },
+      deepseek: {
+        apiKey: "deepseek-key",
+        model: "deepseek-chat",
+      },
+      gemini: {
+        apiKey: "gemini-key",
+        model: "gemini-3-flash-preview",
+      },
+    },
+  });
+
+  setLocalConfigStoreForTest(store);
+  try {
+    const env = loadEnv();
+    assert.equal(env.agent, "gemini");
+    assert.equal(env.aiProvider, "gemini");
+    assert.equal(env.aiChatProvider, undefined);
+    assert.equal(env.aiClassifyProvider, "deepseek");
+    assert.equal(env.aiSummarizeProvider, "gemini");
+    assert.equal(env.deepseekApiKey, "deepseek-key");
+    assert.equal(env.geminiApiKey, "gemini-key");
   } finally {
     setLocalConfigStoreForTest(null);
     cleanup();

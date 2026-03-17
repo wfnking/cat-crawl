@@ -1,4 +1,4 @@
-import { runWechatAgent } from "../agent/run-wechat-agent.js";
+import { runAgent } from "../agent/run-wechat-agent.js";
 import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
@@ -211,7 +211,7 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
       const typingState = await addTypingIndicator(client, messageId);
       let replyText = "";
       try {
-        const result = await runWechatAgent(text, {
+        const result = await runAgent(text, {
           context: {
             channel: "feishu",
             senderId: senderOpenId,
@@ -221,7 +221,7 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
         });
         replyText = result.reply;
       } catch (error) {
-        logger.error(`[feishu] runWechatAgent failed: ${formatError(error)}`);
+        logger.error(`[feishu] runAgent failed: ${formatError(error)}`);
         try {
           await sendToTarget(target, toUserFacingErrorMessage(error));
         } catch (sendError) {

@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Partials, type Message } from "discord.js";
 import { createLogger } from "@cat-crawl/core";
-import { runWechatAgent } from "../agent/run-wechat-agent.js";
+import { runAgent } from "../agent/run-wechat-agent.js";
 import type { AppEnv } from "../config/env.js";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
@@ -101,7 +101,7 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
     }
 
     try {
-      const result = await runWechatAgent(text, {
+      const result = await runAgent(text, {
         context: {
           channel: "discord",
           senderId: message.author.id,
