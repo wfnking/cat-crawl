@@ -40,6 +40,7 @@ type SaveToolResult = {
 type TranscribeVideoToolResult = SaveToolResult & {
   title: string;
   source_url: string;
+  published?: string;
   transcript_markdown: string;
   provider_used: "whisper_cpp";
   fallback_used: boolean;
@@ -423,7 +424,7 @@ export async function runAgent(
       {
         title: transcribeResult.title,
         author: null,
-        published: null,
+        published: transcribeResult.published ?? null,
         source_url: transcribeResult.source_url,
         content_markdown: transcribeResult.transcript_markdown,
       },

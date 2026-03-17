@@ -26,6 +26,8 @@ type SaveResult = {
   saved?: boolean;
   vault?: string;
   path?: string;
+  author?: string;
+  published?: string;
   tags?: string[];
   dynamic_folder?: string;
 };
@@ -242,6 +244,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           source_url: resolved.sourceUrl,
           provider_used: transcription.providerUsed,
           fallback_used: transcription.fallbackUsed,
+          published: resolved.adapter === "youtube" ? resolved.published : undefined,
           transcript_markdown: transcriptMarkdown,
         };
       }
@@ -250,6 +253,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         title,
         source_url: resolved.sourceUrl,
         content_markdown: transcriptMarkdown,
+        published: resolved.adapter === "youtube" ? resolved.published : undefined,
         source: "Video",
         tags: noteTags,
       });
@@ -265,6 +269,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         path: saveResult.path,
         tags: saveResult.tags,
         dynamic_folder: saveResult.dynamic_folder,
+        published: resolved.adapter === "youtube" ? resolved.published : undefined,
         provider_used: transcription.providerUsed,
         fallback_used: transcription.fallbackUsed,
         transcript_markdown: transcriptMarkdown,

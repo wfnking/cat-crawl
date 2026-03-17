@@ -6,7 +6,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize } from "node:pa
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
-import { generateDescriptionWithGemini } from "../services/description/gemini.js";
+import { generateDescriptionWithModel } from "../services/description/model.js";
 import { sanitizeFileName } from "../utils/text.js";
 
 const execFileAsync = promisify(execFile);
@@ -452,15 +452,31 @@ function resolveVaultNotePath(vaultPath: string, notePath: string): string {
 export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps = {}) {
   const generateDescription =
     deps.generateDescription ||
-    (env.geminiApiKey
-      ? async (markdown: string) => {
-          logger.info(`[tool:save_to_obsidian] description_model=gemini model=${env.geminiModel}`);
-          return generateDescriptionWithGemini(markdown, {
-            apiKey: env.geminiApiKey || "",
-            model: env.geminiModel,
-          });
-        }
-      : undefined);
+    (async (markdown: string) => {
+      const startedAt = Date.now();
+      const timeoutMs = 20_000;
+      const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
+      const model = provider === "deepseek" ? env.deepseekModel : env.geminiModel;
+      logger.info(
+        `[tool:save_to_obsidian] description_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
+      );
+      try {
+        const description = await generateDescriptionWithModel(markdown, {
+          env,
+          provider,
+          model,
+          timeoutMs,
+        });
+        logger.info(
+          `[tool:save_to_obsidian] description_done chars=${description.length} elapsed_ms=${Date.now() - startedAt}`,
+        );
+        return description;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.warn(`[tool:save_to_obsidian] description_failed msg=${msg}`);
+        throw error;
+      }
+    });
 
   return tool(
     async (input) => {
