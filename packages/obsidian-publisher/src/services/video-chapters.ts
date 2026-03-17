@@ -164,33 +164,6 @@ function chunkTranscriptSegments(segments: TranscriptSegment[]): TranscriptSegme
   return groups;
 }
 
-function paragraphize(text: string): string {
-  const normalized = normalizeTranscriptText(text);
-  if (!normalized) {
-    return "";
-  }
-  const sentences = normalized
-    .split(/(?<=[。！？.!?])\s+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const paragraphs: string[] = [];
-  let current = "";
-  for (const sentence of sentences) {
-    const candidate = current ? `${current} ${sentence}` : sentence;
-    if (candidate.length > 180 && current) {
-      paragraphs.push(current);
-      current = sentence;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) {
-    paragraphs.push(current);
-  }
-  return paragraphs.join("\n\n");
-}
-
 function fallbackChapterTitle(index: number): string {
   return `章节 ${index + 1}`;
 }
@@ -215,31 +188,68 @@ function shouldRenderTranslation(chapter: VideoChapter): boolean {
   return true;
 }
 
+function appendChapterBody(lines: string[], chapter: VideoChapter, renderTranslate: boolean): void {
+  if (renderTranslate && chapter.translatedContent) {
+    const origParas = chapter.content.trim().split(/\n\n+/);
+    const transParas = chapter.translatedContent.trim().split(/\n\n+/);
+
+    if (origParas.length === transParas.length) {
+      for (let i = 0; i < origParas.length; i++) {
+        lines.push(origParas[i]!);
+        lines.push(transParas[i]!);
+        lines.push("");
+      }
+      return;
+    }
+
+    lines.push(chapter.content.trim());
+    lines.push("");
+    lines.push(chapter.translatedContent.trim());
+    lines.push("");
+    return;
+  }
+
+  lines.push(chapter.content.trim());
+  lines.push("");
+}
+
 export function buildChapterMarkdown(sourceUrl: string, chapters: VideoChapter[]): string {
   const lines: string[] = [`- Source: ${sourceUrl}`, ""];
   for (const chapter of chapters) {
+    const renderTranslate = shouldRenderTranslation(chapter) && Boolean(chapter.translatedContent?.trim());
+    const displayTitle = renderTranslate && chapter.translatedTitle?.trim()
+      ? `${chapter.title} / ${chapter.translatedTitle.trim()}`
+      : chapter.title;
+
     if (isYouTubeUrl(sourceUrl)) {
-      lines.push(`## [${chapter.title}](${buildYouTubeTimestampUrl(sourceUrl, chapter.startSeconds)})`);
+      lines.push(`## [${displayTitle}](${buildYouTubeTimestampUrl(sourceUrl, chapter.startSeconds)})`);
     } else {
-      lines.push(`## ${chapter.title}（${formatSecondsForDisplay(chapter.startSeconds)}）`);
+      lines.push(`## ${displayTitle}（${formatSecondsForDisplay(chapter.startSeconds)}）`);
     }
     lines.push("");
-    lines.push(chapter.content.trim());
+    appendChapterBody(lines, chapter, renderTranslate);
+  }
+  return lines.join("\n").trim();
+}
+
+function buildUntimedChapterMarkdown(sourceUrl: string, chapters: VideoChapter[]): string {
+  const lines: string[] = [`- Source: ${sourceUrl}`, ""];
+  for (const chapter of chapters) {
+    const renderTranslate = shouldRenderTranslation(chapter) && Boolean(chapter.translatedContent?.trim());
+    const displayTitle =
+      renderTranslate && chapter.translatedTitle?.trim()
+        ? `${chapter.title} / ${chapter.translatedTitle.trim()}`
+        : chapter.title;
+
+    lines.push(`## ${displayTitle}`);
     lines.push("");
-    if (shouldRenderTranslation(chapter)) {
-      const translatedTitle = chapter.translatedTitle?.trim() || "";
-      const translatedContent = chapter.translatedContent?.trim() || "";
-      lines.push(`## ${translatedTitle}`);
-      lines.push("");
-      lines.push(translatedContent);
-      lines.push("");
-    }
+    appendChapterBody(lines, chapter, renderTranslate);
   }
   return lines.join("\n").trim();
 }
 
 function buildPlainTranscriptMarkdown(sourceUrl: string, transcriptText: string): string {
-  return [`- Source: ${sourceUrl}`, "", paragraphize(transcriptText)].join("\n").trim();
+  return [`- Source: ${sourceUrl}`, "", transcriptText.trim()].join("\n").trim();
 }
 
 function buildCandidateChapters(groups: TranscriptSegment[][]): VideoChapterCandidate[] {
@@ -301,61 +311,124 @@ export async function createReadableVideoMarkdown(
 ): Promise<string> {
   const segments = input.transcriptSrt ? parseSrt(input.transcriptSrt) : [];
   if (segments.length === 0) {
-    return buildPlainTranscriptMarkdown(input.sourceUrl, input.transcriptText);
-  }
+    if (input.summarizeChapters) {
+      const rawText = input.transcriptText.trim();
+      if (rawText) {
+        const untimedCandidates: VideoChapterCandidate[] = [
+          {
+            index: 0,
+            startSeconds: 0,
+            endSeconds: 0,
+            rawText,
+            segments: [
+              {
+                index: 1,
+                startSeconds: 0,
+                endSeconds: 0,
+                text: rawText,
+              },
+            ],
+          },
+        ];
+        const summarized = await input.summarizeChapters({
+          sourceUrl: input.sourceUrl,
+          chapters: untimedCandidates,
+        });
+        if (summarized.length === 0) {
+          throw new Error("chapter summarize returned empty result");
+        }
 
-  const groups = chunkTranscriptSegments(segments);
-  const candidates = coalesceCandidateChapters(buildCandidateChapters(groups));
-  const chapters: VideoChapter[] = [];
+        const untimedChapters: VideoChapter[] = [];
+        const canUseDirectSummaries = summarized.length !== untimedCandidates.length;
 
-  if (input.summarizeChapters) {
-    try {
-      const summarized = await input.summarizeChapters({
-        sourceUrl: input.sourceUrl,
-        chapters: candidates,
-      });
-
-      if (summarized.length > 0) {
-        const canUseDirectSummaries = summarized.length !== candidates.length;
         if (canUseDirectSummaries) {
           for (const [index, summary] of summarized.entries()) {
-            chapters.push({
+            const fallback = untimedCandidates[Math.min(index, untimedCandidates.length - 1)];
+            untimedChapters.push({
               title: summary?.title?.trim() || fallbackChapterTitle(index),
-              startSeconds:
-                summary?.startSeconds ??
-                candidates[Math.min(index, candidates.length - 1)]?.startSeconds ??
-                0,
-              content:
-                paragraphize(summary?.body || "") ||
-                paragraphize(candidates[Math.min(index, candidates.length - 1)]?.rawText || ""),
+              startSeconds: summary?.startSeconds ?? fallback?.startSeconds ?? 0,
+              content: summary?.body?.trim() || normalizeTranscriptText(fallback?.rawText || ""),
               translatedTitle: summary?.translatedTitle?.trim() || undefined,
-              translatedContent: paragraphize(summary?.translatedBody || "") || undefined,
+              translatedContent: summary?.translatedBody?.trim() || undefined,
             });
           }
         } else {
-          for (const [index, candidate] of candidates.entries()) {
+          for (const [index, candidate] of untimedCandidates.entries()) {
             const summary = summarized[index];
-            chapters.push({
+            untimedChapters.push({
               title: summary?.title?.trim() || fallbackChapterTitle(index),
               startSeconds: summary?.startSeconds ?? candidate.startSeconds,
-              content:
-                paragraphize(summary?.body || candidate.rawText) || paragraphize(candidate.rawText),
+              content: summary?.body?.trim() || normalizeTranscriptText(candidate.rawText),
               translatedTitle: summary?.translatedTitle?.trim() || undefined,
-              translatedContent: paragraphize(summary?.translatedBody || "") || undefined,
+              translatedContent: summary?.translatedBody?.trim() || undefined,
             });
           }
         }
-        return buildChapterMarkdown(input.sourceUrl, chapters);
+
+        return buildUntimedChapterMarkdown(input.sourceUrl, untimedChapters);
       }
-    } catch {
-      // fallback to deterministic chunk handling below
     }
+    return buildPlainTranscriptMarkdown(input.sourceUrl, input.transcriptText);
+  }
+
+  const candidates = input.summarizeChapters
+    ? [
+        {
+          index: 0,
+          startSeconds: segments[0]?.startSeconds || 0,
+          endSeconds: segments[segments.length - 1]?.endSeconds || segments[0]?.startSeconds || 0,
+          rawText: normalizeTranscriptText(segments.map((segment) => segment.text).join(" ")),
+          segments,
+        },
+      ]
+    : coalesceCandidateChapters(buildCandidateChapters(chunkTranscriptSegments(segments)));
+  const chapters: VideoChapter[] = [];
+
+  if (input.summarizeChapters) {
+    const summarized = await input.summarizeChapters({
+      sourceUrl: input.sourceUrl,
+      chapters: candidates,
+    });
+    if (summarized.length === 0) {
+      throw new Error("chapter summarize returned empty result");
+    }
+
+    const canUseDirectSummaries = summarized.length !== candidates.length;
+    if (canUseDirectSummaries) {
+      for (const [index, summary] of summarized.entries()) {
+        chapters.push({
+          title: summary?.title?.trim() || fallbackChapterTitle(index),
+          startSeconds:
+            summary?.startSeconds ??
+            candidates[Math.min(index, candidates.length - 1)]?.startSeconds ??
+            0,
+          content:
+            summary?.body?.trim() ||
+            normalizeTranscriptText(candidates[Math.min(index, candidates.length - 1)]?.rawText || ""),
+          translatedTitle: summary?.translatedTitle?.trim() || undefined,
+          translatedContent: summary?.translatedBody?.trim() || undefined,
+        });
+      }
+    } else {
+      for (const [index, candidate] of candidates.entries()) {
+        const summary = summarized[index];
+        chapters.push({
+          title: summary?.title?.trim() || fallbackChapterTitle(index),
+          startSeconds: summary?.startSeconds ?? candidate.startSeconds,
+          content:
+            summary?.body?.trim() || normalizeTranscriptText(candidate.rawText),
+          translatedTitle: summary?.translatedTitle?.trim() || undefined,
+          translatedContent: summary?.translatedBody?.trim() || undefined,
+        });
+      }
+    }
+    return buildChapterMarkdown(input.sourceUrl, chapters);
   }
 
   for (const candidate of candidates) {
     const { index, startSeconds, endSeconds, rawText, segments: chapterSegments } = candidate;
     let title = fallbackChapterTitle(index);
-    let content = paragraphize(rawText);
+    let content = normalizeTranscriptText(rawText);
 
     if (input.summarizeChapter) {
       try {
@@ -368,9 +441,9 @@ export async function createReadableVideoMarkdown(
           segments: chapterSegments,
         });
         title = result.title.trim() || title;
-        content = paragraphize(result.body) || content;
+        content = result.body.trim() || content;
         const translatedTitle = result.translatedTitle?.trim();
-        const translatedContent = paragraphize(result.translatedBody || "");
+        const translatedContent = result.translatedBody?.trim();
         chapters.push({
           title,
           startSeconds,

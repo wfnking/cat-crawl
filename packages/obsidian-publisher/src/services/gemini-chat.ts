@@ -13,7 +13,7 @@ export function createGeminiModel(
   options: GeminiModelOptions = {},
 ): ChatGoogleGenerativeAI {
   return new ChatGoogleGenerativeAI({
-    apiKey: env.geminiApiKey || "",
+    apiKey: env.geminiApiKey || env.googleApiKey || env.vertexApiKey || "",
     model: options.model || env.geminiModel,
     temperature: options.temperature ?? 0,
     maxOutputTokens: options.maxTokens,

@@ -3,6 +3,7 @@ import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { createDeepSeekModel } from "./deepseek.js";
 import { createGeminiModel } from "./gemini-chat.js";
+import { createVertexModel } from "./vertex-chat.js";
 
 export type AgentProvider = "deepseek" | "gemini" | "vertex";
 export type ModelTask = "chat" | "classify" | "summarize";
@@ -35,7 +36,10 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): Promise<T> {
   ]);
 }
 
-function resolveModelProvider(env: AppEnv, options: Pick<ModelOptions, "provider" | "task">): AgentProvider {
+function resolveModelProvider(
+  env: AppEnv,
+  options: Pick<ModelOptions, "provider" | "task">,
+): AgentProvider {
   if (options.provider) {
     return options.provider;
   }
@@ -56,8 +60,21 @@ function createProviderModel(
   env: AppEnv,
   options: Omit<ModelOptions, "provider" | "task">,
 ): InvokableModel {
-  if (provider === "gemini" || provider === "vertex") {
+  if (provider === "gemini") {
     const model = createGeminiModel(env, {
+      model: options.model,
+      maxTokens: options.maxTokens,
+      timeout: options.timeout,
+      temperature: options.temperature,
+    });
+    return {
+      invoke(messages) {
+        return model.invoke(messages);
+      },
+    };
+  }
+  if (provider === "vertex") {
+    const model = createVertexModel(env, {
       model: options.model,
       maxTokens: options.maxTokens,
       timeout: options.timeout,
@@ -84,9 +101,14 @@ function createProviderModel(
 
 export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableModel {
   const provider = resolveModelProvider(env, options);
-  if (provider === "gemini" || provider === "vertex") {
+  if (provider === "gemini") {
     logger.info(
-      `[model] task=${options.task || "default"} provider=${provider} using=${env.geminiApiKeySource || "UNKNOWN"} model=${options.model || env.geminiModel}`,
+      `[model] task=${options.task || "default"} provider=gemini using=${env.geminiApiKeySource || "none"} model=${options.model || env.geminiModel}`,
+    );
+  } else if (provider === "vertex") {
+    const location = env.vertexLocation || "default";
+    logger.info(
+      `[model] task=${options.task || "default"} provider=vertex using=${env.vertexApiKeySource || "none"} model=${options.model || env.geminiModel} location=${location}`,
     );
   } else {
     logger.info(

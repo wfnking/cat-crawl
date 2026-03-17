@@ -23,9 +23,33 @@ function isObsidianCliNotFoundError(error: unknown): boolean {
   return false;
 }
 
+function extractErrorSummary(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const text = raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return "";
+  }
+  const firstLine = text.split("\n")[0]?.trim() || "";
+  if (!firstLine) {
+    return "";
+  }
+  return firstLine
+    .replace(/^fatal error:\s*/i, "")
+    .replace(/(key=)[^&\s]+/gi, "$1***")
+    .replace(/(api[_-]?key\s*[:=]\s*)\S+/gi, "$1***")
+    .slice(0, 240);
+}
+
 export function toUserFacingErrorMessage(error: unknown): string {
   if (isObsidianCliNotFoundError(error)) {
     return OBSIDIAN_CLI_INSTALL_MESSAGE;
   }
-  return GENERIC_FAILURE_MESSAGE;
+  const detail = extractErrorSummary(error);
+  if (!detail) {
+    return GENERIC_FAILURE_MESSAGE;
+  }
+  return `处理失败：${detail}`;
 }

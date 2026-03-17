@@ -15,12 +15,11 @@ test('runWechatAgent should route supported video URLs to transcribe_video', asy
         ({
           obsidianDynamicFolders: [],
           transcriptionProvider: 'whisper_cpp',
-          transcriptionFallbackProvider: 'gemini',
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
           whisperCppLanguage: undefined,
           geminiApiKey: 'gemini-demo-key',
-          geminiModel: 'gemini-3.1-flash-lite-preview'
+          geminiModel: 'gemini-2.5-pro'
         }) as never,
       createTranscribeVideoTool: () =>
         ({

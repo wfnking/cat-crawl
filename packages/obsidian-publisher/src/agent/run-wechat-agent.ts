@@ -4,13 +4,21 @@ import { parseHistoryIntentFromModelOutput, parseHistoryIntentFromText } from ".
 import { appendConversationRound, getRecentConversationMessages } from "./chat-memory.js";
 import { pickPolicyFolder } from "./folder-policy.js";
 import { loadEnv } from "../config/env.js";
-import { getHistoryStore, inferSourceFromUrl, type HistoryChannel } from "../history/history-store.js";
+import {
+  getHistoryStore,
+  inferSourceFromUrl,
+  type HistoryChannel,
+} from "../history/history-store.js";
 import { createModel } from "../services/model.js";
 import { selectVideoSourceAdapter } from "../services/video-sources/index.js";
 import { crawlWebArticleTool } from "../tools/crawl-web-article.js";
-import { createQuerySuccessHistoryTool, type QuerySuccessHistoryResult } from "../tools/query-success-history.js";
+import {
+  createQuerySuccessHistoryTool,
+  type QuerySuccessHistoryResult,
+} from "../tools/query-success-history.js";
 import { createSaveToObsidianTool } from "../tools/save-to-obsidian.js";
 import { createTranscribeVideoTool } from "../tools/transcribe-video.js";
+import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
 import { extractArticleUrl, normalizeModelText } from "../utils/text.js";
 
 type CrawlToolResult = {
@@ -33,7 +41,7 @@ type TranscribeVideoToolResult = SaveToolResult & {
   title: string;
   source_url: string;
   transcript_markdown: string;
-  provider_used: "whisper_cpp" | "gemini";
+  provider_used: "whisper_cpp";
   fallback_used: boolean;
 };
 
@@ -84,7 +92,10 @@ type HistoryIntent = {
   tag?: string;
 };
 
-async function emitStatus(options: AgentRunOptions | undefined, status: AgentStatusUpdate): Promise<void> {
+async function emitStatus(
+  options: AgentRunOptions | undefined,
+  status: AgentStatusUpdate,
+): Promise<void> {
   if (!options?.onStatus) {
     return;
   }
@@ -141,7 +152,10 @@ function formatHistoryReply(result: QuerySuccessHistoryResult): string {
   return [header, "", ...lines].join("\n\n");
 }
 
-async function detectHistoryIntent(userInput: string, env: ReturnType<typeof loadEnv>): Promise<HistoryIntent> {
+async function detectHistoryIntent(
+  userInput: string,
+  env: ReturnType<typeof loadEnv>,
+): Promise<HistoryIntent> {
   const fallback = parseHistoryIntentFromText(userInput);
   const classifyModel = createModel(env, {
     task: "classify",
@@ -378,6 +392,19 @@ export async function runAgent(
     };
   }
 
+  // const existingRecord = await findExistingSavedRecordByUrl(url);
+  // if (existingRecord) {
+  //   logger.info(`[agent] found existing record for url: ${url}`);
+  //   await emitStatus(options, {
+  //     stage: "save_done",
+  //     message: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：${existingRecord.vault}/${existingRecord.path}`,
+  //   });
+  //   return {
+  //     reply: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：\`${existingRecord.vault}/${existingRecord.path}\``,
+  //     usedTools,
+  //   };
+  // }
+
   const isVideoUrl = isSupportedVideoUrl(url);
 
   if (isVideoUrl) {
@@ -466,13 +493,9 @@ export async function runAgent(
     const classifyMessage = await classifierModel.invoke([
       new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
       new HumanMessage(
-        [
-          `Title: ${crawlResult.title}`,
-          "",
-          `Summary: ${summary}`,
-          "",
-          "Return JSON only.",
-        ].join("\n"),
+        [`Title: ${crawlResult.title}`, "", `Summary: ${summary}`, "", "Return JSON only."].join(
+          "\n",
+        ),
       ),
     ]);
     const classifyCostMs = Date.now() - classifyStart;

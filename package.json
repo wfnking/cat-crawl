@@ -26,6 +26,7 @@
     "@cat-crawl/obsidian-publisher": "workspace:*",
     "@langchain/core": "^1.1.32",
     "@langchain/google-genai": "^2.1.25",
+    "@langchain/google-vertexai": "^2.1.26",
     "@langchain/openai": "^1.2.11",
     "@larksuiteoapi/node-sdk": "^1.58.0",
     "better-sqlite3": "^12.6.2",
@@ -38,6 +39,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.3",
     "@types/turndown": "^5.0.5",
+    "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },

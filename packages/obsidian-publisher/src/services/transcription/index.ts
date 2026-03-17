@@ -1,18 +1,13 @@
-import { transcribeWithGemini } from "./gemini.js";
 import { transcribeWithWhisperCpp } from "./whisper-cpp.js";
+import { createLogger } from "@cat-crawl/core";
 
-type ProviderName = "whisper_cpp" | "gemini";
+type ProviderName = "whisper_cpp";
 
 type WhisperCppConfig = {
   bin: string;
   modelPath?: string;
   language?: string;
   outputDir?: string;
-};
-
-type GeminiConfig = {
-  apiKey?: string;
-  model?: string;
 };
 
 type ProviderResult = {
@@ -23,13 +18,9 @@ type ProviderResult = {
 
 type TranscribeAudioOptions = {
   provider: ProviderName;
-  fallbackProvider?: ProviderName;
-  forceProvider?: boolean;
   whisperCpp: WhisperCppConfig;
-  gemini?: GeminiConfig;
   providers?: {
     whisperCpp?: (audioPath: string) => Promise<ProviderResult>;
-    gemini?: (audioPath: string) => Promise<ProviderResult>;
   };
 };
 
@@ -39,6 +30,8 @@ type TranscribeAudioResult = {
   srt?: string;
   fallbackUsed: boolean;
 };
+
+const logger = createLogger();
 
 function createWhisperRunner(options: TranscribeAudioOptions): (audioPath: string) => Promise<ProviderResult> {
   return options.providers?.whisperCpp || ((audioPath: string) => {
@@ -54,54 +47,21 @@ function createWhisperRunner(options: TranscribeAudioOptions): (audioPath: strin
   });
 }
 
-function createGeminiRunner(options: TranscribeAudioOptions): ((audioPath: string) => Promise<ProviderResult>) | null {
-  if (options.providers?.gemini) {
-    return options.providers.gemini;
-  }
-  if (!options.gemini?.apiKey) {
-    return null;
-  }
-  return (audioPath: string) =>
-    transcribeWithGemini(audioPath, {
-      apiKey: options.gemini?.apiKey || "",
-      model: options.gemini?.model,
-    });
-}
-
 export async function transcribeAudio(
   audioPath: string,
   options: TranscribeAudioOptions,
 ): Promise<TranscribeAudioResult> {
+  logger.info(`[transcription] start provider=${options.provider}`);
   const whisperRunner = createWhisperRunner(options);
-  const geminiRunner = createGeminiRunner(options);
-  const runProvider = async (provider: ProviderName): Promise<ProviderResult> => {
-    if (provider === "whisper_cpp") {
-      return whisperRunner(audioPath);
-    }
-    if (!geminiRunner) {
-      throw new Error("Gemini fallback is not configured.");
-    }
-    return geminiRunner(audioPath);
-  };
-
-  try {
-    const primary = await runProvider(options.provider);
-    return {
-      providerUsed: primary.provider,
-      text: primary.text,
-      srt: primary.srt,
-      fallbackUsed: false,
-    };
-  } catch (error) {
-    if (options.forceProvider || !options.fallbackProvider || options.fallbackProvider === options.provider) {
-      throw error;
-    }
-    const fallback = await runProvider(options.fallbackProvider);
-    return {
-      providerUsed: fallback.provider,
-      text: fallback.text,
-      srt: fallback.srt,
-      fallbackUsed: true,
-    };
+  if (options.provider !== "whisper_cpp") {
+    throw new Error(`Unsupported transcription provider: ${options.provider}`);
   }
+  const result = await whisperRunner(audioPath);
+  logger.info(`[transcription] success provider=${result.provider} fallback_used=false has_srt=${result.srt ? 1 : 0}`);
+  return {
+    providerUsed: result.provider,
+    text: result.text,
+    srt: result.srt,
+    fallbackUsed: false,
+  };
 }

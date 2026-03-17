@@ -6,7 +6,6 @@ import type { AppEnv } from "../config/env.js";
 import { extractAudioFromVideo } from "../services/media/extract-audio.js";
 import { createModel } from "../services/model.js";
 import { transcribeAudio } from "../services/transcription/index.js";
-import { createReadableVideoMarkdown } from "../services/video-chapters.js";
 import { resolveDouyinVideoSource } from "../services/video-sources/douyin.js";
 import { resolveFileVideoSource } from "../services/video-sources/file.js";
 import { selectVideoSourceAdapter } from "../services/video-sources/index.js";
@@ -15,7 +14,7 @@ import { createSaveToObsidianTool } from "./save-to-obsidian.js";
 
 const inputSchema = z.object({
   source: z.string().min(1).describe("视频 URL 或本地文件路径"),
-  provider: z.enum(["whisper_cpp", "gemini"]).optional(),
+  provider: z.literal("whisper_cpp").optional(),
   language: z.string().min(1).optional(),
   title: z.string().min(1).optional(),
   save: z.boolean().default(true),
@@ -60,7 +59,10 @@ function extractHashtags(text: string): string[] {
     .filter((value): value is string => Boolean(value));
 }
 
-function normalizeVideoTitle(rawTitle: string): { title: string; tags: string[] } {
+function normalizeVideoTitle(rawTitle: string): {
+  title: string;
+  tags: string[];
+} {
   const tags = Array.from(new Set(extractHashtags(rawTitle)));
   const withoutTags = rawTitle.replace(/#([^\s#]+)/g, " ");
   const withoutSourceSuffix = withoutTags.replace(/\s*-\s*抖音\s*$/u, " ");
@@ -71,38 +73,8 @@ function normalizeVideoTitle(rawTitle: string): { title: string; tags: string[] 
   };
 }
 
-function normalizeModelJsonText(raw: string): string {
-  return raw
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-}
-
-function extractJsonPayload(raw: string): string {
-  const normalized = normalizeModelJsonText(raw);
-  const arrayStart = normalized.indexOf("[");
-  const objectStart = normalized.indexOf("{");
-  const startCandidates = [arrayStart, objectStart].filter((value) => value >= 0);
-  if (startCandidates.length === 0) {
-    return normalized;
-  }
-  const start = Math.min(...startCandidates);
-  const opening = normalized[start];
-  const closing = opening === "[" ? "]" : "}";
-  const end = normalized.lastIndexOf(closing);
-  if (end < start) {
-    return normalized.slice(start).trim();
-  }
-  return normalized.slice(start, end + 1).trim();
-}
-
-function shouldTranslateToChinese(chapters: Array<{ rawText: string }>): boolean {
-  const sample = chapters
-    .map((chapter) => chapter.rawText || "")
-    .join(" ")
-    .slice(0, 8000);
+function shouldTranslateToChinese(sourceText: string): boolean {
+  const sample = sourceText.slice(0, 8000);
   if (!sample.trim()) {
     return false;
   }
@@ -118,7 +90,7 @@ function shouldTranslateToChinese(chapters: Array<{ rawText: string }>): boolean
 }
 
 function pickGeminiSummarizeModel(translateToChinese: boolean): string {
-  return translateToChinese ? "gemini-3.1-pro-preview" : "gemini-3.1-flash-lite-preview";
+  return translateToChinese ? "gemini-2.5-pro" : "gemini-2.5-pro";
 }
 
 async function buildTranscriptMarkdownWithModel(
@@ -130,105 +102,62 @@ async function buildTranscriptMarkdownWithModel(
   },
 ): Promise<string> {
   logger.info(`[tool:transcribe_video] chapterize start source_url=${input.sourceUrl}`);
-  return createReadableVideoMarkdown({
-    sourceUrl: input.sourceUrl,
-    transcriptText: input.transcriptText,
-    transcriptSrt: input.transcriptSrt,
-    summarizeChapters: async ({ chapters }) => {
-      logger.info(
-        `[tool:transcribe_video] chapter summarize batch start count=${chapters.length}`,
-      );
-      try {
-        const translateToChinese = shouldTranslateToChinese(chapters);
-        const geminiModel = pickGeminiSummarizeModel(translateToChinese);
-        const canUseGemini = Boolean(env.geminiApiKey);
-        logger.info(
-          `[tool:transcribe_video] chapter summarize mode translate_to_zh=${translateToChinese} provider=${canUseGemini ? "gemini" : env.aiSummarizeProvider || env.aiProvider || env.agent} model=${canUseGemini ? geminiModel : env.deepseekModel}`,
-        );
-        const model = createModel(env, {
-          task: "summarize",
-          provider: canUseGemini ? "gemini" : undefined,
-          model: canUseGemini ? geminiModel : undefined,
-          maxTokens: 1600,
-          timeout: 60000,
-          temperature: 0,
-        });
-        const chapterPayload = chapters
-          .map((chapter) =>
-            [
-              `Chapter ${chapter.index + 1}`,
-              `startSeconds: ${Math.floor(chapter.startSeconds)}`,
-              `endSeconds: ${Math.floor(chapter.endSeconds)}`,
-              "Transcript:",
-              chapter.segments
-                .map((segment) => `[${Math.floor(segment.startSeconds)}s] ${segment.text}`)
-                .join("\n"),
-            ].join("\n"),
-          )
-          .join("\n\n---\n\n");
-        const message = await model.invoke([
-          new SystemMessage(
-            [
-              "你是视频内容整理助手。",
-              "输入是整段视频按时间切好的章节候选，请一次性整理成最终章节数组。",
-              '只返回 JSON 数组：[{"title":"...","startSeconds":0,"body":"...","translatedTitle":"...","translatedBody":"..."}]',
-              "数组顺序必须和输入章节顺序一致。",
-              "startSeconds 优先使用输入章节的开始时间，单位是秒。",
-              "title 和 body 保持原始语言。如果原始内容是英文，就保留英文，不要翻译成中文。",
-              "translatedTitle 和 translatedBody 输出对应的中文翻译。",
-              "title 要简短，适合作为章节标题，不要带时间戳，不要 Markdown 标记。",
-              "body 要整理成 1-3 段可读内容，保留原意，删除口头禅、重复、明显转写噪音，不要编造。",
-              "translatedBody 要准确翻译 body，不要遗漏。",
-              "body 和 translatedBody 都不要使用项目符号列表，不要输出额外解释。",
-            ].join("\n"),
-          ),
-          new HumanMessage(
-            [
-              `Source: ${input.sourceUrl}`,
-              "",
-              "Chapters:",
-              chapterPayload,
-            ].join("\n"),
-          ),
-        ]);
-
-        const payload = extractJsonPayload(String(message.content ?? ""));
-        const parsed = JSON.parse(payload) as Array<{
-          title?: unknown;
-          startSeconds?: unknown;
-          body?: unknown;
-          translatedTitle?: unknown;
-          translatedBody?: unknown;
-        }>;
-        logger.info(
-          `[tool:transcribe_video] chapter summarize batch done count=${parsed.length}`,
-        );
-        return parsed.map((chapter, index) => ({
-          title: typeof chapter.title === "string" ? chapter.title.trim() : `章节 ${index + 1}`,
-          startSeconds:
-            typeof chapter.startSeconds === "number" && Number.isFinite(chapter.startSeconds)
-              ? chapter.startSeconds
-              : undefined,
-          body: typeof chapter.body === "string" ? chapter.body.trim() : "",
-          translatedTitle:
-            typeof chapter.translatedTitle === "string" ? chapter.translatedTitle.trim() : undefined,
-          translatedBody:
-            typeof chapter.translatedBody === "string" ? chapter.translatedBody.trim() : undefined,
-        }));
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        logger.error(`[tool:transcribe_video] chapter summarize batch failed msg=${detail}`);
-        throw error;
-      }
-    },
-  }).catch((error) => {
+  const sourceMaterial = input.transcriptSrt?.trim() || input.transcriptText.trim();
+  const translateToChinese = shouldTranslateToChinese(sourceMaterial);
+  const configuredProvider = env.aiSummarizeProvider || env.aiProvider || env.agent;
+  const summarizeModel =
+    configuredProvider === "deepseek"
+      ? env.deepseekModel
+      : pickGeminiSummarizeModel(translateToChinese);
+  const summarizeTimeoutMs = Math.max(
+    60000,
+    Math.min(300000, Math.ceil(sourceMaterial.length / 40) * 1000),
+  );
+  logger.info(
+    `[tool:transcribe_video] chapter summarize mode translate_to_zh=${translateToChinese} provider=${configuredProvider} model=${summarizeModel} timeout_ms=${summarizeTimeoutMs}`,
+  );
+  const model = createModel(env, {
+    task: "summarize",
+    provider: configuredProvider,
+    model: summarizeModel,
+    maxTokens: 6000,
+    timeout: summarizeTimeoutMs,
+    temperature: 0,
+  });
+  try {
+    const message = await model.invoke([
+      new SystemMessage(
+        [
+          "你是视频 SRT 转文章助手。",
+          "把输入的 SRT/转写文本整理为可直接保存的 Markdown 文章。",
+          "必须直接输出最终 Markdown，不要输出 JSON，不要输出解释，不要输出代码块。",
+          `第一行必须是：- Source: ${input.sourceUrl}`,
+          "按主题分章节，章节标题格式：## 标题",
+          "每章先写整理后的原文内容（原始语言），再写对应的中文翻译内容。",
+          "长内容需要拆成多章，避免整篇只有一章或一段。",
+          "保留关键信息，不要编造。",
+        ].join("\n"),
+      ),
+      new HumanMessage(
+        [
+          `Source: ${input.sourceUrl}`,
+          "",
+          "Transcript Input:",
+          sourceMaterial,
+        ].join("\n"),
+      ),
+    ]);
+    const markdown = String(message.content ?? "").trim();
+    if (!markdown) {
+      throw new Error("chapter summarize empty markdown");
+    }
+    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length}`);
+    return markdown;
+  } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     logger.error(`[tool:transcribe_video] chapterize failed msg=${detail}`);
     throw error;
-  }).then((markdown) => {
-    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length}`);
-    return markdown;
-  });
+  }
 }
 
 export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps = {}) {
@@ -253,108 +182,106 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       })) as SaveResult;
     });
 
-  return tool(async (input: TranscribeVideoInput) => {
-    const adapter = selectAdapter(input.source);
-    logger.info(`[tool:transcribe_video] start source=${input.source}`);
-    logger.info(`[tool:transcribe_video] adapter=${adapter.name}`);
-    const resolved =
-      adapter.name === "file"
-        ? await resolveFile(input.source)
-        : adapter.name === "youtube"
-          ? await resolveYoutube(input.source, { outputDir: "/tmp/cat-crawl-youtube" })
-          : await resolveDouyin(input.source, { cookieHeader: env.douyinCookie });
-    logger.info(
-      `[tool:transcribe_video] resolved source_url=${resolved.sourceUrl} media_path=${resolved.mediaPath}`,
-    );
-
-    const audioPath = await extractAudio(resolved.mediaPath, {
-      outputDir: "/tmp/cat-crawl-audio",
-    });
-    logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
-    if (env.geminiApiKey) {
+  return tool(
+    async (input: TranscribeVideoInput) => {
+      const adapter = selectAdapter(input.source);
+      logger.info(`[tool:transcribe_video] start source=${input.source}`);
+      logger.info(`[tool:transcribe_video] adapter=${adapter.name}`);
+      const resolved =
+        adapter.name === "file"
+          ? await resolveFile(input.source)
+          : adapter.name === "youtube"
+            ? await resolveYoutube(input.source, {
+                outputDir: "/tmp/cat-crawl-youtube",
+              })
+            : await resolveDouyin(input.source, {
+                cookieHeader: env.douyinCookie,
+              });
       logger.info(
-        `[tool:transcribe_video] transcription_gemini_auth using=${env.geminiApiKeySource || "UNKNOWN"} model=${env.geminiModel}`,
+        `[tool:transcribe_video] resolved source_url=${resolved.sourceUrl} media_path=${resolved.mediaPath}`,
       );
-    }
 
-    const transcription = await transcribe(audioPath, {
-      provider: input.provider || env.transcriptionProvider,
-      fallbackProvider: input.provider ? undefined : env.transcriptionFallbackProvider,
-      forceProvider: Boolean(input.provider),
-      whisperCpp: {
-        bin: env.whisperCppBin,
-        modelPath: env.whisperCppModelPath,
-        language: input.language || env.whisperCppLanguage,
-        outputDir: "/tmp/cat-crawl-whisper",
-      },
-      gemini: {
-        apiKey: env.geminiApiKey,
-        model: env.geminiModel,
-      },
-    });
-    logger.info(
-      `[tool:transcribe_video] transcription provider=${transcription.providerUsed} fallback=${transcription.fallbackUsed}`,
-    );
+      const audioPath = await extractAudio(resolved.mediaPath, {
+        outputDir: "/tmp/cat-crawl-audio",
+      });
+      logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
+      const requestedProvider = input.provider || "whisper_cpp";
+      logger.info(
+        `[tool:transcribe_video] transcription config provider=${requestedProvider} whisper_model=${env.whisperCppModelPath ? "set" : "missing"}`,
+      );
 
-    const resolvedTitle = "title" in resolved ? resolved.title?.trim() : undefined;
-    const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
-    const normalized = normalizeVideoTitle(rawTitle);
-    const title = normalized.title;
-    const transcriptMarkdown = await buildTranscriptMarkdown({
-      sourceUrl: resolved.sourceUrl,
-      transcriptText: transcription.text,
-      transcriptSrt: transcription.srt,
-    });
-    const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags]));
+      const transcription = await transcribe(audioPath, {
+        provider: requestedProvider,
+        whisperCpp: {
+          bin: env.whisperCppBin,
+          modelPath: env.whisperCppModelPath,
+          language: input.language || env.whisperCppLanguage,
+          outputDir: "/tmp/cat-crawl-whisper",
+        },
+      });
+      logger.info(
+        `[tool:transcribe_video] transcription provider=${transcription.providerUsed} fallback=${transcription.fallbackUsed}`,
+      );
 
-    if (!input.save) {
-      logger.info(`[tool:transcribe_video] skip save title=${title}`);
-      return {
-        saved: false,
+      const resolvedTitle = "title" in resolved ? resolved.title?.trim() : undefined;
+      const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
+      const normalized = normalizeVideoTitle(rawTitle);
+      const title = normalized.title;
+      const transcriptMarkdown = await buildTranscriptMarkdown({
+        sourceUrl: resolved.sourceUrl,
+        transcriptText: transcription.text,
+        transcriptSrt: transcription.srt,
+      });
+      const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags]));
+
+      if (!input.save) {
+        logger.info(`[tool:transcribe_video] skip save title=${title}`);
+        return {
+          saved: false,
+          title,
+          source_url: resolved.sourceUrl,
+          provider_used: transcription.providerUsed,
+          fallback_used: transcription.fallbackUsed,
+          transcript_markdown: transcriptMarkdown,
+        };
+      }
+
+      const saveResult = await saveToObsidian({
         title,
         source_url: resolved.sourceUrl,
+        content_markdown: transcriptMarkdown,
+        source: "Video",
+        tags: noteTags,
+      });
+      logger.info(
+        `[tool:transcribe_video] saved title=${title} path=${saveResult.path || "<unknown>"} vault=${saveResult.vault || "<active>"}`,
+      );
+
+      return {
+        saved: Boolean(saveResult.saved),
+        title,
+        source_url: resolved.sourceUrl,
+        vault: saveResult.vault,
+        path: saveResult.path,
+        tags: saveResult.tags,
+        dynamic_folder: saveResult.dynamic_folder,
         provider_used: transcription.providerUsed,
         fallback_used: transcription.fallbackUsed,
         transcript_markdown: transcriptMarkdown,
       };
-    }
-
-    const saveResult = await saveToObsidian({
-      title,
-      source_url: resolved.sourceUrl,
-      content_markdown: transcriptMarkdown,
-      source: "Video",
-      tags: noteTags,
-    });
-    logger.info(
-      `[tool:transcribe_video] saved title=${title} path=${saveResult.path || "<unknown>"} vault=${saveResult.vault || "<active>"}`,
-    );
-
-    return {
-      saved: Boolean(saveResult.saved),
-      title,
-      source_url: resolved.sourceUrl,
-      vault: saveResult.vault,
-      path: saveResult.path,
-      tags: saveResult.tags,
-      dynamic_folder: saveResult.dynamic_folder,
-      provider_used: transcription.providerUsed,
-      fallback_used: transcription.fallbackUsed,
-      transcript_markdown: transcriptMarkdown,
-    };
-  }, {
-    name: "transcribe_video",
-    description: "提取视频语音并转写为文本，可选择保存到 Obsidian",
-    schema: inputSchema,
-  });
+    },
+    {
+      name: "transcribe_video",
+      description: "提取视频语音并转写为文本，可选择保存到 Obsidian",
+      schema: inputSchema,
+    },
+  );
 }
 
 export const __test__ = {
   buildTranscriptMarkdownWithModel,
   shouldTranslateToChinese,
   pickGeminiSummarizeModel,
-  extractJsonPayload,
   extractHashtags,
-  normalizeModelJsonText,
   normalizeVideoTitle,
 };

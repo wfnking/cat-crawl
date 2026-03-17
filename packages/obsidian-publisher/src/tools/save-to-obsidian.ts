@@ -297,10 +297,7 @@ function buildNoteContent(input: SaveInput, tags: string[], description?: string
 }
 
 function parseObsidianPlainOutput(stdout: string, stderr: string): string {
-  const combined = [stdout, stderr]
-    .filter(Boolean)
-    .join("\n")
-    .trim();
+  const combined = [stdout, stderr].filter(Boolean).join("\n").trim();
   if (!combined) {
     return "";
   }
@@ -365,7 +362,9 @@ function hasObsidianOutputError(output: string): boolean {
   if (!lower) {
     return false;
   }
-  return lower.includes("vault not found") || lower.includes("no vault") || lower.includes("error:");
+  return (
+    lower.includes("vault not found") || lower.includes("no vault") || lower.includes("error:")
+  );
 }
 
 async function resolveActiveVaultName(): Promise<string | undefined> {
@@ -454,16 +453,13 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
   const generateDescription =
     deps.generateDescription ||
     (env.geminiApiKey
-      ? async (markdown: string) =>
-          {
-            logger.info(
-              `[tool:save_to_obsidian] description_model=gemini using=${env.geminiApiKeySource || "UNKNOWN"} model=${env.geminiModel}`,
-            );
-            return generateDescriptionWithGemini(markdown, {
-              apiKey: env.geminiApiKey || "",
-              model: env.geminiModel,
-            });
-          }
+      ? async (markdown: string) => {
+          logger.info(`[tool:save_to_obsidian] description_model=gemini model=${env.geminiModel}`);
+          return generateDescriptionWithGemini(markdown, {
+            apiKey: env.geminiApiKey || "",
+            model: env.geminiModel,
+          });
+        }
       : undefined);
 
   return tool(
@@ -471,7 +467,8 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
-      const initialPath = input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
+      const initialPath =
+        input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
       const description = await resolveDescription(input, generateDescription);
       const content = buildNoteContent(input, tags, description);
       logger.info(
@@ -500,7 +497,9 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       }
 
       const path =
-        input.mode === "create" ? await resolveAvailableNotePath(vaultPath, initialPath) : initialPath;
+        input.mode === "create"
+          ? await resolveAvailableNotePath(vaultPath, initialPath)
+          : initialPath;
       if (path !== initialPath) {
         logger.warn(`[tool:save_to_obsidian] path exists, using next available path=${path}`);
       }

@@ -19,7 +19,7 @@ test('gemini agent should expose required api key and model steps', () => {
     ['GEMINI_API_KEY', 'GEMINI_MODEL']
   )
   assert.equal(steps[0]?.required, true)
-  assert.equal(steps[1]?.defaultValue, 'gemini-3.1-flash-lite-preview')
+  assert.equal(steps[1]?.defaultValue, 'gemini-2.5-pro')
 })
 
 test('buildAgentSetupConfig should include selected agent', () => {
@@ -35,21 +35,21 @@ test('buildAgentSetupConfig should include selected agent', () => {
 test('buildAgentSetupConfig should include gemini values', () => {
   const config = buildAgentSetupConfig('gemini', {
     GEMINI_API_KEY: 'gemini-demo-key',
-    GEMINI_MODEL: 'gemini-3.1-flash-lite-preview'
+    GEMINI_MODEL: 'gemini-2.5-pro'
   })
 
   assert.equal(config.agent, 'gemini')
   assert.equal(config.GEMINI_API_KEY, 'gemini-demo-key')
-  assert.equal(config.GEMINI_MODEL, 'gemini-3.1-flash-lite-preview')
+  assert.equal(config.GEMINI_MODEL, 'gemini-2.5-pro')
 })
 
 test('buildAgentSetupConfig should include vertex values', () => {
   const config = buildAgentSetupConfig('vertex', {
     VERTEX_API_KEY: 'vertex-demo-key',
-    GEMINI_MODEL: 'gemini-3.1-flash-lite-preview'
+    GEMINI_MODEL: 'gemini-2.5-pro'
   })
 
   assert.equal(config.agent, 'vertex')
   assert.equal(config.VERTEX_API_KEY, 'vertex-demo-key')
-  assert.equal(config.GEMINI_MODEL, 'gemini-3.1-flash-lite-preview')
+  assert.equal(config.GEMINI_MODEL, 'gemini-2.5-pro')
 })

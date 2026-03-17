@@ -35,7 +35,7 @@ export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
         key: 'GEMINI_MODEL',
         label: 'Gemini Model',
         required: true,
-        defaultValue: 'gemini-3.1-flash-lite-preview'
+        defaultValue: 'gemini-2.5-pro'
       }
     ]
   }
@@ -51,7 +51,7 @@ export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
         key: 'GEMINI_MODEL',
         label: 'Vertex Model',
         required: true,
-        defaultValue: 'gemini-3.1-flash-lite-preview'
+        defaultValue: 'gemini-2.5-pro'
       }
     ]
   }

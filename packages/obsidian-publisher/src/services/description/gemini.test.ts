@@ -6,7 +6,7 @@ test('generateDescriptionWithGemini should request one-sentence summary', async 
   const description = await generateDescriptionWithGemini('正文内容', {
     apiKey: 'gemini-demo-key',
     fetchImpl: async (input, init) => {
-      assert.match(String(input), /gemini-3.1-flash-lite-preview:generateContent/)
+      assert.match(String(input), /gemini-2.5-pro:generateContent/)
       assert.match(String(input), /key=gemini-demo-key/)
       assert.match(String(init?.body), /Return only the sentence/)
       assert.match(String(init?.body), /正文内容/)

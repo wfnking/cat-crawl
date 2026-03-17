@@ -1,14 +1,4 @@
-import process from 'node:process'
 import { getLocalConfigStore } from '@cat-crawl/core'
-
-try {
-  process.loadEnvFile?.()
-} catch (error) {
-  const code = (error as NodeJS.ErrnoException).code
-  if (code !== 'ENOENT') {
-    throw error
-  }
-}
 
 export type AppEnv = {
   agent: 'deepseek' | 'gemini' | 'vertex'
@@ -19,14 +9,18 @@ export type AppEnv = {
   deepseekApiKey?: string
   deepseekBaseUrl: string
   deepseekModel: string
-  transcriptionProvider: 'whisper_cpp' | 'gemini'
-  transcriptionFallbackProvider?: 'whisper_cpp' | 'gemini'
+  transcriptionProvider: 'whisper_cpp'
   whisperCppBin: string
   whisperCppModelPath?: string
   whisperCppLanguage?: string
   geminiApiKey?: string
+  googleApiKey?: string
+  vertexApiKey?: string
   geminiApiKeySource?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'
+  vertexApiKeySource?: 'VERTEX_API_KEY' | 'GOOGLE_API_KEY' | 'GEMINI_API_KEY'
   geminiModel: string
+  vertexLocation?: string
+  vertexEndpoint?: string
   douyinCookie?: string
   feishuEnabled: boolean
   feishuAppId?: string
@@ -112,7 +106,6 @@ function readFromStructuredConfig(name: string): string | undefined {
   const mappings: Record<string, string[]> = {
     channel: ['channel'],
     TRANSCRIPTION_PROVIDER: ['transcription', 'provider'],
-    TRANSCRIPTION_FALLBACK_PROVIDER: ['transcription', 'fallbackProvider'],
     WHISPER_CPP_BIN: ['transcription', 'whisperCpp', 'bin'],
     WHISPER_CPP_MODEL_PATH: ['transcription', 'whisperCpp', 'modelPath'],
     WHISPER_CPP_LANGUAGE: ['transcription', 'whisperCpp', 'language'],
@@ -150,7 +143,9 @@ function readFromStructuredConfig(name: string): string | undefined {
         : [
             ['ai', 'gemini', 'model'],
             ['agent', 'gemini', 'model'],
-            ['transcription', 'gemini', 'model']
+            ['transcription', 'gemini', 'model'],
+            ['ai', 'vertex', 'model'],
+            ['agent', 'vertex', 'model']
           ]
     for (const candidatePath of candidatePaths) {
       const value = readFromPath(raw, candidatePath)
@@ -159,6 +154,34 @@ function readFromStructuredConfig(name: string): string | undefined {
       }
     }
     return undefined
+  }
+
+  if (name === 'VERTEX_API_KEY') {
+    return readStringFromPaths(raw, [
+      ['ai', 'vertex', 'apiKey'],
+      ['agent', 'vertex', 'apiKey']
+    ])
+  }
+
+  if (name === 'VERTEX_LOCATION') {
+    return readStringFromPaths(raw, [
+      ['ai', 'vertex', 'location'],
+      ['agent', 'vertex', 'location']
+    ])
+  }
+
+  if (name === 'VERTEX_ENDPOINT') {
+    return readStringFromPaths(raw, [
+      ['ai', 'vertex', 'endpoint'],
+      ['agent', 'vertex', 'endpoint']
+    ])
+  }
+
+  if (name === 'GOOGLE_API_KEY') {
+    return readStringFromPaths(raw, [
+      ['ai', 'google', 'apiKey'],
+      ['agent', 'google', 'apiKey']
+    ])
   }
 
   if (name === 'DOUYIN_COOKIE') {
@@ -188,18 +211,24 @@ function readFromStructuredConfig(name: string): string | undefined {
   return undefined
 }
 
+function toCamelCaseKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/_([a-z0-9])/g, (_, ch: string) => ch.toUpperCase())
+}
+
 function readRaw(name: string): string | undefined {
   const structuredValue = readFromStructuredConfig(name)
   if (structuredValue) {
     return structuredValue
   }
+  const camelValue = getLocalConfigStore().get(toCamelCaseKey(name))?.trim()
+  if (camelValue) {
+    return camelValue
+  }
   const localValue = getLocalConfigStore().get(name)?.trim()
   if (localValue) {
     return localValue
-  }
-  const envValue = process.env[name]?.trim()
-  if (envValue) {
-    return envValue
   }
   return undefined
 }
@@ -255,17 +284,17 @@ function getTelegramTypingMode(): 'never' | 'instant' | 'thinking' | 'message' {
 }
 
 function getTranscriptionProvider(
-  name: 'TRANSCRIPTION_PROVIDER' | 'TRANSCRIPTION_FALLBACK_PROVIDER',
-  defaultValue?: 'whisper_cpp' | 'gemini'
-): 'whisper_cpp' | 'gemini' | undefined {
+  name: 'TRANSCRIPTION_PROVIDER',
+  defaultValue?: 'whisper_cpp'
+): 'whisper_cpp' | undefined {
   const raw = readRaw(name)?.toLowerCase()
   if (!raw) {
     return defaultValue
   }
-  if (raw === 'whisper_cpp' || raw === 'gemini') {
+  if (raw === 'whisper_cpp') {
     return raw
   }
-  throw new Error(`Invalid ${name}: ${raw}`)
+  throw new Error(`Invalid ${name}: ${raw}. Only whisper_cpp is supported.`)
 }
 
 function getAiProvider(
@@ -282,21 +311,11 @@ function getAiProvider(
   throw new Error(`Invalid ${name}: ${raw}`)
 }
 
-function readFirstRaw(names: string[]): string | undefined {
-  for (const name of names) {
-    const value = readRaw(name)
-    if (value) {
-      return value
-    }
-  }
-  return undefined
-}
-
-function readFirstRawWithSource(
-  names: Array<'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'>
+function readFirstRawWithSource<T extends 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'>(
+  names: T[]
 ): {
   value?: string
-  source?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'
+  source?: T
 } {
   for (const name of names) {
     const value = readRaw(name)
@@ -317,7 +336,11 @@ export function loadEnv(): AppEnv {
   const aiChatProvider = getAiProvider('AI_CHAT_PROVIDER')
   const aiClassifyProvider = getAiProvider('AI_CLASSIFY_PROVIDER')
   const aiSummarizeProvider = getAiProvider('AI_SUMMARIZE_PROVIDER')
+  const configuredGeminiApiKey = readRaw('GEMINI_API_KEY') || undefined
+  const configuredGoogleApiKey = readRaw('GOOGLE_API_KEY') || undefined
+  const configuredVertexApiKey = readRaw('VERTEX_API_KEY') || undefined
   const geminiAuth = readFirstRawWithSource(['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'VERTEX_API_KEY'])
+  const vertexAuth = readFirstRawWithSource(['VERTEX_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'])
   const needDeepseekApiKey =
     aiProvider === 'deepseek' ||
     aiChatProvider === 'deepseek' ||
@@ -336,16 +359,17 @@ export function loadEnv(): AppEnv {
     deepseekModel: readRaw('DEEPSEEK_MODEL') || 'deepseek-chat',
     transcriptionProvider:
       getTranscriptionProvider('TRANSCRIPTION_PROVIDER', 'whisper_cpp') || 'whisper_cpp',
-    transcriptionFallbackProvider: getTranscriptionProvider(
-      'TRANSCRIPTION_FALLBACK_PROVIDER',
-      'gemini'
-    ),
     whisperCppBin: readRaw('WHISPER_CPP_BIN') || 'whisper-cli',
     whisperCppModelPath: readRaw('WHISPER_CPP_MODEL_PATH') || undefined,
     whisperCppLanguage: readRaw('WHISPER_CPP_LANGUAGE') || undefined,
     geminiApiKey: geminiAuth.value || undefined,
+    googleApiKey: configuredGoogleApiKey,
+    vertexApiKey: configuredVertexApiKey,
     geminiApiKeySource: geminiAuth.source,
-    geminiModel: readRaw('GEMINI_MODEL') || 'gemini-3.1-flash-lite-preview',
+    vertexApiKeySource: vertexAuth.source,
+    geminiModel: readRaw('GEMINI_MODEL') || 'gemini-2.5-pro',
+    vertexLocation: readRaw('VERTEX_LOCATION') || undefined,
+    vertexEndpoint: readRaw('VERTEX_ENDPOINT') || undefined,
     douyinCookie: readRaw('DOUYIN_COOKIE') || undefined,
     feishuEnabled: getBoolean('FEISHU_ENABLED', false),
     feishuAppId: readRaw('FEISHU_APP_ID') || undefined,

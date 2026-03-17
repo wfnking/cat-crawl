@@ -6,12 +6,11 @@ test('transcribe video tool should transcribe local file and skip save when disa
   const tool = createTranscribeVideoTool(
     {
       transcriptionProvider: 'whisper_cpp',
-      transcriptionFallbackProvider: 'gemini',
       whisperCppBin: 'whisper-cli',
       whisperCppModelPath: '/models/base.bin',
       whisperCppLanguage: undefined,
       geminiApiKey: 'gemini-demo-key',
-      geminiModel: 'gemini-3.1-flash-lite-preview',
+      geminiModel: 'gemini-2.5-pro',
       obsidianFolder: 'Clippings',
       obsidianDynamicFolders: []
     } as never,
@@ -55,12 +54,11 @@ test('transcribe video tool should save transcript when enabled', async () => {
   const tool = createTranscribeVideoTool(
     {
       transcriptionProvider: 'whisper_cpp',
-      transcriptionFallbackProvider: 'gemini',
       whisperCppBin: 'whisper-cli',
       whisperCppModelPath: '/models/base.bin',
       whisperCppLanguage: undefined,
       geminiApiKey: 'gemini-demo-key',
-      geminiModel: 'gemini-3.1-flash-lite-preview',
+      geminiModel: 'gemini-2.5-pro',
       obsidianFolder: 'Clippings',
       obsidianDynamicFolders: []
     } as never,
@@ -73,10 +71,10 @@ test('transcribe video tool should save transcript when enabled', async () => {
       }),
       extractAudioFromVideo: async () => '/tmp/audio.mp3',
       transcribeAudio: async () => ({
-        providerUsed: 'gemini',
+        providerUsed: 'whisper_cpp',
         text: 'saved transcript',
         srt: undefined,
-        fallbackUsed: true
+        fallbackUsed: false
       }),
       buildTranscriptMarkdown: async ({ transcriptText }) => `## Saved Video\n\n${transcriptText}`,
       saveToObsidian: async (input) => {
@@ -107,12 +105,11 @@ test('transcribe video tool should pass Douyin cookie to resolver', async () => 
   const tool = createTranscribeVideoTool(
     {
       transcriptionProvider: 'whisper_cpp',
-      transcriptionFallbackProvider: 'gemini',
       whisperCppBin: 'whisper-cli',
       whisperCppModelPath: '/models/base.bin',
       whisperCppLanguage: undefined,
       geminiApiKey: 'gemini-demo-key',
-      geminiModel: 'gemini-3.1-flash-lite-preview',
+      geminiModel: 'gemini-2.5-pro',
       douyinCookie: 'ttwid=abc',
       obsidianFolder: 'Clippings',
       obsidianDynamicFolders: []
@@ -160,38 +157,21 @@ test('normalizeVideoTitle should strip hashtags and source suffix into tags', ()
   )
 })
 
-test('extractJsonPayload should unwrap noisy model output around json', () => {
-  assert.equal(
-    __test__.extractJsonPayload('Using response format.\n```json\n{"title":"A","body":"B"}\n```'),
-    '{"title":"A","body":"B"}'
-  )
-  assert.equal(
-    __test__.extractJsonPayload('prefix [{"title":"A","startSeconds":0,"body":"B"}] suffix'),
-    '[{"title":"A","startSeconds":0,"body":"B"}]'
-  )
-})
-
 test('shouldTranslateToChinese should detect non-Chinese transcript', () => {
   assert.equal(
-    __test__.shouldTranslateToChinese([
-      {
-        rawText: 'Now I have two hooks that I am going to put here on the screen.'
-      }
-    ]),
+    __test__.shouldTranslateToChinese(
+      'Now I have two hooks that I am going to put here on the screen.'
+    ),
     true
   )
 
   assert.equal(
-    __test__.shouldTranslateToChinese([
-      {
-        rawText: '这是中文内容，主要讲英语写作的钩子开头。'
-      }
-    ]),
+    __test__.shouldTranslateToChinese('这是中文内容，主要讲英语写作的钩子开头。'),
     false
   )
 })
 
 test('pickGeminiSummarizeModel should route translation to pro preview', () => {
-  assert.equal(__test__.pickGeminiSummarizeModel(true), 'gemini-3.1-pro-preview')
-  assert.equal(__test__.pickGeminiSummarizeModel(false), 'gemini-3.1-flash-lite-preview')
+  assert.equal(__test__.pickGeminiSummarizeModel(true), 'gemini-2.5-pro')
+  assert.equal(__test__.pickGeminiSummarizeModel(false), 'gemini-2.5-pro')
 })

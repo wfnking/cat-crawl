@@ -63,6 +63,34 @@ test("createReadableVideoMarkdown should fallback to visible timestamp for non-y
   assert.doesNotMatch(markdown, /## .*翻译|## 开场重点\n\n整理后的内容。+\n+\n##/);
 });
 
+test("createReadableVideoMarkdown should still summarize chapters without srt timestamps", async () => {
+  const markdown = await createReadableVideoMarkdown({
+    sourceUrl: "https://www.youtube.com/watch?v=demo123",
+    transcriptText:
+      "Now I have two hooks that I'm going to put here on the screen. " +
+      "The first one says here is why you should buy this book. " +
+      "Would you like to spend your weekend reading a mystery that keeps you guessing? " +
+      "And then our last sentence is a call to action where we ask people to get their copy today.",
+    summarizeChapters: async ({ chapters }) => {
+      assert.ok(chapters.length >= 1);
+      return [
+        {
+          title: "Hook Example",
+          body: "This chapter compares weak and strong opening hooks.",
+          translatedTitle: "钩子示例",
+          translatedBody: "这一章对比了弱和强的开头钩子。",
+        },
+      ];
+    },
+  });
+
+  assert.match(markdown, /^- Source: https:\/\/www\.youtube\.com\/watch\?v=demo123/m);
+  assert.match(markdown, /## Hook Example \/ 钩子示例/);
+  assert.match(markdown, /This chapter compares weak and strong opening hooks\./);
+  assert.match(markdown, /这一章对比了弱和强的开头钩子。/);
+  assert.doesNotMatch(markdown, /\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=/);
+});
+
 test("createReadableVideoMarkdown should support summarizing all chapters in one model call", async () => {
   let called = 0;
   const markdown = await createReadableVideoMarkdown({
@@ -83,9 +111,8 @@ test("createReadableVideoMarkdown should support summarizing all chapters in one
     ].join("\n"),
     summarizeChapters: async ({ chapters }) => {
       called += 1;
-      assert.equal(chapters.length, 2);
+      assert.equal(chapters.length, 1);
       assert.equal(chapters[0]?.startSeconds, 5);
-      assert.equal(chapters[1]?.startSeconds, 35);
       return [
         {
           title: "First Chapter",
@@ -106,13 +133,11 @@ test("createReadableVideoMarkdown should support summarizing all chapters in one
   });
 
   assert.equal(called, 1);
-  assert.match(markdown, /## \[First Chapter\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=5s\)/);
+  assert.match(markdown, /## \[First Chapter \/ 第一章标题\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=5s\)/);
   assert.match(markdown, /First chapter body\./);
-  assert.match(markdown, /## 第一章标题/);
   assert.match(markdown, /第一章正文。/);
-  assert.match(markdown, /## \[Second Chapter\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=35s\)/);
+  assert.match(markdown, /## \[Second Chapter \/ 第二章标题\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=35s\)/);
   assert.match(markdown, /Second chapter body\./);
-  assert.match(markdown, /## 第二章标题/);
   assert.match(markdown, /第二章正文。/);
 });
 
@@ -134,7 +159,7 @@ test("createReadableVideoMarkdown should allow model to merge candidates into fe
       "part three",
     ].join("\n"),
     summarizeChapters: async ({ chapters }) => {
-      assert.equal(chapters.length, 2);
+      assert.equal(chapters.length, 1);
       return [
         {
           title: "Overview",
@@ -147,9 +172,8 @@ test("createReadableVideoMarkdown should allow model to merge candidates into fe
     },
   });
 
-  assert.match(markdown, /## \[Overview\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=5s\)/);
+  assert.match(markdown, /## \[Overview \/ 整体概览\]\(https:\/\/www\.youtube\.com\/watch\?v=demo123&t=5s\)/);
   assert.match(markdown, /Merged body\./);
-  assert.match(markdown, /## 整体概览/);
   assert.match(markdown, /合并后的正文。/);
   assert.doesNotMatch(markdown, /章节 2/);
 });

@@ -14,45 +14,29 @@ function createTempHome(): { homeDir: string; cleanup: () => void } {
   }
 }
 
-function withEnv<T>(values: Record<string, string | undefined>, fn: () => T): T {
-  const previous = new Map<string, string | undefined>()
-  for (const [key, value] of Object.entries(values)) {
-    previous.set(key, process.env[key])
-    if (value === undefined) {
-      delete process.env[key]
-    } else {
-      process.env[key] = value
-    }
-  }
-  try {
-    return fn()
-  } finally {
-    for (const [key, value] of previous.entries()) {
-      if (value === undefined) {
-        delete process.env[key]
-      } else {
-        process.env[key] = value
-      }
-    }
-  }
-}
-
 test('loadEnv should expose default transcription config', () => {
   const { homeDir, cleanup } = createTempHome()
   const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'gemini',
+      gemini: {
+        apiKey: 'gemini-demo-key'
+      }
+    }
+  })
 
   setLocalConfigStoreForTest(store)
   try {
-    const env = withEnv({ agent: 'gemini', GEMINI_API_KEY: 'gemini-demo-key' }, () => loadEnv())
+    const env = loadEnv()
     assert.equal(env.agent, 'gemini')
     assert.equal(env.aiProvider, 'gemini')
     assert.equal(env.aiChatProvider, undefined)
     assert.equal(env.aiClassifyProvider, undefined)
     assert.equal(env.aiSummarizeProvider, undefined)
     assert.equal(env.transcriptionProvider, 'whisper_cpp')
-    assert.equal(env.transcriptionFallbackProvider, 'gemini')
     assert.equal(env.whisperCppBin, 'whisper-cli')
-    assert.equal(env.geminiModel, 'gemini-3.1-flash-lite-preview')
+    assert.equal(env.geminiModel, 'gemini-2.5-pro')
     assert.equal(env.geminiApiKey, 'gemini-demo-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
     assert.equal(env.douyinCookie, undefined)
@@ -70,12 +54,11 @@ test('loadEnv should read transcription config from structured config', () => {
       provider: 'gemini',
       gemini: {
         apiKey: 'agent-gemini-key',
-        model: 'gemini-3.1-flash-lite-preview'
+        model: 'gemini-2.5-pro'
       }
     },
     transcription: {
-      provider: 'gemini',
-      fallbackProvider: 'whisper_cpp',
+      provider: 'whisper_cpp',
       whisperCpp: {
         bin: '/opt/homebrew/bin/whisper-cli',
         modelPath: '/models/ggml-large-v3.bin',
@@ -83,7 +66,7 @@ test('loadEnv should read transcription config from structured config', () => {
       },
       gemini: {
         apiKey: 'gemini-demo-key',
-        model: 'gemini-3.1-flash-lite-preview'
+        model: 'gemini-2.5-pro'
       }
     },
     videoSources: {
@@ -98,15 +81,38 @@ test('loadEnv should read transcription config from structured config', () => {
     const env = loadEnv()
     assert.equal(env.agent, 'gemini')
     assert.equal(env.aiProvider, 'gemini')
-    assert.equal(env.transcriptionProvider, 'gemini')
-    assert.equal(env.transcriptionFallbackProvider, 'whisper_cpp')
+    assert.equal(env.transcriptionProvider, 'whisper_cpp')
     assert.equal(env.whisperCppBin, '/opt/homebrew/bin/whisper-cli')
     assert.equal(env.whisperCppModelPath, '/models/ggml-large-v3.bin')
     assert.equal(env.whisperCppLanguage, 'en')
     assert.equal(env.geminiApiKey, 'agent-gemini-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
-    assert.equal(env.geminiModel, 'gemini-3.1-flash-lite-preview')
+    assert.equal(env.geminiModel, 'gemini-2.5-pro')
     assert.equal(env.douyinCookie, 'ttwid=test-cookie-value')
+  } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
+
+test('loadEnv should reject non-whisper transcription provider', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    ai: {
+      provider: 'gemini',
+      gemini: {
+        apiKey: 'gemini-demo-key'
+      }
+    },
+    transcription: {
+      provider: 'gemini'
+    }
+  })
+
+  setLocalConfigStoreForTest(store)
+  try {
+    assert.throws(() => loadEnv(), /Only whisper_cpp is supported/)
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()
@@ -129,7 +135,7 @@ test('loadEnv should support ai namespace with task-level provider overrides', (
       },
       gemini: {
         apiKey: 'gemini-key',
-        model: 'gemini-3.1-flash-lite-preview'
+        model: 'gemini-2.5-pro'
       }
     }
   })
@@ -154,19 +160,22 @@ test('loadEnv should support ai namespace with task-level provider overrides', (
 test('loadEnv should fallback to VERTEX_API_KEY when GEMINI_API_KEY is missing', () => {
   const { homeDir, cleanup } = createTempHome()
   const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'vertex',
+      vertex: {
+        apiKey: 'vertex-demo-key'
+      }
+    }
+  })
 
   setLocalConfigStoreForTest(store)
   try {
-    const env = withEnv(
-      {
-        agent: 'gemini',
-        GEMINI_API_KEY: undefined,
-        VERTEX_API_KEY: 'vertex-demo-key'
-      },
-      () => loadEnv()
-    )
+    const env = loadEnv()
     assert.equal(env.geminiApiKey, 'vertex-demo-key')
     assert.equal(env.geminiApiKeySource, 'VERTEX_API_KEY')
+    assert.equal(env.vertexApiKey, 'vertex-demo-key')
+    assert.equal(env.vertexApiKeySource, 'VERTEX_API_KEY')
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()
@@ -176,20 +185,99 @@ test('loadEnv should fallback to VERTEX_API_KEY when GEMINI_API_KEY is missing',
 test('loadEnv should prefer GEMINI_API_KEY over VERTEX_API_KEY', () => {
   const { homeDir, cleanup } = createTempHome()
   const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'vertex',
+      gemini: {
+        apiKey: 'gemini-demo-key'
+      },
+      vertex: {
+        apiKey: 'vertex-demo-key'
+      }
+    }
+  })
 
   setLocalConfigStoreForTest(store)
   try {
-    const env = withEnv(
-      {
-        agent: 'gemini',
-        GEMINI_API_KEY: 'gemini-demo-key',
-        VERTEX_API_KEY: 'vertex-demo-key'
-      },
-      () => loadEnv()
-    )
+    const env = loadEnv()
     assert.equal(env.geminiApiKey, 'gemini-demo-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
+    assert.equal(env.vertexApiKey, 'vertex-demo-key')
+    assert.equal(env.vertexApiKeySource, 'VERTEX_API_KEY')
   } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
+
+test('loadEnv should read vertex location and endpoint from structured config', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'vertex',
+      vertex: {
+        apiKey: 'vertex-demo-key',
+        location: 'us-central1',
+        endpoint: 'https://aiplatform.googleapis.com'
+      }
+    }
+  })
+
+  setLocalConfigStoreForTest(store)
+  try {
+    const env = loadEnv()
+    assert.equal(env.vertexLocation, 'us-central1')
+    assert.equal(env.vertexEndpoint, 'https://aiplatform.googleapis.com')
+  } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
+
+test('loadEnv should read camelCase flat config keys for whisper cpp', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    aiProvider: 'gemini',
+    geminiApiKey: 'gemini-demo-key',
+    transcriptionProvider: 'whisper_cpp',
+    whisperCppBin: '/opt/homebrew/bin/whisper-cli',
+    whisperCppModelPath: '/models/camel.bin'
+  })
+
+  setLocalConfigStoreForTest(store)
+  try {
+    const env = loadEnv()
+    assert.equal(env.transcriptionProvider, 'whisper_cpp')
+    assert.equal(env.whisperCppBin, '/opt/homebrew/bin/whisper-cli')
+    assert.equal(env.whisperCppModelPath, '/models/camel.bin')
+  } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
+
+test('loadEnv should ignore process env and use config only', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    aiProvider: 'gemini',
+    geminiApiKey: 'gemini-demo-key'
+  })
+  const prev = process.env.WHISPER_CPP_MODEL_PATH
+  process.env.WHISPER_CPP_MODEL_PATH = '/env/should-not-be-used.bin'
+
+  setLocalConfigStoreForTest(store)
+  try {
+    const env = loadEnv()
+    assert.equal(env.whisperCppModelPath, undefined)
+  } finally {
+    if (prev === undefined) {
+      delete process.env.WHISPER_CPP_MODEL_PATH
+    } else {
+      process.env.WHISPER_CPP_MODEL_PATH = prev
+    }
     setLocalConfigStoreForTest(null)
     cleanup()
   }

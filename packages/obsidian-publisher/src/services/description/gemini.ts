@@ -27,7 +27,7 @@ export async function generateDescriptionWithGemini(
   markdown: string,
   options: GenerateDescriptionOptions
 ): Promise<string> {
-  const model = options.model || 'gemini-3.1-flash-lite-preview'
+  const model = options.model || 'gemini-2.5-pro'
   const fetchImpl = options.fetchImpl || fetch
   const prompt = [
     'Summarize the main idea of the following content in one concise sentence.',
