@@ -29,56 +29,42 @@ type ResolvedYouTubeVideoSource = {
   author?: string;
 };
 
-function parseStdoutLines(stdout: string): string[] {
-  return stdout
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function parseDownloadedMediaPath(stdout: string, stderr: string): string {
-  const stdoutLines = parseStdoutLines(stdout);
-  if (stdoutLines.length >= 2) {
-    return stdoutLines[stdoutLines.length - 1] || "";
-  }
-  if (stdoutLines.length > 0) {
-    return stdoutLines[stdoutLines.length - 1] || "";
-  }
-
-  const stderrLines = stderr
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^warning:/i.test(line));
-  return stderrLines[stderrLines.length - 1] || "";
-}
-
-function parseDownloadedTitle(stdout: string): string | undefined {
-  const stdoutLines = parseStdoutLines(stdout);
-  if (stdoutLines.length >= 4) {
-    return stdoutLines[2] || undefined;
-  }
-  return undefined;
-}
-
-function parseDownloadedAuthor(stdout: string): string | undefined {
-  const stdoutLines = parseStdoutLines(stdout);
-  if (stdoutLines.length >= 4) {
-    return stdoutLines[1] || undefined;
-  }
-  return undefined;
-}
-
-function parseDownloadedPublishedDate(stdout: string): string | undefined {
-  const stdoutLines = parseStdoutLines(stdout);
-  if (stdoutLines.length >= 4) {
-    const raw = stdoutLines[0] || "";
-    // yt-dlp returns YYYYMMDD
-    if (/^\d{8}$/.test(raw)) {
-      return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+function parseYtDlpOutput(stdout: string, stderr: string): {
+  published: string | undefined;
+  author: string | undefined;
+  title: string | undefined;
+  mediaPath: string;
+} {
+  const meta: Record<string, string> = {};
+  for (const line of stdout.split(/\r?\n/g)) {
+    const match = line.match(/^(published|author|title):(.*)$/);
+    if (match) {
+      meta[match[1]!] = match[2]!.trim();
     }
   }
-  return undefined;
+
+  const raw = meta["published"] ?? "";
+  let published: string | undefined;
+  if (/^\d{8}$/.test(raw)) {
+    published = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  }
+
+  const author = meta["author"] || undefined;
+  const title = meta["title"] || undefined;
+
+  // filepath is always the last line, same as original behavior
+  const stdoutLines = stdout.split(/\r?\n/g).map((l) => l.trim()).filter(Boolean);
+  let mediaPath = stdoutLines[stdoutLines.length - 1] ?? "";
+  if (!mediaPath) {
+    const stderrLines = stderr
+      .split(/\r?\n/g)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .filter((l) => !/^warning:/i.test(l));
+    mediaPath = stderrLines[stderrLines.length - 1] ?? "";
+  }
+
+  return { published, author, title, mediaPath };
 }
 
 function isMissingYtDlpError(error: unknown): boolean {
@@ -102,11 +88,11 @@ export async function resolveYouTubeVideoSource(
         "-f",
         "bestaudio/best",
         "--print",
-        "upload_date",
+        "published:%(upload_date)s",
         "--print",
-        "uploader",
+        "author:%(uploader)s",
         "--print",
-        "title",
+        "title:%(title)s",
         "--print",
         "after_move:filepath",
         "-o",
@@ -115,12 +101,20 @@ export async function resolveYouTubeVideoSource(
       ],
       { maxBuffer: 10 * 1024 * 1024 },
     );
-    const published = parseDownloadedPublishedDate(stdout);
-    const author = parseDownloadedAuthor(stdout);
-    const title = parseDownloadedTitle(stdout);
-    const mediaPath = parseDownloadedMediaPath(stdout, stderr);
-    if (!mediaPath) {
-      throw new Error("yt-dlp did not return a downloaded file path");
+    const { published, author, title, mediaPath } = parseYtDlpOutput(stdout, stderr);
+    if (!mediaPath || mediaPath === "NA") {
+      // yt-dlp outputs "NA" when download failed (e.g. n challenge error)
+      // extract the actual error from stderr for a useful message
+      const stderrHint = stderr
+        .split(/\r?\n/g)
+        .map((l) => l.trim())
+        .filter((l) => /^error:/i.test(l))
+        .at(0);
+      throw new Error(
+        stderrHint
+          ? `yt-dlp download failed: ${stderrHint}`
+          : "yt-dlp did not download the file. Check that yt-dlp is up to date (`yt-dlp -U`).",
+      );
     }
     return {
       adapter: "youtube",
