@@ -45,6 +45,7 @@ type TranscribeVideoDeps = {
     content_markdown: string;
     published?: string;
     description?: string;
+    author?: string;
     source?: string;
     tags?: string[];
   }) => Promise<SaveResult>;
@@ -141,8 +142,14 @@ async function buildTranscriptMarkdownWithModel(
           "第一行必须是：[Description] 一两句话的视频摘要内容。",
           `第二行必须是：- Source: ${input.sourceUrl}`,
           "按主题分章节，章节标题格式：## 标题",
+          "章节必须按内容大意和主题转折拆分，不要按固定时长或固定字数机械切分。",
           "每章先写整理后的原文内容（原始语言），再写对应的中文翻译内容。",
+          "整体文风参考微信公众号文章：结构清晰、节奏舒适、适合手机阅读。",
           "长内容需要拆成多章，避免整篇只有一章或一段。",
+          "每个章节内部要自然分段，不要把整章写成一整段。",
+          "每段尽量短：1-3 句为宜；中文单段建议不超过120字，英文单段建议不超过80词。",
+          "段落之间必须保留空行，禁止输出大段连续文本。",
+          "如遇并列要点，可用简短无序列表；否则优先自然段。",
           "保留关键信息，不要编造。",
         ].join("\n"),
       ),
@@ -258,6 +265,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           provider_used: transcription.providerUsed,
           fallback_used: transcription.fallbackUsed,
           published: resolved.adapter === "youtube" ? resolved.published : undefined,
+          author: resolved.adapter === "youtube" ? resolved.author : undefined,
           description: transcriptDescription,
           transcript_markdown: transcriptMarkdown,
         };
@@ -268,6 +276,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         source_url: resolved.sourceUrl,
         content_markdown: transcriptMarkdown,
         published: resolved.adapter === "youtube" ? resolved.published : undefined,
+        author: resolved.adapter === "youtube" ? resolved.author : undefined,
         description: transcriptDescription,
         source: "Video",
         tags: noteTags,
@@ -285,6 +294,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         tags: saveResult.tags,
         dynamic_folder: saveResult.dynamic_folder,
         published: resolved.adapter === "youtube" ? resolved.published : undefined,
+        author: resolved.adapter === "youtube" ? resolved.author : undefined,
         description: transcriptDescription,
         provider_used: transcription.providerUsed,
         fallback_used: transcription.fallbackUsed,

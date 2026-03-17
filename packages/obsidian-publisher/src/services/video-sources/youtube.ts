@@ -26,6 +26,7 @@ type ResolvedYouTubeVideoSource = {
   mediaPath: string;
   title?: string;
   published?: string;
+  author?: string;
 };
 
 function parseStdoutLines(stdout: string): string[] {
@@ -54,7 +55,15 @@ function parseDownloadedMediaPath(stdout: string, stderr: string): string {
 
 function parseDownloadedTitle(stdout: string): string | undefined {
   const stdoutLines = parseStdoutLines(stdout);
-  if (stdoutLines.length >= 3) {
+  if (stdoutLines.length >= 4) {
+    return stdoutLines[2] || undefined;
+  }
+  return undefined;
+}
+
+function parseDownloadedAuthor(stdout: string): string | undefined {
+  const stdoutLines = parseStdoutLines(stdout);
+  if (stdoutLines.length >= 4) {
     return stdoutLines[1] || undefined;
   }
   return undefined;
@@ -62,7 +71,7 @@ function parseDownloadedTitle(stdout: string): string | undefined {
 
 function parseDownloadedPublishedDate(stdout: string): string | undefined {
   const stdoutLines = parseStdoutLines(stdout);
-  if (stdoutLines.length >= 3) {
+  if (stdoutLines.length >= 4) {
     const raw = stdoutLines[0] || "";
     // yt-dlp returns YYYYMMDD
     if (/^\d{8}$/.test(raw)) {
@@ -95,6 +104,8 @@ export async function resolveYouTubeVideoSource(
         "--print",
         "upload_date",
         "--print",
+        "uploader",
+        "--print",
         "title",
         "--print",
         "after_move:filepath",
@@ -105,6 +116,7 @@ export async function resolveYouTubeVideoSource(
       { maxBuffer: 10 * 1024 * 1024 },
     );
     const published = parseDownloadedPublishedDate(stdout);
+    const author = parseDownloadedAuthor(stdout);
     const title = parseDownloadedTitle(stdout);
     const mediaPath = parseDownloadedMediaPath(stdout, stderr);
     if (!mediaPath) {
@@ -116,6 +128,7 @@ export async function resolveYouTubeVideoSource(
       mediaPath,
       title,
       published,
+      author,
     };
   } catch (error) {
     if (isMissingYtDlpError(error)) {

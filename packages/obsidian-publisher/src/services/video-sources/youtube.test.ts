@@ -10,10 +10,11 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
       assert.ok(args.includes("-f"));
       assert.ok(args.includes("bestaudio/best"));
       assert.ok(args.includes("upload_date"));
+      assert.ok(args.includes("uploader"));
       assert.ok(args.includes("title"));
       assert.ok(args.includes("after_move:filepath"));
       return {
-        stdout: "20251123\nDemo Title\n/tmp/cat-crawl-video/audio.webm\n",
+        stdout: "20251123\nAI Engineer\nDemo Title\n/tmp/cat-crawl-video/audio.webm\n",
         stderr: "",
       };
     },
@@ -22,6 +23,7 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
   assert.equal(result.adapter, "youtube");
   assert.equal(result.sourceUrl, "https://www.youtube.com/watch?v=abc123");
   assert.equal(result.published, "2025-11-23");
+  assert.equal(result.author, "AI Engineer");
   assert.equal(result.title, "Demo Title");
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/audio.webm");
 });
@@ -56,7 +58,7 @@ test("resolveYouTubeVideoSource should ignore yt-dlp warnings when filepath is p
   const result = await resolveYouTubeVideoSource("https://www.youtube.com/watch?v=abc123", {
     outputDir: "/tmp/cat-crawl-video",
     execFileAsync: async () => ({
-      stdout: "20251123\nWarning Resistant Title\n/tmp/cat-crawl-video/video.webm\n",
+      stdout: "20251123\nAI Engineer\nWarning Resistant Title\n/tmp/cat-crawl-video/video.webm\n",
       stderr:
         "WARNING: [youtube] abc123: nsig extraction failed: Some formats may be missing.\n" +
         "WARNING: [youtube] abc123: n challenge solving failed.\n",

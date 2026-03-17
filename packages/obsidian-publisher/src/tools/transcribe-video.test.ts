@@ -32,7 +32,7 @@ test('transcribe video tool should transcribe local file and skip save when disa
         assert.equal(sourceUrl, '/tmp/input.mp4')
         assert.equal(transcriptText, 'hello transcript')
         assert.match(transcriptSrt || '', /00:00:00,000 --> 00:00:02,000/)
-        return '## Local Video（00:00）\n\nhello transcript'
+        return { markdown: '## Local Video（00:00）\n\nhello transcript' }
       }
     }
   )
@@ -76,7 +76,9 @@ test('transcribe video tool should save transcript when enabled', async () => {
         srt: undefined,
         fallbackUsed: false
       }),
-      buildTranscriptMarkdown: async ({ transcriptText }) => `## Saved Video\n\n${transcriptText}`,
+      buildTranscriptMarkdown: async ({ transcriptText }) => ({
+        markdown: `## Saved Video\n\n${transcriptText}`
+      }),
       saveToObsidian: async (input) => {
         saveCalled = true
         assert.equal(input.title, 'Saved Video')
@@ -132,7 +134,9 @@ test('transcribe video tool should pass Douyin cookie to resolver', async () => 
         srt: '1\n00:00:00,000 --> 00:00:02,000\nhello transcript\n',
         fallbackUsed: false
       }),
-      buildTranscriptMarkdown: async () => '## Douyin Video（00:00）\n\nhello transcript'
+      buildTranscriptMarkdown: async () => ({
+        markdown: '## Douyin Video（00:00）\n\nhello transcript'
+      })
     }
   )
 
@@ -172,6 +176,6 @@ test('shouldTranslateToChinese should detect non-Chinese transcript', () => {
 })
 
 test('pickGeminiSummarizeModel should route translation to pro preview', () => {
-  assert.equal(__test__.pickGeminiSummarizeModel(true), 'gemini-2.5-pro')
-  assert.equal(__test__.pickGeminiSummarizeModel(false), 'gemini-2.5-pro')
+  assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, true), 'gemini-2.5-pro')
+  assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, false), 'gemini-2.5-pro')
 })
