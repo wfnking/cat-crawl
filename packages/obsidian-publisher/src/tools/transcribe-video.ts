@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { createLogger } from "@cat-crawl/core";
+import fs from "node:fs";
 import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { extractAudioFromVideo } from "../services/media/extract-audio.js";
@@ -156,12 +157,7 @@ async function buildTranscriptMarkdownWithModel(
         ].join("\n"),
       ),
       new HumanMessage(
-        [
-          `Source: ${input.sourceUrl}`,
-          "",
-          "Transcript Input:",
-          sourceMaterial,
-        ].join("\n"),
+        [`Source: ${input.sourceUrl}`, "", "Transcript Input:", sourceMaterial].join("\n"),
       ),
     ]);
     let markdown = String(message.content ?? "").trim();
@@ -170,13 +166,13 @@ async function buildTranscriptMarkdownWithModel(
     }
     let description: string | undefined;
     let tags: string[] | undefined;
-    
+
     const descMatch = markdown.match(/^[ \t]*\[Description\][ \t]*[:：]?[ \t]*(.+)/i);
     if (descMatch) {
       description = descMatch[1].trim();
       markdown = markdown.replace(/^[ \t]*\[Description\].*\n?/i, "").trim();
     }
-    
+
     const tagsMatch = markdown.match(/^[ \t]*\[Tags\][ \t]*[:：]?[ \t]*(.+)/i);
     if (tagsMatch) {
       tags = tagsMatch[1]
@@ -185,8 +181,10 @@ async function buildTranscriptMarkdownWithModel(
         .filter(Boolean);
       markdown = markdown.replace(/^[ \t]*\[Tags\].*\n?/i, "").trim();
     }
-    
-    logger.info(`[tool:transcribe_video] chapterize done chars=${markdown.length} has_description=${!!description} tags=${tags?.length || 0}`);
+
+    logger.info(
+      `[tool:transcribe_video] chapterize done chars=${markdown.length} has_description=${!!description} tags=${tags?.length || 0}`,
+    );
     return { markdown, description, tags };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -219,6 +217,18 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
 
   return tool(
     async (input: TranscribeVideoInput) => {
+      const tempDirs = ["/tmp/cat-crawl-youtube", "/tmp/cat-crawl-audio", "/tmp/cat-crawl-whisper"];
+      for (const dir of tempDirs) {
+        try {
+          fs.rmSync(dir, { recursive: true, force: true });
+          fs.mkdirSync(dir, { recursive: true });
+        } catch (error) {
+          logger.warn(
+            `[tool:transcribe_video] failed to clean temp dir dir=${dir} msg=${(error as Error).message}`,
+          );
+        }
+      }
+
       const adapter = selectAdapter(input.source);
       logger.info(`[tool:transcribe_video] start source=${input.source}`);
       logger.info(`[tool:transcribe_video] adapter=${adapter.name}`);
@@ -262,13 +272,18 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       const rawTitle = input.title?.trim() || resolvedTitle || "Untitled Video Transcript";
       const normalized = normalizeVideoTitle(rawTitle);
       const title = normalized.title;
-      const { markdown: transcriptMarkdown, description: transcriptDescription, tags: aiGeneratedTags } =
-        await buildTranscriptMarkdown({
-          sourceUrl: resolved.sourceUrl,
-          transcriptText: transcription.text,
-          transcriptSrt: transcription.srt,
-        });
-      const noteTags = Array.from(new Set(["video", "transcript", ...normalized.tags, ...(aiGeneratedTags || [])]));
+      const {
+        markdown: transcriptMarkdown,
+        description: transcriptDescription,
+        tags: aiGeneratedTags,
+      } = await buildTranscriptMarkdown({
+        sourceUrl: resolved.sourceUrl,
+        transcriptText: transcription.text,
+        transcriptSrt: transcription.srt,
+      });
+      const noteTags = Array.from(
+        new Set(["video", "transcript", ...normalized.tags, ...(aiGeneratedTags || [])]),
+      );
 
       if (!input.save) {
         logger.info(`[tool:transcribe_video] skip save title=${title}`);
@@ -278,8 +293,14 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           source_url: resolved.sourceUrl,
           provider_used: transcription.providerUsed,
           fallback_used: transcription.fallbackUsed,
-          published: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.published : undefined,
-          author: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.author : undefined,
+          published:
+            resolved.adapter === "youtube" || resolved.adapter === "douyin"
+              ? resolved.published
+              : undefined,
+          author:
+            resolved.adapter === "youtube" || resolved.adapter === "douyin"
+              ? resolved.author
+              : undefined,
           description: transcriptDescription,
           transcript_markdown: transcriptMarkdown,
         };
@@ -289,8 +310,14 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         title,
         source_url: resolved.sourceUrl,
         content_markdown: transcriptMarkdown,
-        published: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.published : undefined,
-        author: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.author : undefined,
+        published:
+          resolved.adapter === "youtube" || resolved.adapter === "douyin"
+            ? resolved.published
+            : undefined,
+        author:
+          resolved.adapter === "youtube" || resolved.adapter === "douyin"
+            ? resolved.author
+            : undefined,
         description: transcriptDescription,
         source: "Video",
         tags: noteTags,
@@ -307,8 +334,14 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         path: saveResult.path,
         tags: saveResult.tags,
         dynamic_folder: saveResult.dynamic_folder,
-        published: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.published : undefined,
-        author: resolved.adapter === "youtube" || resolved.adapter === "douyin" ? resolved.author : undefined,
+        published:
+          resolved.adapter === "youtube" || resolved.adapter === "douyin"
+            ? resolved.published
+            : undefined,
+        author:
+          resolved.adapter === "youtube" || resolved.adapter === "douyin"
+            ? resolved.author
+            : undefined,
         description: transcriptDescription,
         provider_used: transcription.providerUsed,
         fallback_used: transcription.fallbackUsed,
