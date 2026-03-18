@@ -43,7 +43,7 @@ export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
   if (agent === 'vertex') {
     return [
       {
-        key: 'VERTEX_API_KEY',
+        key: 'GOOGLE_VERTEX_API_KEY',
         label: 'Vertex API Key (GCP)',
         required: true
       },

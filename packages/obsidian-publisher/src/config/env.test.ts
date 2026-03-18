@@ -157,7 +157,7 @@ test('loadEnv should support ai namespace with task-level provider overrides', (
   }
 })
 
-test('loadEnv should fallback to VERTEX_API_KEY when GEMINI_API_KEY is missing', () => {
+test('loadEnv should fallback to GOOGLE_VERTEX_API_KEY when GEMINI_API_KEY is missing', () => {
   const { homeDir, cleanup } = createTempHome()
   const store = createLocalConfigStore({ homeDir })
   store.writeRaw({
@@ -173,16 +173,16 @@ test('loadEnv should fallback to VERTEX_API_KEY when GEMINI_API_KEY is missing',
   try {
     const env = loadEnv()
     assert.equal(env.geminiApiKey, 'vertex-demo-key')
-    assert.equal(env.geminiApiKeySource, 'VERTEX_API_KEY')
+    assert.equal(env.geminiApiKeySource, 'GOOGLE_VERTEX_API_KEY')
     assert.equal(env.vertexApiKey, 'vertex-demo-key')
-    assert.equal(env.vertexApiKeySource, 'VERTEX_API_KEY')
+    assert.equal(env.vertexApiKeySource, 'GOOGLE_VERTEX_API_KEY')
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()
   }
 })
 
-test('loadEnv should prefer GEMINI_API_KEY over VERTEX_API_KEY', () => {
+test('loadEnv should prefer GEMINI_API_KEY over GOOGLE_VERTEX_API_KEY', () => {
   const { homeDir, cleanup } = createTempHome()
   const store = createLocalConfigStore({ homeDir })
   store.writeRaw({
@@ -203,7 +203,7 @@ test('loadEnv should prefer GEMINI_API_KEY over VERTEX_API_KEY', () => {
     assert.equal(env.geminiApiKey, 'gemini-demo-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
     assert.equal(env.vertexApiKey, 'vertex-demo-key')
-    assert.equal(env.vertexApiKeySource, 'VERTEX_API_KEY')
+    assert.equal(env.vertexApiKeySource, 'GOOGLE_VERTEX_API_KEY')
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()

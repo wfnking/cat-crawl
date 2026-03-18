@@ -16,8 +16,8 @@ export type AppEnv = {
   geminiApiKey?: string
   googleApiKey?: string
   vertexApiKey?: string
-  geminiApiKeySource?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'
-  vertexApiKeySource?: 'VERTEX_API_KEY' | 'GOOGLE_API_KEY' | 'GEMINI_API_KEY'
+  geminiApiKeySource?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'GOOGLE_VERTEX_API_KEY'
+  vertexApiKeySource?: 'GOOGLE_VERTEX_API_KEY' | 'GOOGLE_API_KEY' | 'GEMINI_API_KEY'
   geminiModel: string
   vertexLocation?: string
   vertexEndpoint?: string
@@ -156,7 +156,7 @@ function readFromStructuredConfig(name: string): string | undefined {
     return undefined
   }
 
-  if (name === 'VERTEX_API_KEY') {
+  if (name === 'GOOGLE_VERTEX_API_KEY') {
     return readStringFromPaths(raw, [
       ['ai', 'vertex', 'apiKey'],
       ['agent', 'vertex', 'apiKey']
@@ -311,7 +311,7 @@ function getAiProvider(
   throw new Error(`Invalid ${name}: ${raw}`)
 }
 
-function readFirstRawWithSource<T extends 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'VERTEX_API_KEY'>(
+function readFirstRawWithSource<T extends 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'GOOGLE_VERTEX_API_KEY'>(
   names: T[]
 ): {
   value?: string
@@ -338,9 +338,9 @@ export function loadEnv(): AppEnv {
   const aiSummarizeProvider = getAiProvider('AI_SUMMARIZE_PROVIDER')
   const configuredGeminiApiKey = readRaw('GEMINI_API_KEY') || undefined
   const configuredGoogleApiKey = readRaw('GOOGLE_API_KEY') || undefined
-  const configuredVertexApiKey = readRaw('VERTEX_API_KEY') || undefined
-  const geminiAuth = readFirstRawWithSource(['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'VERTEX_API_KEY'])
-  const vertexAuth = readFirstRawWithSource(['VERTEX_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'])
+  const configuredVertexApiKey = readRaw('GOOGLE_VERTEX_API_KEY') || undefined
+  const geminiAuth = readFirstRawWithSource(['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_VERTEX_API_KEY'])
+  const vertexAuth = readFirstRawWithSource(['GOOGLE_VERTEX_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'])
   const needDeepseekApiKey =
     aiProvider === 'deepseek' ||
     aiChatProvider === 'deepseek' ||

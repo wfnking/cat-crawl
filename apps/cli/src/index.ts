@@ -140,7 +140,7 @@ function persistStructuredAgentConfig(
     gemini.model = values.GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
   } else if (agent === "vertex") {
     const vertex = ensureObject(agentConfig, "vertex");
-    vertex.apiKey = values.VERTEX_API_KEY || "";
+    vertex.apiKey = values.GOOGLE_VERTEX_API_KEY || "";
     vertex.model = values.GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
   }
 

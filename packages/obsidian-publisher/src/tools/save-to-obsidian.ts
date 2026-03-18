@@ -322,6 +322,26 @@ function formatObsidianCommandForLog(args: string[]): string {
   return `obsidian ${rendered.join(" ")}`.trim();
 }
 
+function parseObsidianKeyValueOutput(stdout: string, stderr: string): Record<string, string> {
+  const combined = [stdout, stderr].filter(Boolean).join("\n").trim();
+  if (!combined) {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  const lines = combined.split(/\r?\n/g);
+  for (const line of lines) {
+    const parts = line.split("\t");
+    if (parts.length >= 2) {
+      const key = parts[0]?.trim();
+      const value = parts.slice(1).join("\t").trim();
+      if (key && value) {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 function sanitizeVaultName(raw: string): string | undefined {
   const value = raw.trim();
   if (!value) {
@@ -369,6 +389,18 @@ function hasObsidianOutputError(output: string): boolean {
 
 async function resolveActiveVaultName(): Promise<string | undefined> {
   try {
+    const { stdout, stderr } = await execFileAsync("obsidian", ["vault"], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const kv = parseObsidianKeyValueOutput(stdout, stderr);
+    if (kv.name) {
+      return sanitizeVaultName(kv.name);
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
     const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=name"], {
       maxBuffer: 2 * 1024 * 1024,
     });
@@ -403,6 +435,10 @@ async function resolveActiveVaultName(): Promise<string | undefined> {
 }
 
 async function resolveVaultPath(vaultName?: string): Promise<string | undefined> {
+  if (vaultName && isAbsolute(vaultName)) {
+    return vaultName;
+  }
+
   if (vaultName) {
     try {
       const { stdout, stderr } = await execFileAsync("obsidian", ["vaults", "verbose"], {
@@ -418,6 +454,18 @@ async function resolveVaultPath(vaultName?: string): Promise<string | undefined>
       return undefined;
     }
     return undefined;
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync("obsidian", ["vault"], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const kv = parseObsidianKeyValueOutput(stdout, stderr);
+    if (kv.path) {
+      return kv.path;
+    }
+  } catch {
+    // fallback below
   }
 
   try {

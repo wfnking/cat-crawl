@@ -5,10 +5,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const distEntry = resolve(currentDir, "../../../dist/apps/cli/src/index.js");
+const distEntry = resolve(currentDir, "../dist/index.js");
 
 if (!existsSync(distEntry)) {
-  console.error("cat-crawl CLI is not built. Run `pnpm build` in the repo root first.");
+  console.error("cat-crawl CLI is not built. Run `pnpm --filter cat-crawl build` first.");
   process.exit(1);
 }
 
