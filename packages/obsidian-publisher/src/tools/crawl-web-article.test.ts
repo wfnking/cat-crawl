@@ -31,3 +31,11 @@ test("resolveArticleImageSrc should skip inline placeholders", () => {
     "https://cdn.example.com/real.jpg",
   );
 });
+
+test("normalizePublishedDateWithFallback should use timestamp year for wechat short date", () => {
+  assert.equal(__test__.normalizePublishedDateWithFallback("2/28 20:50", 1772283000), "2026-02-28");
+});
+
+test("normalizePublishedDateWithFallback should fall back to unix timestamp when raw date missing", () => {
+  assert.equal(__test__.normalizePublishedDateWithFallback(null, 1772283000), "2026-02-28");
+});

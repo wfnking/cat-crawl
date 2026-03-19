@@ -119,6 +119,10 @@ function persistStructuredAgentConfig(
     "DEEPSEEK_MODEL",
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
+    "GOOGLE_VERTEX_API_KEY",
+    "VERTEX_PROJECT",
+    "VERTEX_LOCATION",
+    "VERTEX_ENDPOINT",
   ];
   for (const key of flatAgentKeys) {
     delete raw[key];
@@ -128,6 +132,7 @@ function persistStructuredAgentConfig(
   agentConfig.provider = agent;
   delete agentConfig.deepseek;
   delete agentConfig.gemini;
+  delete agentConfig.vertex;
 
   if (agent === "deepseek") {
     const deepseek = ensureObject(agentConfig, "deepseek");
@@ -140,7 +145,13 @@ function persistStructuredAgentConfig(
     gemini.model = values.GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
   } else if (agent === "vertex") {
     const vertex = ensureObject(agentConfig, "vertex");
-    vertex.apiKey = values.GOOGLE_VERTEX_API_KEY || "";
+    if (values.GOOGLE_VERTEX_API_KEY) {
+      vertex.apiKey = values.GOOGLE_VERTEX_API_KEY;
+    }
+    if (values.VERTEX_PROJECT) {
+      vertex.project = values.VERTEX_PROJECT;
+    }
+    vertex.location = values.VERTEX_LOCATION || "us-central1";
     vertex.model = values.GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
   }
 
@@ -242,7 +253,18 @@ async function promptAgentSetup(agent: AgentConfigValue): Promise<Record<string,
       const agentConfig = asObject(structuredAgent?.[agent as string]) as
         | Record<string, unknown>
         | undefined;
-      const existingKey = agentConfig?.[step.key === "GEMINI_MODEL" ? "model" : "apiKey"];
+      const fieldByStepKey: Record<string, string> = {
+        DEEPSEEK_API_KEY: "apiKey",
+        DEEPSEEK_BASE_URL: "baseUrl",
+        DEEPSEEK_MODEL: "model",
+        GEMINI_API_KEY: "apiKey",
+        GEMINI_MODEL: "model",
+        GOOGLE_VERTEX_API_KEY: "apiKey",
+        VERTEX_PROJECT: "project",
+        VERTEX_LOCATION: "location",
+        VERTEX_ENDPOINT: "endpoint",
+      };
+      const existingKey = agentConfig?.[fieldByStepKey[step.key] || step.key];
       const preset =
         existing[step.key]?.trim() ||
         (typeof existingKey === "string" ? existingKey : undefined) ||

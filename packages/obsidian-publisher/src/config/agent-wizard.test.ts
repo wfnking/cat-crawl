@@ -45,11 +45,13 @@ test('buildAgentSetupConfig should include gemini values', () => {
 
 test('buildAgentSetupConfig should include vertex values', () => {
   const config = buildAgentSetupConfig('vertex', {
-    GOOGLE_VERTEX_API_KEY: 'vertex-demo-key',
+    VERTEX_PROJECT: 'demo-project',
+    VERTEX_LOCATION: 'us-central1',
     GEMINI_MODEL: 'gemini-2.5-pro'
   })
 
   assert.equal(config.agent, 'vertex')
-  assert.equal(config.GOOGLE_VERTEX_API_KEY, 'vertex-demo-key')
+  assert.equal(config.VERTEX_PROJECT, 'demo-project')
+  assert.equal(config.VERTEX_LOCATION, 'us-central1')
   assert.equal(config.GEMINI_MODEL, 'gemini-2.5-pro')
 })

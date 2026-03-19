@@ -108,7 +108,7 @@ export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableM
   } else if (provider === "vertex") {
     const location = env.vertexLocation || "default";
     logger.info(
-      `[model] task=${options.task || "default"} provider=vertex using=${env.vertexApiKeySource || "none"} model=${options.model || env.geminiModel} location=${location}`,
+      `[model] task=${options.task || "default"} provider=vertex auth=ADC/OAuth model=${options.model || env.geminiModel} location=${location}`,
     );
   } else {
     logger.info(

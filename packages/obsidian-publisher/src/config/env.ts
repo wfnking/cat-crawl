@@ -19,6 +19,7 @@ export type AppEnv = {
   geminiApiKeySource?: 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 'GOOGLE_VERTEX_API_KEY'
   vertexApiKeySource?: 'GOOGLE_VERTEX_API_KEY' | 'GOOGLE_API_KEY' | 'GEMINI_API_KEY'
   geminiModel: string
+  vertexProject?: string
   vertexLocation?: string
   vertexEndpoint?: string
   douyinCookie?: string
@@ -167,6 +168,13 @@ function readFromStructuredConfig(name: string): string | undefined {
     return readStringFromPaths(raw, [
       ['ai', 'vertex', 'location'],
       ['agent', 'vertex', 'location']
+    ])
+  }
+
+  if (name === 'VERTEX_PROJECT') {
+    return readStringFromPaths(raw, [
+      ['ai', 'vertex', 'project'],
+      ['agent', 'vertex', 'project']
     ])
   }
 
@@ -368,6 +376,7 @@ export function loadEnv(): AppEnv {
     geminiApiKeySource: geminiAuth.source,
     vertexApiKeySource: vertexAuth.source,
     geminiModel: readRaw('GEMINI_MODEL') || 'gemini-2.5-pro',
+    vertexProject: readRaw('VERTEX_PROJECT') || undefined,
     vertexLocation: readRaw('VERTEX_LOCATION') || undefined,
     vertexEndpoint: readRaw('VERTEX_ENDPOINT') || undefined,
     douyinCookie: readRaw('DOUYIN_COOKIE') || undefined,

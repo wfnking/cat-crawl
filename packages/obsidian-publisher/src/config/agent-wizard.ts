@@ -43,9 +43,15 @@ export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
   if (agent === 'vertex') {
     return [
       {
-        key: 'GOOGLE_VERTEX_API_KEY',
-        label: 'Vertex API Key (GCP)',
-        required: true
+        key: 'VERTEX_PROJECT',
+        label: 'Vertex Project ID (optional)',
+        required: false
+      },
+      {
+        key: 'VERTEX_LOCATION',
+        label: 'Vertex Location',
+        required: true,
+        defaultValue: 'us-central1'
       },
       {
         key: 'GEMINI_MODEL',

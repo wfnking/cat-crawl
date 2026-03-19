@@ -77,14 +77,55 @@ export function resolveArticleImageSrc(attrs: ArticleImageAttrs): string {
 
 function normalizePublishedDate(raw: string | null): string | null {
   const text = raw?.trim() || "";
-  if (!text) {
+  const fullDate = text.match(/(\d{4})[./\-年](\d{1,2})[./\-月](\d{1,2})/);
+  if (fullDate) {
+    return `${fullDate[1]}-${fullDate[2].padStart(2, "0")}-${fullDate[3].padStart(2, "0")}`;
+  }
+  return null;
+}
+
+function formatUnixSecondsDate(raw: unknown): string | null {
+  if (raw === null || raw === undefined) {
     return null;
   }
-  const matched = text.match(/(\d{4})[./\-年](\d{1,2})[./\-月](\d{1,2})/);
-  if (!matched) {
+  const numeric = Number(String(raw).trim());
+  if (!Number.isFinite(numeric)) {
     return null;
   }
-  return `${matched[1]}-${matched[2].padStart(2, "0")}-${matched[3].padStart(2, "0")}`;
+  const seconds = numeric > 1_000_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+  if (seconds <= 0) {
+    return null;
+  }
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizePublishedDateWithFallback(
+  raw: string | null,
+  fallbackTimestampSeconds: number | null,
+): string | null {
+  const normalized = normalizePublishedDate(raw);
+  if (normalized) {
+    return normalized;
+  }
+
+  const fallback = formatUnixSecondsDate(fallbackTimestampSeconds);
+  const text = raw?.trim() || "";
+  const monthDay = text.match(/(\d{1,2})[./\-月](\d{1,2})(?:日)?(?:\s+\d{1,2}:\d{2})?/);
+  if (monthDay && fallback) {
+    const year = fallback.slice(0, 4);
+    const month = monthDay[1].padStart(2, "0");
+    const day = monthDay[2].padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  return fallback;
 }
 
 function createTurndownService(): TurndownService {
@@ -189,7 +230,7 @@ export const crawlWebArticleTool = tool(
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
       await page.waitForTimeout(adapter === "wechat" ? 1500 : 2200);
 
-      const scraped = await page.evaluate((currentAdapter) => {
+      const scraped = await page.evaluate(function (currentAdapter) {
         const meta = (name: string, attr: "name" | "property" = "name"): string | null =>
           document.querySelector(`meta[${attr}="${name}"]`)?.getAttribute("content")?.trim() || null;
         const text = (selectors: string[]): string | null => {
@@ -240,19 +281,48 @@ export const crawlWebArticleTool = tool(
           document.title ||
           "Untitled";
 
-        const author =
+        let author =
           text([
             "#js_name",
+            ".account_nickname_inner",
             ".author-info__username",
             ".author-name",
             ".author",
             "[rel='author']",
+            ".rich_media_meta_nickname",
+            ".rich_media_meta_link",
+            ".rich_media_meta_text.nickname",
             ".rich_media_meta_text",
           ]) || meta("author", "name");
 
-        const published =
+        const anyWindow = window as unknown as {
+          cgiDataNew?: { nick_name?: string; create_time?: number | string };
+          nickname?: string;
+          ct?: number | string;
+          createTime?: number | string;
+          msg_publish_time?: number | string;
+          ori_create_time?: number | string;
+          appmsgpublishtime?: number | string;
+        };
+
+        const authorLooksLikeDate = /^(\d{1,4}[./\-年]\d{1,2}([./\-月]\d{1,2})?)(\s+\d{1,2}:\d{2})?$/.test(
+          (author || "").trim(),
+        );
+
+        if (currentAdapter === "wechat" && (!author || authorLooksLikeDate)) {
+          const authorFromWindow =
+            anyWindow.cgiDataNew?.nick_name?.trim() || anyWindow.nickname?.trim() || null;
+          if (authorFromWindow) {
+            author = authorFromWindow;
+          }
+        }
+
+        const publishedRaw =
           text([
             "#publish_time",
+            ".publish_time",
+            ".rich_media_meta_text#publish_time",
+            ".rich_media_meta_text[id*='publish']",
             "time",
             ".article-time",
             ".publish-time",
@@ -262,6 +332,27 @@ export const crawlWebArticleTool = tool(
           meta("article:published_time", "property") ||
           meta("publishdate", "name") ||
           meta("pubdate", "name");
+
+        const timestampCandidates = [
+          anyWindow.ct,
+          anyWindow.createTime,
+          anyWindow.msg_publish_time,
+          anyWindow.ori_create_time,
+          anyWindow.appmsgpublishtime,
+          anyWindow.cgiDataNew?.create_time,
+        ];
+        let publishedTimestamp: number | null = null;
+        for (const candidate of timestampCandidates) {
+          const numeric = Number(String(candidate ?? "").trim());
+          if (!Number.isFinite(numeric)) {
+            continue;
+          }
+          const seconds = numeric > 1_000_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+          if (seconds > 0) {
+            publishedTimestamp = seconds;
+            break;
+          }
+        }
 
         const contentNode = html(selectorMap[currentAdapter] || selectorMap.generic);
         let contentHtml = "";
@@ -306,35 +397,68 @@ export const crawlWebArticleTool = tool(
           contentHtml = clone.innerHTML;
         }
 
+        const carouselImages =
+          currentAdapter === "wechat"
+            ? Array.from(
+                document.querySelectorAll("#img_swiper img, .share_media_swiper img, #js_share_content_page_hd img"),
+              )
+                .map((img) => {
+                  const element = img as HTMLImageElement;
+                  const src =
+                    element.getAttribute("data-src") ||
+                    element.getAttribute("data-original") ||
+                    element.getAttribute("data-original-src") ||
+                    element.getAttribute("data-lazy-src") ||
+                    element.getAttribute("src") ||
+                    "";
+                  return src.trim();
+                })
+                .filter(Boolean)
+            : [];
+
         const canonical =
           document.querySelector('link[rel="canonical"]')?.getAttribute("href")?.trim() || null;
 
         return {
           title,
           author: author || null,
-          published: published || null,
+          published: publishedRaw || null,
+          publishedTimestamp,
           contentHtml,
+          carouselImages: Array.from(new Set(carouselImages)),
           canonical,
         };
       }, adapter);
 
       const turndown = createTurndownService();
       const markdownBody = turndown.turndown(scraped.contentHtml || "");
-      const contentBody = markdownBody.replace(/\n{3,}/g, "\n\n").trim().slice(0, 30000);
+      const carouselMarkdown = (scraped.carouselImages || [])
+        .map((src: string, index: number) => `![Carousel ${index + 1}](${normalizeUrl(src)})`)
+        .join("\n\n");
+      const contentBody = [carouselMarkdown, markdownBody]
+        .filter(Boolean)
+        .join("\n\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+        .slice(0, 30000);
       if (!contentBody) {
         throw new Error("Failed to extract article content.");
       }
 
       const sourceUrl = scraped.canonical ? normalizeUrl(scraped.canonical) : url;
+      const published = normalizePublishedDateWithFallback(
+        scraped.published,
+        scraped.publishedTimestamp ?? null,
+      );
       return {
         title: scraped.title,
         author: scraped.author,
-        published: normalizePublishedDate(scraped.published),
+        published,
         source_url: sourceUrl,
         content_markdown: toMarkdown({
           title: scraped.title,
           author: scraped.author,
-          published: normalizePublishedDate(scraped.published),
+          published,
           sourceUrl,
           contentBody,
         }),
@@ -355,4 +479,6 @@ export const __test__ = {
   extractArticleUrl,
   pickArticleAdapter,
   resolveArticleImageSrc,
+  normalizePublishedDateWithFallback,
+  formatUnixSecondsDate,
 };
