@@ -89,7 +89,11 @@ cat-crawl obsidian pairing approve telegram <code>
       "modelPath": "/absolute/path/to/ggml-large-v3-turbo-q8_0.bin"
     }
   },
-  "obsidianFolder": "Clippings"
+  "obsidian": {
+    "vault": "知识库",
+    "folder": "Clippings",
+    "dynamicFolders": ["AI", "OPC", "English"]
+  }
 }
 ```
 

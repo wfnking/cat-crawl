@@ -110,6 +110,8 @@ function readFromStructuredConfig(name: string): string | undefined {
     WHISPER_CPP_BIN: ['transcription', 'whisperCpp', 'bin'],
     WHISPER_CPP_MODEL_PATH: ['transcription', 'whisperCpp', 'modelPath'],
     WHISPER_CPP_LANGUAGE: ['transcription', 'whisperCpp', 'language'],
+    OBSIDIAN_VAULT: ['obsidian', 'vault'],
+    OBSIDIAN_FOLDER: ['obsidian', 'folder'],
     TELEGRAM_BOT_TOKEN: ['channels', 'telegram', 'botToken'],
     TELEGRAM_DM_POLICY: ['channels', 'telegram', 'dmPolicy'],
     TELEGRAM_TYPING_MODE: ['channels', 'telegram', 'typingMode'],
@@ -131,6 +133,20 @@ function readFromStructuredConfig(name: string): string | undefined {
   if (path) {
     const value = readFromPath(raw, path)
     return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  }
+
+  if (name === 'OBSIDIAN_DYNAMIC_FOLDERS') {
+    const value = readFromPath(raw, ['obsidian', 'dynamicFolders'])
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+        .join(',')
+    }
+    return undefined
   }
 
   if (name === 'GEMINI_API_KEY' || name === 'GEMINI_MODEL') {

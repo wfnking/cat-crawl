@@ -282,3 +282,32 @@ test('loadEnv should ignore process env and use config only', () => {
     cleanup()
   }
 })
+
+test('loadEnv should read obsidian settings from structured camelCase config', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'gemini',
+      gemini: {
+        apiKey: 'gemini-demo-key'
+      }
+    },
+    obsidian: {
+      vault: '知识库',
+      folder: 'Clippings',
+      dynamicFolders: ['AI', 'OPC', 'English']
+    }
+  })
+
+  setLocalConfigStoreForTest(store)
+  try {
+    const env = loadEnv()
+    assert.equal(env.obsidianVault, '知识库')
+    assert.equal(env.obsidianFolder, 'Clippings')
+    assert.deepEqual(env.obsidianDynamicFolders, ['AI', 'OPC', 'English'])
+  } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
