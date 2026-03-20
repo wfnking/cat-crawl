@@ -93,20 +93,7 @@ Recommended nested format:
 }
 ```
 
-## Vertex Notes
-
-`vertex` uses ADC/OAuth (not API-key-only auth for Vertex endpoint):
-
-```bash
-gcloud auth application-default login
-gcloud config set project <YOUR_PROJECT_ID>
-```
-
-Then set agent to vertex:
-
-```bash
-cat-crawl obsidian config set agent vertex
-```
+`vertex` uses Vertex AI's ADC/OAuth flow. Configure the agent through the CLI or `~/.cat-crawl/config.json`.
 
 ## Source Repo
 

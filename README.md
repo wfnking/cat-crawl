@@ -28,6 +28,7 @@
 - 成功记录写入本地数据库：`~/.cat-crawl/history.db`
 - 渠道接入：CLI、Feishu、Telegram（Polling）、Discord
 - Agent Provider：`openai` / `gemini` / `vertex`
+  - `vertex` 走的是 Vertex AI 的 ADC/OAuth 认证，具体配置见下方配置示例即可
 
 ## 使用方式
 
@@ -126,60 +127,6 @@ cat-crawl obsidian pairing approve telegram <code>
 }
 ```
 
-## Vertex 配置（重点）
-
-> 你遇到的错误：`ACCESS_TOKEN_TYPE_UNSUPPORTED`
->
-> 这是因为 Vertex endpoint（`aiplatform.googleapis.com`）不接受 Gemini API Key 这类 key 方式；需要 **ADC/OAuth2**（用户凭证或服务账号）。
-
-### 正确做法
-
-1. 本机登录 ADC（开发机）
-
-```bash
-gcloud auth application-default login
-gcloud config set project <YOUR_GCP_PROJECT_ID>
-```
-
-2. 设为 Vertex provider
-
-```bash
-cat-crawl obsidian config set agent vertex
-```
-
-向导中填写：
-- `VERTEX_PROJECT`（可选，通常可留空，走 gcloud 当前 project）
-- `VERTEX_LOCATION`（建议 `us-central1`）
-- `GEMINI_MODEL`（例如 `gemini-3.1-flash-lite-preview`）
-
-3. 配置文件可写成：
-
-```json
-{
-  "agent": {
-    "provider": "vertex",
-    "vertex": {
-      "project": "your-gcp-project-id",
-      "location": "us-central1",
-      "model": "gemini-3.1-flash-lite-preview"
-    }
-  }
-}
-```
-
-### 服务账号方式（服务器）
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
-```
-
-并确保服务账号具备 Vertex AI 调用权限。
-
-### 注意
-
-- `vertex` 模式下不建议配置 `GOOGLE_VERTEX_API_KEY`。
-- 即使配置了 key，也不能替代 ADC/OAuth2 去调用 Vertex endpoint。
-
 ## 视频转写配置要点
 
 ### whisper.cpp
@@ -201,16 +148,6 @@ export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
 - 当前视频抓取依赖浏览器会话态；未登录时容易出现下载失败、仅预览流或无音轨等问题。
 - YouTube 依赖 `yt-dlp`，并由 `ffmpeg` 抽音频
 - 抖音通过 Playwright + 浏览器 cookies 抓取视频源（并校验音轨）
-
-常见排查：
-- 抖音出现 `candidate has no audio`：通常是拿到了占位流或会话态不完整，先确认 Chrome 已登录抖音并可正常播放该视频。
-- YouTube 出现 `n challenge` / 下载失败：先更新 `yt-dlp`，并确认当前网络环境和账号会话可访问该视频。
-
-## 微信文章说明
-
-- 发布时间优先解析页面时间字段，缺少年份时会回退使用微信页面时间戳推断。
-- 对微信新模板头部图区域会提取图片并转成 Markdown 图片列表。
-- Obsidian/Markdown 不支持原生“可滑动轮播”交互，默认以静态图集方式展示。
 
 ## 本地开发
 
