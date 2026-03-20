@@ -12,6 +12,7 @@ import { sanitizeFileName } from "../utils/text.js";
 const execFileAsync = promisify(execFile);
 const logger = createLogger();
 const OBSIDIAN_CLI_TIMEOUT_MS = 30_000;
+const PROJECT_TAG = "cat-crawl";
 
 const inputSchema = z.object({
   title: z.string().min(1).describe("文章标题"),
@@ -50,18 +51,19 @@ function formatLocalDate(date: Date): string {
 
 function inferTags(input: SaveInput): string[] {
   const rawTags = input.tags?.map((t) => t.trim()).filter(Boolean) ?? [];
-  const normalizedExplicitTags = normalizeObsidianTags(rawTags);
-  if (normalizedExplicitTags.length > 0) {
-    return normalizedExplicitTags;
-  }
+  const normalizedTags = [...normalizeObsidianTags(rawTags)];
   const host = new URL(input.source_url).hostname.toLowerCase();
   if (host.includes("weixin.qq.com")) {
-    return normalizeObsidianTags(["wechat", "clippings"]);
+    normalizedTags.push("wechat");
   }
   if (host.includes("x.com") || host.includes("twitter.com")) {
-    return normalizeObsidianTags(["x", "clippings"]);
+    normalizedTags.push("x");
   }
-  return normalizeObsidianTags(["clippings"]);
+  if (host.includes("youtube.com") || host.includes("youtu.be")) {
+    normalizedTags.push("youtube");
+  }
+  normalizedTags.push(PROJECT_TAG);
+  return normalizeObsidianTags(normalizedTags);
 }
 
 function normalizeObsidianTag(rawTag: string): string {
@@ -165,6 +167,13 @@ function quoteYamlValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+function normalizeSingleLineText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeFrontmatterDescription(value: string): string {
+  return normalizeSingleLineText(cleanMarkdownParagraph(value).replace(/^#+\s*/, ""));
+}
 function cleanMarkdownParagraph(paragraph: string): string {
   return paragraph
     .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
@@ -306,15 +315,17 @@ function normalizeDateString(value: string): string {
 }
 
 function buildNoteContent(input: SaveInput, tags: string[], description?: string): string {
-  const safeAuthor = input.author?.trim() || "Unknown";
+  const safeTitle = normalizeSingleLineText(input.title);
+  const safeAuthor = normalizeSingleLineText(input.author?.trim() || "Unknown");
   const created = formatLocalDate(new Date());
-  const published = normalizeDateString(input.published?.trim() || created);
-  const resolvedDescription = description?.trim() || input.description?.trim() || "";
+  const published = normalizeDateString(normalizeSingleLineText(input.published?.trim() || created));
+  const rawDescription = description?.trim() || input.description?.trim() || "";
+  const resolvedDescription = normalizeFrontmatterDescription(rawDescription);
   const tagInline = tags.map((t) => quoteYamlValue(t)).join(", ");
 
   const frontmatter = [
     "---",
-    `title: ${quoteYamlValue(input.title.trim())}`,
+    `title: ${quoteYamlValue(safeTitle)}`,
     `source: ${quoteYamlValue(input.source_url)}`,
     `author: ${quoteYamlValue(safeAuthor)}`,
     `published: ${quoteYamlValue(published)}`,

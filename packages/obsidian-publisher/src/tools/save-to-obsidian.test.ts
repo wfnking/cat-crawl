@@ -14,7 +14,7 @@ test("buildNoteContent should render frontmatter properties in expected order", 
       tags: ["clippings", "opc"],
       mode: "create",
     },
-    ["clippings", "opc"],
+    ["cat-crawl", "opc"],
   );
 
   const lines = content.split("\n");
@@ -28,6 +28,33 @@ test("buildNoteContent should render frontmatter properties in expected order", 
   assert.match(lines[7] || "", /^tags:/);
 });
 
+test("buildNoteContent should keep frontmatter valid when title and description contain newlines", () => {
+  const content = __test__.buildNoteContent(
+    {
+      title: "Learn algorithms - visually!\nAn excellent collection of interactive algorithms",
+      source_url: "https://twitter.com/vivekgalatage/status/2034762835079970864",
+      content_markdown: "# Learn algorithms - visually!\n\nBody",
+      author: "@vivekgalatage",
+      published: "2026-03-19",
+      description:
+        "# Learn algorithms - visually!\nAn excellent collection of interactive algorithms - Published: 2026-03-19",
+      tags: ["x"],
+      mode: "create",
+    },
+    ["x"],
+  );
+
+  assert.match(
+    content,
+    /title: "Learn algorithms - visually! An excellent collection of interactive algorithms"/,
+  );
+  assert.match(
+    content,
+    /description: "Learn algorithms - visually! An excellent collection of interactive algorithms - Published: 2026-03-19"/,
+  );
+  assert.equal(content.includes('title: "Learn algorithms - visually!\n'), false);
+  assert.equal(content.includes('description: "# Learn algorithms - visually!\n'), false);
+});
 test("normalizeDateString should normalize common date formats", () => {
   assert.equal(__test__.normalizeDateString("2026年3月1日"), "2026-03-01");
   assert.equal(__test__.normalizeDateString("2026/03/01"), "2026-03-01");
@@ -247,6 +274,48 @@ test("inferTags should normalize and deduplicate explicit tags", () => {
       tags: ["Google Stitch", "google stitch", "#AI News"],
       mode: "create",
     }),
-    ["Google-Stitch", "AI-News"],
+    ["Google-Stitch", "AI-News", "cat-crawl"],
+  );
+});
+
+test("inferTags should always add the project tag", () => {
+  assert.deepEqual(
+    __test__.inferTags({
+      title: "Demo",
+      source_url: "https://example.com/article",
+      content_markdown: "hello",
+      mode: "create",
+    }),
+    ["cat-crawl"],
+  );
+});
+
+test("inferTags should keep source tags and add the project tag", () => {
+  assert.deepEqual(
+    __test__.inferTags({
+      title: "Demo",
+      source_url: "https://x.com/example/status/1",
+      content_markdown: "hello",
+      mode: "create",
+    }),
+    ["x", "cat-crawl"],
+  );
+  assert.deepEqual(
+    __test__.inferTags({
+      title: "Demo",
+      source_url: "https://mp.weixin.qq.com/s/example",
+      content_markdown: "hello",
+      mode: "create",
+    }),
+    ["wechat", "cat-crawl"],
+  );
+  assert.deepEqual(
+    __test__.inferTags({
+      title: "Demo",
+      source_url: "https://www.youtube.com/watch?v=abc",
+      content_markdown: "hello",
+      mode: "create",
+    }),
+    ["youtube", "cat-crawl"],
   );
 });
