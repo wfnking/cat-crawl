@@ -1,12 +1,23 @@
 # cat-crawl
 
-一个把网页/视频内容整理成 Markdown 并保存到 Obsidian 的多渠道 Agent（CLI / Feishu / Telegram / Discord）。
+`cat-crawl` 是一个把网页和视频内容整理后写进 Obsidian 的多渠道工具。
+
+如果你在用 Obsidian，但一直觉得手机上不方便收藏文章，`cat-crawl` 就是为这个场景准备的。
+
+平时在手机上刷到想收藏的文章、视频或者帖子，先丢进收藏夹，最后往往就是吃灰。  
+而且等你真的想回看时，原文还有可能已经被删了。
+
+`cat-crawl` 可以让你直接把链接发给飞书、Telegram、Discord 的机器人，或者直接丢给 CLI。  
+它会自动抓取文章正文，或者提取视频里的文字内容，再整理成 Markdown，同步到你自己的 Obsidian。
+
+如果你的 Obsidian 走 iCloud，同步之后在手机上也能直接看到保存结果。
+
+对个人知识库场景来说，它更像一个专业定制的 `open-claw`，但更省 token。
 
 ## 当前能力
 
 - 文章抓取（`crawl_web_article`）
   - 微信公众号（含新模板头部图区域）
-  - 虎嗅
   - X / Twitter（`x.com` / `twitter.com`）
   - 通用网页文章页
 - 视频转写（`transcribe_video`）
@@ -17,6 +28,23 @@
 - 成功记录写入本地数据库：`~/.cat-crawl/history.db`
 - 渠道接入：CLI、Feishu、Telegram（Polling）、Discord
 - Agent Provider：`openai` / `gemini` / `vertex`
+
+## 使用方式
+
+你把链接丢进去，`cat-crawl` 会自动：
+
+- 抓取文章正文
+- 提取视频文字内容
+- 整理成带章节结构的 Markdown
+- 英文内容补中文翻译
+- 写入你的 Obsidian 知识库
+
+目前支持的入口：
+
+- CLI
+- Feishu
+- Telegram
+- Discord
 
 ## 环境要求
 

@@ -9,9 +9,9 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
       assert.equal(file, "yt-dlp");
       assert.ok(args.includes("-f"));
       assert.ok(args.includes("bestaudio/best"));
-      assert.ok(args.includes("upload_date"));
-      assert.ok(args.includes("uploader"));
-      assert.ok(args.includes("title"));
+      assert.ok(args.includes("published:%(upload_date)s"));
+      assert.ok(args.includes("author:%(uploader)s"));
+      assert.ok(args.includes("title:%(title)s"));
       assert.ok(args.includes("after_move:filepath"));
       return {
         stdout: "published:20251123\nauthor:AI Engineer\ntitle:Demo Title\n/tmp/cat-crawl-video/audio.webm\n",

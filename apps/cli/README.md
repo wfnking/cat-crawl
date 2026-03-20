@@ -1,13 +1,27 @@
 # cat-crawl (CLI)
 
-`cat-crawl` is a CLI that crawls web/video content and saves clean Markdown notes into Obsidian.
+`cat-crawl` crawls web and video content, turns it into clean Markdown, and saves it into Obsidian.
+
+Typical workflow: send a link to a Feishu, Telegram, or Discord bot, or pass it to the CLI. `cat-crawl` will fetch the article body or extract video transcripts, organize the content into readable Markdown, and write it into your Obsidian vault.
+
+If your Obsidian vault syncs through iCloud, you can see the result directly on your phone.
+
+For personal knowledge-base workflows, it feels like a specialized, lower-token `open-claw`.
 
 ## What It Supports
 
-- Web article clipping: WeChat, Huxiu, generic article pages
+- Web article clipping: WeChat, X / Twitter, generic article pages
 - Video transcription: YouTube, Douyin, local video files
 - Channels: CLI, Feishu, Telegram, Discord
 - AI providers: OpenAI, Gemini, Vertex (ADC/OAuth)
+
+## What It Does
+
+- Crawl article body from a link
+- Extract speech/text from videos
+- Organize content into chaptered Markdown
+- Add Chinese translation for English content
+- Save directly into Obsidian
 
 ## Prerequisites
 
@@ -96,4 +110,4 @@ cat-crawl obsidian config set agent vertex
 
 ## Source Repo
 
-https://github.com/wfnking/cat-crawl
+[cat-crawl on GitHub](https://github.com/wfnking/cat-crawl)
