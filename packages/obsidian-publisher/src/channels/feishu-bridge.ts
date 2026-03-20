@@ -22,6 +22,23 @@ const MESSAGE_DEDUP_TTL_MS = 10 * 60 * 1000;
 const processedMessageIds = new Map<string, number>();
 const TYPING_EMOJI = "Typing";
 const logger = createLogger();
+const feishuSdkLogger = {
+  error(...args: unknown[]) {
+    logger.error(`[feishu-sdk] ${args.map((item) => String(item)).join(" ")}`);
+  },
+  warn() {
+    // no-op
+  },
+  info() {
+    // no-op
+  },
+  debug() {
+    // no-op
+  },
+  trace() {
+    // no-op
+  },
+};
 
 type TypingIndicatorState = {
   messageId: string;
@@ -148,6 +165,8 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
     appSecret: env.feishuAppSecret,
     appType: Lark.AppType.SelfBuild,
     domain,
+    loggerLevel: Lark.LoggerLevel.error,
+    logger: feishuSdkLogger,
   });
 
   type ReplyTarget =
@@ -162,7 +181,10 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
     });
   }
 
-  const dispatcher = new Lark.EventDispatcher({}).register({
+  const dispatcher = new Lark.EventDispatcher({
+    loggerLevel: Lark.LoggerLevel.error,
+    logger: feishuSdkLogger,
+  }).register({
     "im.message.receive_v1": async (payload: unknown) => {
       const event = (payload as { event?: FeishuMessageEvent }).event || (payload as FeishuMessageEvent);
       const messageId = event.message?.message_id;
@@ -246,9 +268,10 @@ export async function startFeishuBridge(env: AppEnv): Promise<void> {
     appId: env.feishuAppId,
     appSecret: env.feishuAppSecret,
     domain,
+    loggerLevel: Lark.LoggerLevel.error,
+    logger: feishuSdkLogger,
   });
 
-  logger.info("[feishu] starting websocket client");
   await wsClient.start({ eventDispatcher: dispatcher });
-  logger.info("[feishu] websocket client started");
+  logger.info("[feishu] channel started");
 }

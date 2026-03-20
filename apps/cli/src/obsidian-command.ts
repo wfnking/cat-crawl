@@ -139,6 +139,7 @@ export function parseObsidianCommand(args: string[]): ObsidianCommand | null {
   throw new Error(
     [
       "Usage:",
+      "0) cat-crawl version | --version | -v",
       "1) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
       '2) cat-crawl obsidian run "你的消息内容或文章链接"',
       "3) cat-crawl obsidian config set channel telegram",

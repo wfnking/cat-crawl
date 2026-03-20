@@ -19,6 +19,8 @@ test("extractArticleUrl should still support wechat links", () => {
 test("pickArticleAdapter should map hosts to known adapters", () => {
   assert.equal(__test__.pickArticleAdapter("https://mp.weixin.qq.com/s/abc123"), "wechat");
   assert.equal(__test__.pickArticleAdapter("https://m.huxiu.com/article/4794991.html"), "huxiu");
+  assert.equal(__test__.pickArticleAdapter("https://x.com/example/status/123"), "x");
+  assert.equal(__test__.pickArticleAdapter("https://twitter.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://example.com/blog/post"), "generic");
 });
 

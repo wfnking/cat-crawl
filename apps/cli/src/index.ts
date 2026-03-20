@@ -2,6 +2,10 @@
 
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
+import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { asObject, createLogger, ensureObject } from "@cat-crawl/core";
 import {
   approveTelegramPairingCode,
@@ -29,6 +33,55 @@ import {
 } from "./obsidian-command.js";
 
 const logger = createLogger();
+const require = createRequire(import.meta.url);
+
+type CliPackageJson = {
+  version?: string;
+};
+
+function getCliVersion(): string {
+  const currentDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(currentDir, "../package.json"),
+    resolve(currentDir, "../../package.json"),
+    resolve(currentDir, "../../../package.json"),
+    resolve(currentDir, "../../../../package.json"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (!existsSync(candidate)) {
+        continue;
+      }
+      const raw = readFileSync(candidate, "utf8");
+      const parsed = JSON.parse(raw) as CliPackageJson;
+      if (typeof parsed.version === "string" && parsed.version.trim()) {
+        return parsed.version.trim();
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  try {
+    const pkg = require("../package.json") as CliPackageJson;
+    if (typeof pkg.version === "string" && pkg.version.trim()) {
+      return pkg.version.trim();
+    }
+  } catch {
+    // fall through
+  }
+
+  return "unknown";
+}
+
+function isVersionCommand(args: string[]): boolean {
+  if (args.length !== 1) {
+    return false;
+  }
+  const value = args[0]?.trim().toLowerCase();
+  return value === "version" || value === "--version" || value === "-v";
+}
 
 function persistStructuredChannelConfig(
   channel: ChannelConfigValue,
@@ -159,7 +212,11 @@ function persistStructuredAgentConfig(
 }
 
 function parseArgs(): string[] {
-  return process.argv.slice(2);
+  const args = process.argv.slice(2);
+  if (args[0] === "--") {
+    return args.slice(1);
+  }
+  return args;
 }
 
 function modesFromChannel(channel: ChannelConfigValue): ChannelModes {
@@ -181,6 +238,7 @@ function printUsage(): void {
   logger.error(
     [
       "Usage:",
+      "0) cat-crawl version | --version | -v",
       "1) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
       '2) cat-crawl obsidian run "你的消息内容或文章链接"',
       "3) cat-crawl obsidian config set channel telegram",
@@ -398,20 +456,71 @@ function resolveModes(explicit: ChannelModes): ChannelModes {
 
 async function startChannels(modes: ChannelModes): Promise<void> {
   const env = loadEnv();
-  const starts: Array<Promise<unknown>> = [];
+  const starts: Array<Promise<void>> = [];
+  const requestedCount =
+    (modes.feishu ? 1 : 0) + (modes.telegram ? 1 : 0) + (modes.discord ? 1 : 0);
+
+  function shouldFailOnMissingConfig(): boolean {
+    return requestedCount === 1;
+  }
 
   if (modes.feishu) {
-    starts.push(startFeishuBridge({ ...env, feishuEnabled: true }));
+    if (!env.feishuAppId || !env.feishuAppSecret) {
+      const message = [
+        "Feishu 渠道未启动：缺少 FEISHU_APP_ID 或 FEISHU_APP_SECRET。",
+        "可执行：`cat-crawl obsidian config set channel feishu` 完成交互配置。",
+      ].join(" ");
+      if (shouldFailOnMissingConfig()) {
+        throw new Error(message);
+      }
+    } else {
+      starts.push(
+        startFeishuBridge({ ...env, feishuEnabled: true }).then(() => {
+          // no-op
+        }),
+      );
+    }
   }
   if (modes.telegram) {
-    starts.push(startTelegramPollingChannel({ ...env, telegramEnabled: true }));
+    if (!env.telegramBotToken) {
+      const message = [
+        "Telegram 渠道未启动：缺少 TELEGRAM_BOT_TOKEN。",
+        "可执行：`cat-crawl obsidian config set channel telegram` 完成交互配置。",
+      ].join(" ");
+      if (shouldFailOnMissingConfig()) {
+        throw new Error(message);
+      }
+    } else {
+      starts.push(
+        startTelegramPollingChannel({ ...env, telegramEnabled: true }).then(() => {
+          // no-op
+        }),
+      );
+    }
   }
   if (modes.discord) {
-    starts.push(startDiscordBridge({ ...env, discordEnabled: true }));
+    if (!env.discordBotToken) {
+      const message = [
+        "Discord 渠道未启动：缺少 DISCORD_BOT_TOKEN。",
+        "可执行：`cat-crawl obsidian config set channel discord` 完成交互配置。",
+      ].join(" ");
+      if (shouldFailOnMissingConfig()) {
+        throw new Error(message);
+      }
+    } else {
+      starts.push(
+        startDiscordBridge({ ...env, discordEnabled: true }).then(() => {
+          // no-op
+        }),
+      );
+    }
+  }
+
+  if (starts.length === 0) {
+    throw new Error("没有可启动的渠道：请先完成至少一个渠道配置。");
   }
 
   await Promise.all(starts);
-  logger.info("[index] channels started");
 }
 
 async function runCliMode(input: string): Promise<void> {
@@ -428,6 +537,10 @@ async function runCliMode(input: string): Promise<void> {
 
 async function main() {
   const args = parseArgs();
+  if (isVersionCommand(args)) {
+    process.stdout.write(`v${getCliVersion()}\n`);
+    return;
+  }
   const obsidianCommand = parseObsidianCommand(args);
   if (!obsidianCommand) {
     printUsage();

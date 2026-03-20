@@ -49,16 +49,50 @@ async function replyInChunks(message: Message, text: string): Promise<void> {
   if (chunks.length === 0) {
     return;
   }
-  await message.reply(chunks[0] || "");
-  if (chunks.length === 1) {
+  if ("send" in message.channel && typeof message.channel.send === "function") {
+    for (const chunk of chunks) {
+      await message.channel.send({
+        content: chunk || "",
+        allowedMentions: { parse: [] },
+      });
+    }
     return;
   }
-  if (!("send" in message.channel) || typeof message.channel.send !== "function") {
-    return;
-  }
-  for (let i = 1; i < chunks.length; i += 1) {
-    await message.channel.send(chunks[i] || "");
-  }
+  await message.reply({
+    content: chunks[0] || "",
+    allowedMentions: { repliedUser: false },
+  });
+}
+
+function startTypingIndicator(message: Message, intervalMs = 4500): { stop: () => void } {
+  let stopped = false;
+  const trigger = async (): Promise<void> => {
+    if (stopped) {
+      return;
+    }
+    try {
+      const sendTyping = (
+        message.channel as { sendTyping?: (() => Promise<unknown>) | undefined }
+      ).sendTyping;
+      if (typeof sendTyping === "function") {
+        await sendTyping.call(message.channel);
+      }
+    } catch {
+      // ignore typing failures
+    }
+  };
+
+  void trigger();
+  const timer = setInterval(() => {
+    void trigger();
+  }, intervalMs);
+
+  return {
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
 }
 
 export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
@@ -80,8 +114,8 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
     partials: [Partials.Channel],
   });
 
-  client.on("ready", () => {
-    logger.info(`[discord] logged in as ${client.user?.tag ?? "unknown"}`);
+  client.on("clientReady", () => {
+    logger.info("[discord] channel started");
   });
 
   client.on("messageCreate", async (message) => {
@@ -100,6 +134,7 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
       return;
     }
 
+    const typing = startTypingIndicator(message);
     try {
       const result = await runAgent(text, {
         context: {
@@ -109,16 +144,19 @@ export async function startDiscordBridge(env: AppEnv): Promise<Client | null> {
           messageId: message.id,
         },
       });
+      typing.stop();
       await replyInChunks(message, result.reply);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       logger.error(`[discord] handle message failed: ${detail}`);
       try {
-        await message.reply(toUserFacingErrorMessage(error));
+        await replyInChunks(message, toUserFacingErrorMessage(error));
       } catch (sendError) {
         const sendDetail = sendError instanceof Error ? sendError.message : String(sendError);
         logger.error(`[discord] send failure message failed: ${sendDetail}`);
       }
+    } finally {
+      typing.stop();
     }
   });
 

@@ -72,6 +72,7 @@ type DouyinExtractAttemptOptions = {
   attempts: number;
   intervalMs: number;
   clickCenter?: boolean;
+  ensureAudio?: boolean;
 };
 
 function isExecutionContextDestroyedError(error: unknown): boolean {
@@ -97,9 +98,17 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
       document.querySelector('meta[property="og:video"]')?.getAttribute("content")?.trim() || "",
     );
     const videoSource = toAbsolute(document.querySelector("video")?.getAttribute("src")?.trim() || "");
+    const currentVideoSource = toAbsolute(
+      (document.querySelector("video") as HTMLVideoElement | null)?.currentSrc?.trim() || "",
+    );
     const sourceUrls = Array.from(document.querySelectorAll("video source"))
       .map((node) => toAbsolute(node.getAttribute("src")?.trim() || ""))
       .filter(Boolean);
+    const resourceUrls = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name?.trim() || "")
+      .filter((value) => /\.(mp4|m3u8|m4a|mp3|aac|webm)(\?|$)/i.test(value))
+      .map((value) => toAbsolute(value));
     const title =
       document.querySelector('meta[property="og:title"]')?.getAttribute("content")?.trim() ||
       document.title ||
@@ -128,7 +137,9 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
       published = match ? match[1] : publishedRaw;
     }
     
-    const mediaUrls = Array.from(new Set([ogVideo, ...sourceUrls, videoSource].filter(Boolean)));
+    const mediaUrls = Array.from(
+      new Set([ogVideo, currentVideoSource, ...sourceUrls, videoSource, ...resourceUrls].filter(Boolean)),
+    );
     return {
       pageUrl: window.location.href,
       mediaUrl: mediaUrls[0] || "",
@@ -143,7 +154,12 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
 function collectMediaCandidates(extracted: ExtractedDouyinVideo): string[] {
   const primary = extracted.mediaUrl?.trim() || "";
   const extras = extracted.mediaUrls || [];
-  return Array.from(new Set([primary, ...extras].map((item) => item.trim()).filter(Boolean)));
+  const all = Array.from(new Set([primary, ...extras].map((item) => item.trim()).filter(Boolean)));
+  const filtered = all.filter((url) => {
+    const value = url.toLowerCase();
+    return !value.includes("/obj/douyin-pc-web/uuu_");
+  });
+  return filtered.length > 0 ? filtered : all;
 }
 
 async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
@@ -273,6 +289,41 @@ async function clickDouyinPlayerCenter(page: DouyinPage): Promise<void> {
   }
 }
 
+async function tryEnableDouyinAudio(page: DouyinPage): Promise<void> {
+  await page
+    .evaluate(() => {
+      const video = document.querySelector("video") as HTMLVideoElement | null;
+      if (video) {
+        video.muted = false;
+        video.volume = 1;
+        void video.play().catch(() => {});
+      }
+
+      const selectors = [
+        '[aria-label*="取消静音"]',
+        '[aria-label*="打开声音"]',
+        '[aria-label*="声音"]',
+        '[aria-label*="Unmute"]',
+        '[aria-label*="unmute"]',
+        '[title*="取消静音"]',
+        '[title*="声音"]',
+        '[data-e2e*="mute"]',
+        '[data-e2e*="volume"]',
+      ];
+      for (const selector of selectors) {
+        const node = document.querySelector(selector);
+        if (node instanceof HTMLElement) {
+          try {
+            node.click();
+          } catch {
+            // ignore
+          }
+        }
+      }
+    })
+    .catch(() => {});
+}
+
 async function extractDouyinVideoFromPage(
   page: DouyinPage,
   options: DouyinExtractAttemptOptions = {
@@ -290,6 +341,10 @@ async function extractDouyinVideoFromPage(
       await page.waitForTimeout(options.intervalMs);
       if (options.clickCenter) {
         await clickDouyinPlayerCenter(page);
+      }
+      if (options.ensureAudio) {
+        await tryEnableDouyinAudio(page);
+        await page.waitForTimeout(500);
       }
       const extracted = await readDouyinPageDetails(page);
       lastExtracted = extracted;
@@ -320,24 +375,78 @@ async function extractDouyinVideoWithBrowser(
     attempts: number;
     intervalMs: number;
     clickCenter?: boolean;
+    ensureAudio?: boolean;
   } = {
     headless: true,
     attempts: 5,
     intervalMs: 800,
   },
 ): Promise<ExtractedDouyinVideo> {
+  const networkMediaUrls = new Set<string>();
+  const collectNetworkMediaUrl = (
+    url: string,
+    contentType?: string,
+    resourceType?: string,
+  ): void => {
+    const value = (url || "").trim();
+    if (!value) {
+      return;
+    }
+    const lowerUrl = value.toLowerCase();
+    const lowerType = (contentType || "").toLowerCase();
+    const isMediaByUrl = /\.(mp4|m3u8|m4a|mp3|aac|webm|m4s)(\?|$)/i.test(lowerUrl);
+    const isMediaByType = lowerType.startsWith("video/") || lowerType.startsWith("audio/");
+    const isMediaResource = (resourceType || "").toLowerCase() === "media";
+    if (isMediaByUrl || isMediaByType || isMediaResource) {
+      networkMediaUrls.add(value);
+    }
+  };
+
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: options.headless, channel: "chrome" });
   const context = await browser.newContext();
   await applyDouyinCookies(context, cookieHeader, loadChromeCookies);
   const page = await context.newPage();
+  const eventPage = page as unknown as {
+    on?: (event: string, handler: (payload: unknown) => void) => unknown;
+  };
+  if (typeof eventPage.on === "function") {
+    eventPage.on("response", (response: unknown) => {
+      const item = response as {
+        url?: () => string;
+        headers?: () => Record<string, string>;
+        request?: () => { resourceType?: () => string };
+      };
+      const url = item.url?.() || "";
+      const headers = item.headers?.() || {};
+      const contentType = headers["content-type"] || headers["Content-Type"] || "";
+      const resourceType = item.request?.().resourceType?.() || "";
+      collectNetworkMediaUrl(url, contentType, resourceType);
+    });
+    eventPage.on("requestfinished", (request: unknown) => {
+      const item = request as {
+        url?: () => string;
+        resourceType?: () => string;
+      };
+      collectNetworkMediaUrl(item.url?.() || "", undefined, item.resourceType?.() || "");
+    });
+  }
   try {
     await waitForDouyinPageReady(page, sourceUrl);
-    return await extractDouyinVideoFromPage(page, {
+    const extracted = await extractDouyinVideoFromPage(page, {
       attempts: options.attempts,
       intervalMs: options.intervalMs,
       clickCenter: options.clickCenter,
+      ensureAudio: options.ensureAudio,
     });
+    const mergedMediaUrls = Array.from(
+      new Set([...(extracted.mediaUrls || []), ...Array.from(networkMediaUrls)].filter(Boolean)),
+    );
+    return {
+      ...extracted,
+      mediaUrl: extracted.mediaUrl || mergedMediaUrls[0] || "",
+      mediaUrls: mergedMediaUrls,
+    };
   } finally {
     await browser.close();
   }
@@ -353,6 +462,7 @@ async function extractDouyinVideoDefault(
     attempts: 12,
     intervalMs: 5000,
     clickCenter: true,
+    ensureAudio: true,
   });
 }
 
@@ -381,15 +491,19 @@ export async function resolveDouyinVideoSource(
   if (candidates.length === 0) {
     throw new Error("Douyin video URL not found.");
   }
-  logger.info(`[video-source:douyin] media candidates=${candidates.length}`);
+  logger.info(
+    `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
+  );
 
   const hasAudioTrack =
     options.hasAudioTrack || (!options.downloadVideo ? hasAudioTrackDefault : async () => true);
   let selectedPath = "";
   let selectedCandidate = "";
+  let downloadedCount = 0;
   for (const candidate of candidates) {
     try {
       const mediaPath = await downloadVideo(candidate, outputDir);
+      downloadedCount += 1;
       const hasAudio = await hasAudioTrack(mediaPath);
       if (hasAudio) {
         selectedPath = mediaPath;
@@ -403,8 +517,11 @@ export async function resolveDouyinVideoSource(
     }
   }
   if (!selectedPath) {
+    if (downloadedCount === 0) {
+      throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
+    }
     throw new Error(
-      "Douyin video URL resolved, but all downloaded candidates have no audio track. The source may be silent-only.",
+      "Douyin video URL resolved, but all downloaded candidates have no audio track. Please confirm the video has audible track in Chrome playback and try again.",
     );
   }
   logger.info(`[video-source:douyin] selected media candidate=${selectedCandidate}`);
@@ -424,4 +541,5 @@ export const __test__ = {
   extractDouyinVideoFromPage,
   isExecutionContextDestroyedError,
   toDouyinCookies,
+  tryEnableDouyinAudio,
 };

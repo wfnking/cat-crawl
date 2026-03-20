@@ -231,3 +231,22 @@ https://example.com/image.jpg`,
 
   assert.equal(description, "");
 });
+
+test("normalizeObsidianTag should convert unsupported tag characters", () => {
+  assert.equal(__test__.normalizeObsidianTag("Google Stitch"), "Google-Stitch");
+  assert.equal(__test__.normalizeObsidianTag("#AI News"), "AI-News");
+  assert.equal(__test__.normalizeObsidianTag("  "), "");
+});
+
+test("inferTags should normalize and deduplicate explicit tags", () => {
+  assert.deepEqual(
+    __test__.inferTags({
+      title: "Demo",
+      source_url: "https://example.com/article",
+      content_markdown: "hello",
+      tags: ["Google Stitch", "google stitch", "#AI News"],
+      mode: "create",
+    }),
+    ["Google-Stitch", "AI-News"],
+  );
+});

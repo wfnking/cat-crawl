@@ -7,6 +7,7 @@
 - 文章抓取（`crawl_web_article`）
   - 微信公众号（含新模板头部图区域）
   - 虎嗅
+  - X / Twitter（`x.com` / `twitter.com`）
   - 通用网页文章页
 - 视频转写（`transcribe_video`）
   - 来源：YouTube、抖音、本地视频文件
@@ -166,8 +167,16 @@ export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
 
 ### YouTube / 抖音
 
+- 使用前请先在本机 **Chrome** 中登录：
+  - `https://www.youtube.com`
+  - `https://www.douyin.com`
+- 当前视频抓取依赖浏览器会话态；未登录时容易出现下载失败、仅预览流或无音轨等问题。
 - YouTube 依赖 `yt-dlp`，并由 `ffmpeg` 抽音频
 - 抖音通过 Playwright + 浏览器 cookies 抓取视频源（并校验音轨）
+
+常见排查：
+- 抖音出现 `candidate has no audio`：通常是拿到了占位流或会话态不完整，先确认 Chrome 已登录抖音并可正常播放该视频。
+- YouTube 出现 `n challenge` / 下载失败：先更新 `yt-dlp`，并确认当前网络环境和账号会话可访问该视频。
 
 ## 微信文章说明
 

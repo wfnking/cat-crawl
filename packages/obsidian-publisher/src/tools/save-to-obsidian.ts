@@ -50,17 +50,49 @@ function formatLocalDate(date: Date): string {
 
 function inferTags(input: SaveInput): string[] {
   const rawTags = input.tags?.map((t) => t.trim()).filter(Boolean) ?? [];
-  if (rawTags.length > 0) {
-    return rawTags;
+  const normalizedExplicitTags = normalizeObsidianTags(rawTags);
+  if (normalizedExplicitTags.length > 0) {
+    return normalizedExplicitTags;
   }
   const host = new URL(input.source_url).hostname.toLowerCase();
   if (host.includes("weixin.qq.com")) {
-    return ["wechat", "clippings"];
+    return normalizeObsidianTags(["wechat", "clippings"]);
   }
   if (host.includes("x.com") || host.includes("twitter.com")) {
-    return ["x", "clippings"];
+    return normalizeObsidianTags(["x", "clippings"]);
   }
-  return ["clippings"];
+  return normalizeObsidianTags(["clippings"]);
+}
+
+function normalizeObsidianTag(rawTag: string): string {
+  const trimmed = rawTag.trim().replace(/^#+/g, "");
+  if (!trimmed) {
+    return "";
+  }
+  const normalized = trimmed
+    .replace(/\s+/g, "-")
+    .replace(/[，,]/g, "-")
+    .replace(/[`"'“”‘’]/g, "")
+    .replace(/[^0-9A-Za-z\u3400-\u9fff/_-]/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/\/{2,}/g, "/")
+    .replace(/^[-_/]+|[-_/]+$/g, "");
+  return normalized;
+}
+
+function normalizeObsidianTags(rawTags: string[]): string[] {
+  const unique = new Map<string, string>();
+  for (const rawTag of rawTags) {
+    const normalized = normalizeObsidianTag(rawTag);
+    if (!normalized) {
+      continue;
+    }
+    const key = normalized.toLowerCase();
+    if (!unique.has(key)) {
+      unique.set(key, normalized);
+    }
+  }
+  return Array.from(unique.values());
 }
 
 function normalizePathSegments(segments: string[]): string[] {
@@ -605,6 +637,9 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
 
 export const __test__ = {
   buildNoteContent,
+  inferTags,
+  normalizeObsidianTag,
+  normalizeObsidianTags,
   formatObsidianCommandForLog,
   hasObsidianOutputError,
   extractDescriptionCandidate,

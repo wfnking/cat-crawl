@@ -6,6 +6,9 @@ import { z } from "zod";
 import type { AppEnv } from "../config/env.js";
 import { extractAudioFromVideo } from "../services/media/extract-audio.js";
 import { createModel } from "../services/model.js";
+import {
+  resolveDynamicFolderOptions,
+} from "../services/dynamic-folder-options.js";
 import { transcribeAudio } from "../services/transcription/index.js";
 import { resolveDouyinVideoSource } from "../services/video-sources/douyin.js";
 import { resolveFileVideoSource } from "../services/video-sources/file.js";
@@ -69,52 +72,6 @@ function buildClassificationSummary(markdown: string): string {
   return lines.join(" ").replace(/\s+/g, " ").trim().slice(0, 1800);
 }
 
-function buildClassifierPrompt(options: string[]): string {
-  const optionText =
-    options.length > 0
-      ? options.map((item) => `- ${item}`).join("\n")
-      : "- (no options configured)";
-
-  return [
-    "You are a strict classifier.",
-    "Pick exactly one dynamic_folder from the allowed list based on article/video content.",
-    "If nothing fits, return empty string.",
-    'Output JSON only: {"dynamic_folder":"..."}',
-    "Allowed options:",
-    optionText,
-  ].join("\n");
-}
-
-function pickDynamicFolder(modelOutput: string, options: string[]): string {
-  const trimmed = modelOutput.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as { dynamic_folder?: unknown };
-    if (typeof parsed.dynamic_folder === "string") {
-      const picked = parsed.dynamic_folder.trim();
-      if (!picked) return "";
-      return options.includes(picked) ? picked : "";
-    }
-  } catch {
-    // fall through to fuzzy matching
-  }
-
-  if (trimmed === '""' || trimmed === "''" || trimmed.toLowerCase() === "null") {
-    return "";
-  }
-
-  for (const option of options) {
-    if (trimmed === option || trimmed.includes(option)) {
-      return option;
-    }
-  }
-
-  return "";
-}
-
 function pickPolicyDynamicFolder(options: string[], text: string): string {
   const rules: Array<{ option: string; pattern: RegExp }> = [
     {
@@ -133,7 +90,8 @@ function pickPolicyDynamicFolder(options: string[], text: string): string {
     },
     {
       option: "Go",
-      pattern: /(^|[^a-z])go([^a-z]|$)|golang|go语言|gin|gorm/u,
+      pattern:
+        /golang|go语言|\bgo\s+language\b|\bgo\s+runtime\b|\bgo\s+module(s)?\b|\bgo\s+toolchain\b|\bgin\b|\bgorm\b/u,
     },
     {
       option: "Job",
@@ -168,41 +126,20 @@ async function resolveDynamicFolder(
   env: AppEnv,
   input: { title: string; transcriptMarkdown: string },
 ): Promise<string> {
-  if (env.obsidianDynamicFolders.length === 0) {
+  const options = await resolveDynamicFolderOptions(env);
+  if (options.length === 0) {
     return "";
   }
 
   const summary = buildClassificationSummary(input.transcriptMarkdown);
-  const policyFolder = pickPolicyDynamicFolder(
-    env.obsidianDynamicFolders,
-    `${input.title}\n${summary}`.toLowerCase(),
-  );
+  const policyFolder = pickPolicyDynamicFolder(options, `${input.title}\n${summary}`.toLowerCase());
   if (policyFolder) {
     logger.info(`[tool:transcribe_video] dynamic_folder policy selected=${policyFolder}`);
     return policyFolder;
   }
 
-  const classifierModel = createModel(env, {
-    task: "classify",
-    maxTokens: 300,
-    timeout: 30000,
-    temperature: 0,
-  });
-  try {
-    logger.info("[tool:transcribe_video] invoking model for dynamic_folder classification");
-    const classifyMessage = await classifierModel.invoke([
-      new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
-      new HumanMessage([`Title: ${input.title}`, "", `Summary: ${summary}`, "", "Return JSON only."].join("\n")),
-    ]);
-    const modelOutput = String(classifyMessage.content ?? "").trim();
-    const folder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
-    logger.info(`[tool:transcribe_video] dynamic_folder selected=${folder || "(empty)"}`);
-    return folder;
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.warn(`[tool:transcribe_video] dynamic_folder classify failed msg=${msg}`);
-    return "";
-  }
+  logger.info("[tool:transcribe_video] dynamic_folder not matched by policy, keep base folder");
+  return "";
 }
 
 function extractHashtags(text: string): string[] {
@@ -264,18 +201,22 @@ async function buildTranscriptMarkdownWithModel(
     configuredProvider === "openai"
       ? env.openaiModel
       : pickGeminiSummarizeModel(env, translateToChinese);
+  const summarizeMaxTokens = Math.max(
+    8000,
+    Math.min(32000, Math.ceil(sourceMaterial.length / 5)),
+  );
   const summarizeTimeoutMs = Math.max(
     60000,
     Math.min(300000, Math.ceil(sourceMaterial.length / 40) * 1000),
   );
   logger.info(
-    `[tool:transcribe_video] chapter summarize mode translate_to_zh=${translateToChinese} provider=${configuredProvider} model=${summarizeModel} timeout_ms=${summarizeTimeoutMs}`,
+    `[tool:transcribe_video] chapter summarize mode translate_to_zh=${translateToChinese} provider=${configuredProvider} model=${summarizeModel} max_output_tokens=${summarizeMaxTokens} timeout_ms=${summarizeTimeoutMs}`,
   );
   const model = createModel(env, {
     task: "summarize",
     provider: configuredProvider,
     model: summarizeModel,
-    maxTokens: 6000,
+    maxTokens: summarizeMaxTokens,
     timeout: summarizeTimeoutMs,
     temperature: 0,
   });
@@ -283,23 +224,26 @@ async function buildTranscriptMarkdownWithModel(
     const message = await model.invoke([
       new SystemMessage(
         [
-          "你是视频 SRT 转文章助手。",
-          "把输入的 SRT/转写文本整理为可直接保存的 Markdown 文章。",
+          "你是视频 SRT 转 Markdown 助手（保真模式）。",
+          "把输入的 SRT/转写文本整理为可直接保存的 Markdown，目标是提升可读性，而不是压缩成摘要。",
+          "必须尽量保留原文信息与顺序，不要大幅改写，不要删掉有实质信息的句子。",
+          "不要把长内容缩成短总结；信息保留优先于文采。",
           "必须直接输出最终 Markdown，不要输出 JSON，不要输出解释，不要输出代码块。",
-          "第一行必须是：[Description] 一两句话的视频摘要内容。",
+          "第一行必须是：[Description] 2-3 句摘要，覆盖核心主题，不要过度简写。",
           "第二行必须是：[Tags] 3-5个相关标签，用逗号分隔，标签应该反映视频的主题和关键概念。",
           `第三行必须是：- Source: ${input.sourceUrl}`,
           "按主题分章节，章节标题格式：## 标题",
           "章节标题和第一段之间必须有一个空行。",
           "章节必须按内容大意和主题转折拆分，不要按固定时长或固定字数机械切分。",
-          "每章先写整理后的原文内容（原始语言），紧接着写对应的中文翻译内容，原文和译文之间不要加分隔线。",
+          "每章先写原始语言内容（保真整理，轻微断句即可），紧接着写对应的中文翻译内容，原文和译文之间不要加分隔线。",
           "整体文风参考微信公众号文章：结构清晰、节奏舒适、适合手机阅读。",
           "长内容需要拆成多章，避免整篇只有一章或一段。",
           "每个章节内部要自然分段，不要把整章写成一整段。",
           "每段尽量短：1-3 句为宜；中文单段建议不超过120字，英文单段建议不超过80词。",
           "段落之间必须保留空行，禁止输出大段连续文本。",
           "如遇并列要点，可用简短无序列表；否则优先自然段。",
-          "保留关键信息，不要编造。",
+          "不要编造、不补充未出现的信息。",
+          "优先保留术语、专有名词、数字、例子、对比关系和结论。",
         ].join("\n"),
       ),
       new HumanMessage(

@@ -4,7 +4,7 @@ import TurndownService from "turndown";
 import { z } from "zod";
 import { extractArticleUrl } from "../utils/text.js";
 
-export type ArticleAdapterName = "wechat" | "huxiu" | "generic";
+export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "generic";
 
 type CrawlResult = {
   title: string;
@@ -203,6 +203,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   if (host.includes("huxiu.com")) {
     return "huxiu";
   }
+  if (host.includes("x.com") || host.includes("twitter.com")) {
+    return "x";
+  }
   return "generic";
 }
 
@@ -263,6 +266,7 @@ export const crawlWebArticleTool = tool(
             "main article",
             "main",
           ],
+          x: ['article[data-testid="tweet"]', "main"],
           generic: [
             "article",
             "[itemprop='articleBody']",
@@ -333,6 +337,74 @@ export const crawlWebArticleTool = tool(
           meta("publishdate", "name") ||
           meta("pubdate", "name");
 
+        const buildXMarkdown = (): {
+          markdown: string;
+          author: string | null;
+          publishedRaw: string | null;
+        } => {
+          const tweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+          if (tweets.length === 0) {
+            return {
+              markdown: "",
+              author: null,
+              publishedRaw: null,
+            };
+          }
+
+          const sections: string[] = [];
+          let firstAuthor: string | null = null;
+          let firstPublishedRaw: string | null = null;
+
+          for (let index = 0; index < tweets.length; index += 1) {
+            const tweet = tweets[index] as HTMLElement;
+            const userNameText =
+              tweet.querySelector('[data-testid="User-Name"]')?.textContent?.replace(/\s+/g, " ").trim() ||
+              "";
+            const handleMatch = userNameText.match(/@[A-Za-z0-9_]+/);
+            const author = (handleMatch?.[0] || userNameText || "").trim();
+            if (!firstAuthor && author) {
+              firstAuthor = author;
+            }
+
+            const timeEl = tweet.querySelector("time");
+            const tweetTime = timeEl?.getAttribute("datetime")?.trim() || timeEl?.textContent?.trim() || "";
+            if (!firstPublishedRaw && tweetTime) {
+              firstPublishedRaw = tweetTime;
+            }
+
+            const text = Array.from(tweet.querySelectorAll('[data-testid="tweetText"]'))
+              .map((node) => node.textContent?.trim() || "")
+              .filter(Boolean)
+              .join("\n\n")
+              .replace(/[ \t]+\n/g, "\n")
+              .replace(/\n{3,}/g, "\n\n")
+              .trim();
+            if (!text) {
+              continue;
+            }
+
+            const mediaUrls = Array.from(tweet.querySelectorAll("img"))
+              .map((node) => (node as HTMLImageElement).getAttribute("src")?.trim() || "")
+              .filter((src) => /twimg\.com\/media\//i.test(src));
+            const uniqueMediaUrls = Array.from(new Set(mediaUrls));
+            const mediaMarkdown = uniqueMediaUrls
+              .map((src, mediaIndex) => `![Image ${mediaIndex + 1}](${src})`)
+              .join("\n\n");
+
+            const titleParts = [author, tweetTime].filter(Boolean);
+            const sectionTitle = titleParts.join(" · ") || `Tweet ${index + 1}`;
+            sections.push(
+              [`## ${sectionTitle}`, "", text, mediaMarkdown].filter(Boolean).join("\n").trim(),
+            );
+          }
+
+          return {
+            markdown: sections.join("\n\n").trim(),
+            author: firstAuthor,
+            publishedRaw: firstPublishedRaw,
+          };
+        };
+
         const timestampCandidates = [
           anyWindow.ct,
           anyWindow.createTime,
@@ -352,6 +424,11 @@ export const crawlWebArticleTool = tool(
             publishedTimestamp = seconds;
             break;
           }
+        }
+
+        const xStructured = currentAdapter === "x" ? buildXMarkdown() : null;
+        if (currentAdapter === "x") {
+          author = xStructured?.author || author;
         }
 
         const contentNode = html(selectorMap[currentAdapter] || selectorMap.generic);
@@ -422,16 +499,20 @@ export const crawlWebArticleTool = tool(
         return {
           title,
           author: author || null,
-          published: publishedRaw || null,
+          published: xStructured?.publishedRaw || publishedRaw || null,
           publishedTimestamp,
           contentHtml,
+          xContentMarkdown: xStructured?.markdown || "",
           carouselImages: Array.from(new Set(carouselImages)),
           canonical,
         };
       }, adapter);
 
       const turndown = createTurndownService();
-      const markdownBody = turndown.turndown(scraped.contentHtml || "");
+      const markdownBody =
+        adapter === "x" && scraped.xContentMarkdown
+          ? scraped.xContentMarkdown
+          : turndown.turndown(scraped.contentHtml || "");
       const carouselMarkdown = (scraped.carouselImages || [])
         .map((src: string, index: number) => `![Carousel ${index + 1}](${normalizeUrl(src)})`)
         .join("\n\n");
@@ -470,7 +551,7 @@ export const crawlWebArticleTool = tool(
   },
   {
     name: "crawl_web_article",
-    description: "抓取通用网页文章，支持微信、虎嗅和普通文章页，返回标题、作者、来源和正文 markdown 内容",
+    description: "抓取通用网页文章，支持微信、虎嗅、X/Twitter 和普通文章页，返回标题、作者、来源和正文 markdown 内容",
     schema: inputSchema,
   },
 );

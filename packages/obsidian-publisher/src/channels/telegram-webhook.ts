@@ -282,7 +282,7 @@ async function startTelegramPolling(botToken: string, env: AppEnv): Promise<void
   const timeoutSeconds = 30;
   let offset = 0;
 
-  logger.info(`[telegram] polling started (timeout=${timeoutSeconds}s)`);
+  logger.info("[telegram] channel started");
 
   for (;;) {
     try {
