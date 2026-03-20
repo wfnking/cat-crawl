@@ -33,6 +33,7 @@ test('runWechatAgent should route supported video URLs to transcribe_video', asy
               source_url: 'https://www.youtube.com/watch?v=demo123',
               vault: '知识库',
               path: 'Clippings/YouTube Demo.md',
+              dynamic_folder: 'AI',
               tags: ['video', 'transcript'],
               transcript_markdown: '# YouTube Demo\n\nhello transcript',
               provider_used: 'whisper_cpp',
@@ -57,6 +58,7 @@ test('runWechatAgent should route supported video URLs to transcribe_video', asy
   assert.equal(persisted, true)
   assert.deepEqual(result.usedTools, ['transcribe_video'])
   assert.match(result.reply, /视频转写已成功保存到 Obsidian/)
+  assert.match(result.reply, /分类：`AI`/)
   assert.match(result.reply, /知识库\/Clippings\/YouTube Demo\.md/)
 })
 

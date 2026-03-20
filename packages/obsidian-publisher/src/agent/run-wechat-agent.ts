@@ -10,6 +10,10 @@ import {
   type HistoryChannel,
 } from "../history/history-store.js";
 import { createModel } from "../services/model.js";
+import {
+  describeDynamicFolder,
+  resolveDynamicFolderOptions,
+} from "../services/dynamic-folder-options.js";
 import { selectVideoSourceAdapter } from "../services/video-sources/index.js";
 import { crawlWebArticleTool } from "../tools/crawl-web-article.js";
 import {
@@ -251,7 +255,7 @@ function buildClassificationSummary(markdown: string): string {
 function buildClassifierPrompt(options: string[]): string {
   const optionText =
     options.length > 0
-      ? options.map((item) => `- ${item}`).join("\n")
+      ? options.map((item) => `- ${item}: ${describeDynamicFolder(item)}`).join("\n")
       : "- (no options configured)";
 
   return [
@@ -294,11 +298,28 @@ function pickDynamicFolder(modelOutput: string, options: string[]): string {
   return "";
 }
 
+function canUseClassificationModel(env: ReturnType<typeof loadEnv>): boolean {
+  const provider = env.aiClassifyProvider || env.aiProvider || env.agent;
+  if (provider === "openai") {
+    return Boolean(env.openaiApiKey?.trim());
+  }
+  if (provider === "gemini") {
+    return Boolean(env.geminiApiKey?.trim());
+  }
+  return provider === "vertex";
+}
+
 function formatSuccessReply(subject: string, saveResult: SaveToolResult): string {
   const vault = saveResult.vault ?? "";
   const path = saveResult.path ?? "";
   const fullPath = vault && path ? `${vault}/${path}` : path || "(unknown path)";
-  return `${subject}已成功保存到 Obsidian！\n\n保存路径：\`${fullPath}\``;
+  const folder = saveResult.dynamic_folder?.trim() || "";
+  const lines = [`${subject}已成功保存到 Obsidian！`];
+  if (folder) {
+    lines.push(`分类：\`${folder}\``);
+  }
+  lines.push(`保存路径：\`${fullPath}\``);
+  return lines.join("\n\n");
 }
 
 function isSupportedVideoUrl(url: string): boolean {
@@ -467,8 +488,8 @@ export async function runAgent(
 
   let dynamicFolder = "";
   const summary = buildClassificationSummary(crawlResult.content_markdown);
-  const policyOptions =
-    env.obsidianDynamicFolders.length > 0 ? env.obsidianDynamicFolders : ["OPC"];
+  const dynamicFolderOptions = await resolveDynamicFolderOptions(env);
+  const policyOptions = dynamicFolderOptions.length > 0 ? dynamicFolderOptions : ["OPC"];
   const policyFolder = pickPolicyFolder({
     title: crawlResult.title,
     summary,
@@ -482,37 +503,52 @@ export async function runAgent(
       stage: "classify_done",
       message: `目录分类完成：${dynamicFolder}`,
     });
-  } else if (env.obsidianDynamicFolders.length > 0) {
+  } else if (dynamicFolderOptions.length > 0) {
     await emitStatus(options, {
       stage: "classify_start",
       message: "正在根据文章内容选择目录分类...",
     });
+    if (!canUseClassificationModel(env)) {
+      logger.info("[agent] classification model unavailable (missing auth), skip model classify");
+      await emitStatus(options, {
+        stage: "classify_done",
+        message: "目录分类完成：(仅使用规则，未启用模型分类)",
+      });
+      dynamicFolder = "";
+    } else {
     logger.info("[agent] preparing summarized context for dynamic folder classification");
-    const classifierModel = createModel(env, {
-      task: "classify",
-      maxTokens: 500,
-      timeout: 30000,
-    });
-    const classifyStart = Date.now();
-    logger.info("[agent] invoking model for dynamic_folder classification");
-    const classifyMessage = await classifierModel.invoke([
-      new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
-      new HumanMessage(
-        [`Title: ${crawlResult.title}`, "", `Summary: ${summary}`, "", "Return JSON only."].join(
-          "\n",
+    try {
+      const classifierModel = createModel(env, {
+        task: "classify",
+        maxTokens: 500,
+        timeout: 30000,
+      });
+      const classifyStart = Date.now();
+      logger.info("[agent] invoking model for dynamic_folder classification");
+      const classifyMessage = await classifierModel.invoke([
+        new SystemMessage(buildClassifierPrompt(dynamicFolderOptions)),
+        new HumanMessage(
+          [`Title: ${crawlResult.title}`, "", `Summary: ${summary}`, "", "Return JSON only."].join(
+            "\n",
+          ),
         ),
-      ),
-    ]);
-    const classifyCostMs = Date.now() - classifyStart;
-    logger.info(`[agent] classification model done in ${classifyCostMs}ms`);
+      ]);
+      const classifyCostMs = Date.now() - classifyStart;
+      logger.info(`[agent] classification model done in ${classifyCostMs}ms`);
 
-    const modelOutput = normalizeModelText(classifyMessage.content);
-    dynamicFolder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
-    logger.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
+      const modelOutput = normalizeModelText(classifyMessage.content);
+      dynamicFolder = pickDynamicFolder(modelOutput, dynamicFolderOptions);
+      logger.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn(`[agent] dynamic_folder classify failed, fallback base folder msg=${msg}`);
+      dynamicFolder = "";
+    }
     await emitStatus(options, {
       stage: "classify_done",
       message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
     });
+    }
   } else {
     logger.info("[agent] dynamic folder options empty, skip classification");
     await emitStatus(options, {
