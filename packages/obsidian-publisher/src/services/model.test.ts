@@ -16,17 +16,17 @@ test("resolveModelProvider should use task-level provider override", () => {
   const classifyProvider = __test__.resolveModelProvider(
     {
       aiProvider: "gemini",
-      aiClassifyProvider: "deepseek",
+      aiClassifyProvider: "openai",
     } as never,
     {
       task: "classify",
     },
   );
-  assert.equal(classifyProvider, "deepseek");
+  assert.equal(classifyProvider, "openai");
 
   const summarizeProvider = __test__.resolveModelProvider(
     {
-      aiProvider: "deepseek",
+      aiProvider: "openai",
       aiSummarizeProvider: "gemini",
     } as never,
     {
@@ -39,13 +39,13 @@ test("resolveModelProvider should use task-level provider override", () => {
 test("resolveModelProvider should prioritize explicit provider option", () => {
   const provider = __test__.resolveModelProvider(
     {
-      aiProvider: "deepseek",
+      aiProvider: "openai",
       aiChatProvider: "gemini",
     } as never,
     {
       task: "chat",
-      provider: "deepseek",
+      provider: "openai",
     },
   );
-  assert.equal(provider, "deepseek");
+  assert.equal(provider, "openai");
 });

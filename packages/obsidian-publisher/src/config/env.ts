@@ -1,14 +1,14 @@
 import { getLocalConfigStore } from '@cat-crawl/core'
 
 export type AppEnv = {
-  agent: 'deepseek' | 'gemini' | 'vertex'
-  aiProvider: 'deepseek' | 'gemini' | 'vertex'
-  aiChatProvider?: 'deepseek' | 'gemini' | 'vertex'
-  aiClassifyProvider?: 'deepseek' | 'gemini' | 'vertex'
-  aiSummarizeProvider?: 'deepseek' | 'gemini' | 'vertex'
-  deepseekApiKey?: string
-  deepseekBaseUrl: string
-  deepseekModel: string
+  agent: 'openai' | 'gemini' | 'vertex'
+  aiProvider: 'openai' | 'gemini' | 'vertex'
+  aiChatProvider?: 'openai' | 'gemini' | 'vertex'
+  aiClassifyProvider?: 'openai' | 'gemini' | 'vertex'
+  aiSummarizeProvider?: 'openai' | 'gemini' | 'vertex'
+  openaiApiKey?: string
+  openaiBaseUrl: string
+  openaiModel: string
   transcriptionProvider: 'whisper_cpp'
   whisperCppBin: string
   whisperCppModelPath?: string
@@ -86,22 +86,22 @@ function readFromStructuredConfig(name: string): string | undefined {
   if (name === 'AI_SUMMARIZE_PROVIDER') {
     return readStringFromPaths(raw, [['ai', 'tasks', 'summarize', 'provider']])
   }
-  if (name === 'DEEPSEEK_API_KEY') {
+  if (name === 'OPENAI_API_KEY') {
     return readStringFromPaths(raw, [
-      ['ai', 'deepseek', 'apiKey'],
-      ['agent', 'deepseek', 'apiKey']
+      ['ai', 'openai', 'apiKey'],
+      ['agent', 'openai', 'apiKey']
     ])
   }
-  if (name === 'DEEPSEEK_BASE_URL') {
+  if (name === 'OPENAI_BASE_URL') {
     return readStringFromPaths(raw, [
-      ['ai', 'deepseek', 'baseUrl'],
-      ['agent', 'deepseek', 'baseUrl']
+      ['ai', 'openai', 'baseUrl'],
+      ['agent', 'openai', 'baseUrl']
     ])
   }
-  if (name === 'DEEPSEEK_MODEL') {
+  if (name === 'OPENAI_MODEL') {
     return readStringFromPaths(raw, [
-      ['ai', 'deepseek', 'model'],
-      ['agent', 'deepseek', 'model']
+      ['ai', 'openai', 'model'],
+      ['agent', 'openai', 'model']
     ])
   }
   const mappings: Record<string, string[]> = {
@@ -323,13 +323,13 @@ function getTranscriptionProvider(
 
 function getAiProvider(
   name: 'AI_PROVIDER' | 'AI_CHAT_PROVIDER' | 'AI_CLASSIFY_PROVIDER' | 'AI_SUMMARIZE_PROVIDER',
-  defaultValue?: 'deepseek' | 'gemini' | 'vertex'
-): 'deepseek' | 'gemini' | 'vertex' | undefined {
+  defaultValue?: 'openai' | 'gemini' | 'vertex'
+): 'openai' | 'gemini' | 'vertex' | undefined {
   const raw = readRaw(name)?.toLowerCase()
   if (!raw) {
     return defaultValue
   }
-  if (raw === 'deepseek' || raw === 'gemini' || raw === 'vertex') {
+  if (raw === 'openai' || raw === 'gemini' || raw === 'vertex') {
     return raw
   }
   throw new Error(`Invalid ${name}: ${raw}`)
@@ -356,7 +356,14 @@ function readFirstRawWithSource<T extends 'GEMINI_API_KEY' | 'GOOGLE_API_KEY' | 
 export function loadEnv(): AppEnv {
   const legacyAgent = readRaw('agent')?.toLowerCase()
   const aiProvider =
-    getAiProvider('AI_PROVIDER') || (legacyAgent === 'gemini' ? 'gemini' : legacyAgent === 'vertex' ? 'vertex' : 'deepseek')
+    getAiProvider('AI_PROVIDER') ||
+    (legacyAgent === 'gemini'
+      ? 'gemini'
+      : legacyAgent === 'vertex'
+        ? 'vertex'
+        : legacyAgent === 'openai'
+          ? 'openai'
+          : 'openai')
   const aiChatProvider = getAiProvider('AI_CHAT_PROVIDER')
   const aiClassifyProvider = getAiProvider('AI_CLASSIFY_PROVIDER')
   const aiSummarizeProvider = getAiProvider('AI_SUMMARIZE_PROVIDER')
@@ -365,22 +372,22 @@ export function loadEnv(): AppEnv {
   const configuredVertexApiKey = readRaw('GOOGLE_VERTEX_API_KEY') || undefined
   const geminiAuth = readFirstRawWithSource(['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_VERTEX_API_KEY'])
   const vertexAuth = readFirstRawWithSource(['GOOGLE_VERTEX_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'])
-  const needDeepseekApiKey =
-    aiProvider === 'deepseek' ||
-    aiChatProvider === 'deepseek' ||
-    aiClassifyProvider === 'deepseek' ||
-    aiSummarizeProvider === 'deepseek'
+  const needOpenAiApiKey =
+    aiProvider === 'openai' ||
+    aiChatProvider === 'openai' ||
+    aiClassifyProvider === 'openai' ||
+    aiSummarizeProvider === 'openai'
   return {
     agent: aiProvider,
     aiProvider,
     aiChatProvider,
     aiClassifyProvider,
     aiSummarizeProvider,
-    deepseekApiKey: needDeepseekApiKey
-      ? mustGet('DEEPSEEK_API_KEY')
-      : readRaw('DEEPSEEK_API_KEY') || undefined,
-    deepseekBaseUrl: readRaw('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com',
-    deepseekModel: readRaw('DEEPSEEK_MODEL') || 'deepseek-chat',
+    openaiApiKey: needOpenAiApiKey
+      ? mustGet('OPENAI_API_KEY')
+      : readRaw('OPENAI_API_KEY') || undefined,
+    openaiBaseUrl: readRaw('OPENAI_BASE_URL') || 'https://api.openai.com/v1',
+    openaiModel: readRaw('OPENAI_MODEL') || 'gpt-4o-mini',
     transcriptionProvider:
       getTranscriptionProvider('TRANSCRIPTION_PROVIDER', 'whisper_cpp') || 'whisper_cpp',
     whisperCppBin: readRaw('WHISPER_CPP_BIN') || 'whisper-cli',

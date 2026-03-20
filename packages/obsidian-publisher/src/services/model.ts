@@ -1,11 +1,11 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
-import { createDeepSeekModel } from "./deepseek.js";
+import { createOpenAIModel } from "./openai.js";
 import { createGeminiModel } from "./gemini-chat.js";
 import { createVertexModel } from "./vertex-chat.js";
 
-export type AgentProvider = "deepseek" | "gemini" | "vertex";
+export type AgentProvider = "openai" | "gemini" | "vertex";
 export type ModelTask = "chat" | "classify" | "summarize";
 
 type ModelOptions = {
@@ -60,37 +60,28 @@ function createProviderModel(
   env: AppEnv,
   options: Omit<ModelOptions, "provider" | "task">,
 ): InvokableModel {
-  if (provider === "gemini") {
-    const model = createGeminiModel(env, {
-      model: options.model,
-      maxTokens: options.maxTokens,
-      timeout: options.timeout,
-      temperature: options.temperature,
-    });
-    return {
-      invoke(messages) {
-        return model.invoke(messages);
-      },
-    };
-  }
-  if (provider === "vertex") {
-    const model = createVertexModel(env, {
-      model: options.model,
-      maxTokens: options.maxTokens,
-      timeout: options.timeout,
-      temperature: options.temperature,
-    });
-    return {
-      invoke(messages) {
-        return model.invoke(messages);
-      },
-    };
-  }
-  const model = createDeepSeekModel(env, {
+  const modelOptions = {
     model: options.model,
     maxTokens: options.maxTokens,
     timeout: options.timeout,
     temperature: options.temperature,
+  };
+
+  if (provider === "gemini" || provider === "vertex") {
+    const createGoogleModel = provider === "gemini" ? createGeminiModel : createVertexModel;
+    const model = createGoogleModel(env, modelOptions);
+    return {
+      invoke(messages) {
+        return model.invoke(messages);
+      },
+    };
+  }
+
+  const model = createOpenAIModel(env, {
+    ...modelOptions,
+    apiKey: env.openaiApiKey,
+    baseUrl: env.openaiBaseUrl,
+    defaultModel: env.openaiModel,
   });
   return {
     invoke(messages) {
@@ -112,7 +103,7 @@ export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableM
     );
   } else {
     logger.info(
-      `[model] task=${options.task || "default"} provider=deepseek model=${options.model || env.deepseekModel}`,
+      `[model] task=${options.task || "default"} provider=openai model=${options.model || env.openaiModel}`,
     );
   }
   const model = createProviderModel(provider, env, options);

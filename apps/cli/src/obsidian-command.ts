@@ -143,7 +143,7 @@ export function parseObsidianCommand(args: string[]): ObsidianCommand | null {
       '2) cat-crawl obsidian run "你的消息内容或文章链接"',
       "3) cat-crawl obsidian config set channel telegram",
       "4) cat-crawl obsidian config get channel [fallback]",
-      "5) cat-crawl obsidian config set agent deepseek|gemini|vertex",
+      "5) cat-crawl obsidian config set agent openai|gemini|vertex",
       "6) cat-crawl obsidian config get agent [fallback]",
       "7) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),

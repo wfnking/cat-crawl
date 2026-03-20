@@ -13,7 +13,7 @@
 
 3. 使用 DeepSeek API
 - 通过 OpenAI 兼容接口接入 DeepSeek。
-- 模型参数通过环境变量配置（默认 `deepseek-chat`）。
+- 模型参数通过环境变量配置（默认 `gpt-4o-mini`）。
 
 4. 使用 Obsidian CLI 存入笔记
 - 新建 `save_to_obsidian` 工具，调用 `obsidian create/append`。

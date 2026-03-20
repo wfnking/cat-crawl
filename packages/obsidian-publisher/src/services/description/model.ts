@@ -47,7 +47,7 @@ export async function generateDescriptionWithModel(
   const provider =
     options.provider || options.env.aiSummarizeProvider || options.env.aiProvider || options.env.agent;
   const model =
-    options.model || (provider === "deepseek" ? options.env.deepseekModel : options.env.geminiModel);
+    options.model || (provider === "openai" ? options.env.openaiModel : options.env.geminiModel);
   const timeoutMs = options.timeoutMs ?? 20000;
   const invoke =
     options.invokeModel ||

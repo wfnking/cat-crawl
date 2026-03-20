@@ -8,18 +8,18 @@ export type AgentSetupStep = {
 }
 
 export function getAgentSetupSteps(agent: AgentConfigValue): AgentSetupStep[] {
-  if (agent === 'deepseek') {
+  if (agent === 'openai') {
     return [
       {
-        key: 'DEEPSEEK_API_KEY',
-        label: 'DeepSeek API Key',
+        key: 'OPENAI_API_KEY',
+        label: 'OpenAI API Key',
         required: true
       },
       {
-        key: 'DEEPSEEK_MODEL',
-        label: 'DeepSeek Model (deepseek-chat/deepseek-reasoner)',
+        key: 'OPENAI_MODEL',
+        label: 'OpenAI Model',
         required: true,
-        defaultValue: 'deepseek-chat'
+        defaultValue: 'gpt-4o-mini'
       }
     ]
   }

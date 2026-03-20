@@ -102,6 +102,56 @@ test('transcribe video tool should save transcript when enabled', async () => {
   assert.equal(result.path, 'Clippings/Saved Video.md')
 })
 
+test('transcribe video tool should route AI transcript into AI dynamic folder', async () => {
+  let receivedDynamicFolder: string | undefined
+  const tool = createTranscribeVideoTool(
+    {
+      transcriptionProvider: 'whisper_cpp',
+      whisperCppBin: 'whisper-cli',
+      whisperCppModelPath: '/models/base.bin',
+      whisperCppLanguage: undefined,
+      geminiApiKey: 'gemini-demo-key',
+      geminiModel: 'gemini-2.5-pro',
+      obsidianFolder: 'Clippings',
+      obsidianDynamicFolders: ['AI', 'English']
+    } as never,
+    {
+      selectVideoSourceAdapter: () => ({ name: 'file' }),
+      resolveFileVideoSource: async (source) => ({
+        adapter: 'file',
+        sourceUrl: source,
+        mediaPath: source
+      }),
+      extractAudioFromVideo: async () => '/tmp/audio.mp3',
+      transcribeAudio: async () => ({
+        providerUsed: 'whisper_cpp',
+        text: 'Today we talk about AI agents, LLM workflows and prompt engineering.',
+        srt: undefined,
+        fallbackUsed: false
+      }),
+      buildTranscriptMarkdown: async ({ transcriptText }) => ({
+        markdown: `## Why AI Engineer\n\n${transcriptText}`
+      }),
+      saveToObsidian: async (input) => {
+        receivedDynamicFolder = input.dynamic_folder
+        return {
+          saved: true,
+          path: 'Clippings/AI/Why AI Engineer.md'
+        }
+      }
+    }
+  )
+
+  const result = await tool.invoke({
+    source: '/tmp/input.mp4',
+    save: true,
+    title: 'A Practical Guide To Becoming An AI Engineer (2026)'
+  })
+
+  assert.equal(receivedDynamicFolder, 'AI')
+  assert.equal(result.saved, true)
+})
+
 test('transcribe video tool should pass Douyin cookie to resolver', async () => {
   let receivedCookieHeader: string | undefined
   const tool = createTranscribeVideoTool(

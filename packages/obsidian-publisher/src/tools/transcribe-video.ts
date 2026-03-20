@@ -49,6 +49,7 @@ type TranscribeVideoDeps = {
     author?: string;
     source?: string;
     tags?: string[];
+    dynamic_folder?: string;
   }) => Promise<SaveResult>;
   buildTranscriptMarkdown?: (input: {
     sourceUrl: string;
@@ -58,6 +59,151 @@ type TranscribeVideoDeps = {
 };
 
 const logger = createLogger();
+
+function buildClassificationSummary(markdown: string): string {
+  const lines = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("- Source:") && !line.startsWith("[Source]"));
+  return lines.join(" ").replace(/\s+/g, " ").trim().slice(0, 1800);
+}
+
+function buildClassifierPrompt(options: string[]): string {
+  const optionText =
+    options.length > 0
+      ? options.map((item) => `- ${item}`).join("\n")
+      : "- (no options configured)";
+
+  return [
+    "You are a strict classifier.",
+    "Pick exactly one dynamic_folder from the allowed list based on article/video content.",
+    "If nothing fits, return empty string.",
+    'Output JSON only: {"dynamic_folder":"..."}',
+    "Allowed options:",
+    optionText,
+  ].join("\n");
+}
+
+function pickDynamicFolder(modelOutput: string, options: string[]): string {
+  const trimmed = modelOutput.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as { dynamic_folder?: unknown };
+    if (typeof parsed.dynamic_folder === "string") {
+      const picked = parsed.dynamic_folder.trim();
+      if (!picked) return "";
+      return options.includes(picked) ? picked : "";
+    }
+  } catch {
+    // fall through to fuzzy matching
+  }
+
+  if (trimmed === '""' || trimmed === "''" || trimmed.toLowerCase() === "null") {
+    return "";
+  }
+
+  for (const option of options) {
+    if (trimmed === option || trimmed.includes(option)) {
+      return option;
+    }
+  }
+
+  return "";
+}
+
+function pickPolicyDynamicFolder(options: string[], text: string): string {
+  const rules: Array<{ option: string; pattern: RegExp }> = [
+    {
+      option: "AI",
+      pattern:
+        /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|llm|agentic|machine learning|deep learning|prompt engineering|rag|人工智能|大模型|机器学习|智能体|提示词/u,
+    },
+    {
+      option: "DSA",
+      pattern: /data structure|algorithm|leetcode|算法|数据结构|刷题/u,
+    },
+    {
+      option: "English",
+      pattern:
+        /english learning|english writing|ielts|toefl|vocabulary|pronunciation|grammar|英文写作|英语写作|英语学习|口语|语法/u,
+    },
+    {
+      option: "Go",
+      pattern: /(^|[^a-z])go([^a-z]|$)|golang|go语言|gin|gorm/u,
+    },
+    {
+      option: "Job",
+      pattern: /interview|resume|job hunting|career|hiring|求职|面试|简历|跳槽/u,
+    },
+    {
+      option: "OPC",
+      pattern:
+        /创业|创业者|创始人|一人公司|个体创业|商业化|变现|公司经营|startup|founder|one person company|cross[- ]?border e[- ]?commerce|跨境电商|电商|独立开发|独立开发者|个人开发者|solo entrepreneur|indie hacker|indiehacker|side hustle|side project|bootstrap|bootstrapped|micro[- ]?saas|saas|mrr|arr|营收|收入|盈利|月入|年入|赚钱|副业|卖了|收购|acquired|exit/u,
+    },
+    {
+      option: "Procrastination",
+      pattern: /procrastination|拖延|拖延症|专注|自律|习惯养成/u,
+    },
+    {
+      option: "Writing",
+      pattern: /writing|copywriting|写作|文案|创作|写作技巧/u,
+    },
+  ];
+
+  for (const option of options) {
+    const matched = rules.find((rule) => rule.option.toLowerCase() === option.trim().toLowerCase());
+    if (matched && matched.pattern.test(text)) {
+      return option;
+    }
+  }
+
+  return "";
+}
+
+async function resolveDynamicFolder(
+  env: AppEnv,
+  input: { title: string; transcriptMarkdown: string },
+): Promise<string> {
+  if (env.obsidianDynamicFolders.length === 0) {
+    return "";
+  }
+
+  const summary = buildClassificationSummary(input.transcriptMarkdown);
+  const policyFolder = pickPolicyDynamicFolder(
+    env.obsidianDynamicFolders,
+    `${input.title}\n${summary}`.toLowerCase(),
+  );
+  if (policyFolder) {
+    logger.info(`[tool:transcribe_video] dynamic_folder policy selected=${policyFolder}`);
+    return policyFolder;
+  }
+
+  const classifierModel = createModel(env, {
+    task: "classify",
+    maxTokens: 300,
+    timeout: 30000,
+    temperature: 0,
+  });
+  try {
+    logger.info("[tool:transcribe_video] invoking model for dynamic_folder classification");
+    const classifyMessage = await classifierModel.invoke([
+      new SystemMessage(buildClassifierPrompt(env.obsidianDynamicFolders)),
+      new HumanMessage([`Title: ${input.title}`, "", `Summary: ${summary}`, "", "Return JSON only."].join("\n")),
+    ]);
+    const modelOutput = String(classifyMessage.content ?? "").trim();
+    const folder = pickDynamicFolder(modelOutput, env.obsidianDynamicFolders);
+    logger.info(`[tool:transcribe_video] dynamic_folder selected=${folder || "(empty)"}`);
+    return folder;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.warn(`[tool:transcribe_video] dynamic_folder classify failed msg=${msg}`);
+    return "";
+  }
+}
 
 function extractHashtags(text: string): string[] {
   return Array.from(text.matchAll(/#([^\s#]+)/g))
@@ -115,8 +261,8 @@ async function buildTranscriptMarkdownWithModel(
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
   const configuredProvider = env.aiSummarizeProvider || env.aiProvider || env.agent;
   const summarizeModel =
-    configuredProvider === "deepseek"
-      ? env.deepseekModel
+    configuredProvider === "openai"
+      ? env.openaiModel
       : pickGeminiSummarizeModel(env, translateToChinese);
   const summarizeTimeoutMs = Math.max(
     60000,
@@ -284,6 +430,10 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       const noteTags = Array.from(
         new Set(["video", "transcript", ...normalized.tags, ...(aiGeneratedTags || [])]),
       );
+      const dynamicFolder = await resolveDynamicFolder(env, {
+        title,
+        transcriptMarkdown,
+      });
 
       if (!input.save) {
         logger.info(`[tool:transcribe_video] skip save title=${title}`);
@@ -321,6 +471,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         description: transcriptDescription,
         source: "Video",
         tags: noteTags,
+        dynamic_folder: dynamicFolder,
       });
       logger.info(
         `[tool:transcribe_video] saved title=${title} path=${saveResult.path || "<unknown>"} vault=${saveResult.vault || "<active>"}`,

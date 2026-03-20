@@ -126,12 +126,12 @@ test('loadEnv should support ai namespace with task-level provider overrides', (
     ai: {
       provider: 'gemini',
       tasks: {
-        classify: { provider: 'deepseek' },
+        classify: { provider: 'openai' },
         summarize: { provider: 'gemini' }
       },
-      deepseek: {
-        apiKey: 'deepseek-key',
-        model: 'deepseek-chat'
+      openai: {
+        apiKey: 'openai-key',
+        model: 'gpt-4o-mini'
       },
       gemini: {
         apiKey: 'gemini-key',
@@ -146,9 +146,9 @@ test('loadEnv should support ai namespace with task-level provider overrides', (
     assert.equal(env.agent, 'gemini')
     assert.equal(env.aiProvider, 'gemini')
     assert.equal(env.aiChatProvider, undefined)
-    assert.equal(env.aiClassifyProvider, 'deepseek')
+    assert.equal(env.aiClassifyProvider, 'openai')
     assert.equal(env.aiSummarizeProvider, 'gemini')
-    assert.equal(env.deepseekApiKey, 'deepseek-key')
+    assert.equal(env.openaiApiKey, 'openai-key')
     assert.equal(env.geminiApiKey, 'gemini-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
   } finally {

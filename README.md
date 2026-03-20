@@ -15,7 +15,7 @@
 - 保存到 Obsidian（支持动态目录策略）
 - 成功记录写入本地数据库：`~/.cat-crawl/history.db`
 - 渠道接入：CLI、Feishu、Telegram（Polling）、Discord
-- Agent Provider：`deepseek` / `gemini` / `vertex`
+- Agent Provider：`openai` / `gemini` / `vertex`
 
 ## 环境要求
 
@@ -49,7 +49,7 @@ cat-crawl obsidian run "<任意文本/URL>"
 cat-crawl obsidian config set channel <feishu|telegram|discord|all>
 cat-crawl obsidian config get channel [fallback]
 
-cat-crawl obsidian config set agent <deepseek|gemini|vertex>
+cat-crawl obsidian config set agent <openai|gemini|vertex>
 cat-crawl obsidian config get agent [fallback]
 
 cat-crawl obsidian pairing approve telegram <code>

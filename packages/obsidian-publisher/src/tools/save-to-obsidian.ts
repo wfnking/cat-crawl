@@ -504,7 +504,7 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       const startedAt = Date.now();
       const timeoutMs = 20_000;
       const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
-      const model = provider === "deepseek" ? env.deepseekModel : env.geminiModel;
+      const model = provider === "openai" ? env.openaiModel : env.geminiModel;
       logger.info(
         `[tool:save_to_obsidian] description_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
       );

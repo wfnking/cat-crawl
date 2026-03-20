@@ -2,14 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildAgentSetupConfig, getAgentSetupSteps } from './agent-wizard.js'
 
-test('deepseek agent should expose required setup steps', () => {
-  const steps = getAgentSetupSteps('deepseek')
+test('openai agent should expose required setup steps', () => {
+  const steps = getAgentSetupSteps('openai')
   assert.deepEqual(
     steps.map((item) => item.key),
-    ['DEEPSEEK_API_KEY', 'DEEPSEEK_MODEL']
+    ['OPENAI_API_KEY', 'OPENAI_MODEL']
   )
   assert.equal(steps[0]?.required, true)
-  assert.equal(steps[1]?.defaultValue, 'deepseek-chat')
+  assert.equal(steps[1]?.defaultValue, 'gpt-4o-mini')
 })
 
 test('gemini agent should expose required api key and model steps', () => {
@@ -23,13 +23,13 @@ test('gemini agent should expose required api key and model steps', () => {
 })
 
 test('buildAgentSetupConfig should include selected agent', () => {
-  const config = buildAgentSetupConfig('deepseek', {
-    DEEPSEEK_API_KEY: 'sk-demo',
-    DEEPSEEK_MODEL: 'deepseek-chat'
+  const config = buildAgentSetupConfig('openai', {
+    OPENAI_API_KEY: 'sk-demo',
+    OPENAI_MODEL: 'gpt-4o-mini'
   })
 
-  assert.equal(config.agent, 'deepseek')
-  assert.equal(config.DEEPSEEK_MODEL, 'deepseek-chat')
+  assert.equal(config.agent, 'openai')
+  assert.equal(config.OPENAI_MODEL, 'gpt-4o-mini')
 })
 
 test('buildAgentSetupConfig should include gemini values', () => {

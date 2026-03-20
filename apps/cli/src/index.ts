@@ -114,9 +114,9 @@ function persistStructuredAgentConfig(
 
   const flatAgentKeys = [
     "agent",
-    "DEEPSEEK_API_KEY",
-    "DEEPSEEK_BASE_URL",
-    "DEEPSEEK_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
     "GOOGLE_VERTEX_API_KEY",
@@ -130,15 +130,15 @@ function persistStructuredAgentConfig(
 
   const agentConfig = ensureObject(raw, "agent");
   agentConfig.provider = agent;
-  delete agentConfig.deepseek;
+  delete agentConfig.openai;
   delete agentConfig.gemini;
   delete agentConfig.vertex;
 
-  if (agent === "deepseek") {
-    const deepseek = ensureObject(agentConfig, "deepseek");
-    deepseek.apiKey = values.DEEPSEEK_API_KEY || "";
-    deepseek.baseUrl = values.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-    deepseek.model = values.DEEPSEEK_MODEL || "deepseek-chat";
+  if (agent === "openai") {
+    const openai = ensureObject(agentConfig, "openai");
+    openai.apiKey = values.OPENAI_API_KEY || "";
+    openai.baseUrl = values.OPENAI_BASE_URL || "https://api.openai.com/v1";
+    openai.model = values.OPENAI_MODEL || "gpt-4o-mini";
   } else if (agent === "gemini") {
     const gemini = ensureObject(agentConfig, "gemini");
     gemini.apiKey = values.GEMINI_API_KEY || "";
@@ -185,7 +185,7 @@ function printUsage(): void {
       '2) cat-crawl obsidian run "你的消息内容或文章链接"',
       "3) cat-crawl obsidian config set channel telegram",
       "4) cat-crawl obsidian config get channel [fallback]",
-      "5) cat-crawl obsidian config set agent deepseek|gemini|vertex",
+      "5) cat-crawl obsidian config set agent openai|gemini|vertex",
       "6) cat-crawl obsidian config get agent [fallback]",
       "7) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),
@@ -254,9 +254,9 @@ async function promptAgentSetup(agent: AgentConfigValue): Promise<Record<string,
         | Record<string, unknown>
         | undefined;
       const fieldByStepKey: Record<string, string> = {
-        DEEPSEEK_API_KEY: "apiKey",
-        DEEPSEEK_BASE_URL: "baseUrl",
-        DEEPSEEK_MODEL: "model",
+        OPENAI_API_KEY: "apiKey",
+        OPENAI_BASE_URL: "baseUrl",
+        OPENAI_MODEL: "model",
         GEMINI_API_KEY: "apiKey",
         GEMINI_MODEL: "model",
         GOOGLE_VERTEX_API_KEY: "apiKey",
@@ -325,7 +325,7 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
     if (key === "agent") {
       const agent = parseAgentConfig(value);
       if (!agent) {
-        throw new Error("agent 当前只支持 deepseek / gemini / vertex");
+        throw new Error("agent 当前只支持 openai / gemini / vertex");
       }
       const values = await promptAgentSetup(agent);
       persistStructuredAgentConfig(agent, values);
