@@ -6,12 +6,28 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@cat-crawl/obsidian-publisher": [
+        "packages/obsidian-publisher/src/index.ts"
+      ],
+      "@cat-crawl/core": [
+        "packages/core/src/index.ts"
+      ]
+    },
     "types": [
       "node"
     ]
   },
   "include": [
-    "src"
+    "src",
+    "apps",
+    "packages"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "apps/**/*.test.ts",
+    "packages/**/*.test.ts"
   ]
 }
