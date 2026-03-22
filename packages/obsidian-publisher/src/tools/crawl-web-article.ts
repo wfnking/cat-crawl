@@ -4,7 +4,7 @@ import TurndownService from "turndown";
 import { z } from "zod";
 import { extractArticleUrl } from "../utils/text.js";
 
-export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "generic";
+export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "generic";
 
 type CrawlResult = {
   title: string;
@@ -38,6 +38,21 @@ type ParsedXOEmbedResult = {
   published: string | null;
   sourceUrl: string;
   contentBody: string;
+};
+
+type ChatGPTShareMessage = {
+  author?: {
+    role?: string | null;
+  } | null;
+  content?: {
+    parts?: unknown[];
+  } | null;
+};
+
+type ChatGPTSharePost = {
+  text?: string | null;
+  posted_at?: number | string | null;
+  messages?: ChatGPTShareMessage[] | null;
 };
 
 type ArticleImageAttrs = {
@@ -357,46 +372,82 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
     author = xStructured?.author || author;
   }
 
-  const contentNode = html(selectorMap[currentAdapter] || selectorMap.generic);
   let contentHtml = '';
-  if (contentNode) {
-    const clone = contentNode.cloneNode(true);
-    clone
-      .querySelectorAll(
-        'script,style,noscript,iframe,svg,form,button,.advertisement,.ad,.related-article,.recommend-wrap,.m-player-wrap',
-      )
-      .forEach((el) => el.remove());
+  if (currentAdapter === 'chatgpt') {
+    const messages = Array.from(document.querySelectorAll('[data-message-author-role]'));
+    const seen = new Set();
+    const sections = [];
+    for (const message of messages) {
+      const role = (message.getAttribute('data-message-author-role') || '').trim().toLowerCase();
+      const messageId = message.getAttribute('data-message-id')?.trim() || '';
+      const dedupeKey = messageId || role + ':' + (message.textContent || '').trim().slice(0, 120);
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
 
-    clone.querySelectorAll('*').forEach((el) => {
-      const style = (el.getAttribute('style') || '').toLowerCase();
-      if (style.includes('display:none') || style.includes('visibility:hidden')) {
-        el.remove();
-        return;
+      const markdownNode = message.querySelector('.markdown');
+      const messageHtml = markdownNode instanceof HTMLElement ? markdownNode.innerHTML.trim() : '';
+      if (!messageHtml) {
+        continue;
       }
 
-      if (el.tagName.toLowerCase() === 'img') {
-        const preferred =
-          el.getAttribute('data-src') ||
-          el.getAttribute('data-original') ||
-          el.getAttribute('data-original-src') ||
-          el.getAttribute('data-lazy-src') ||
-          el.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0];
-        const src = el.getAttribute('src');
-        const isDataImage = (src || '').toLowerCase().startsWith('data:image/');
-        if ((!src || isDataImage) && preferred) {
-          el.setAttribute('src', preferred);
+      const sectionTitle = role === 'assistant' ? 'Assistant' : role === 'user' ? 'User' : role || 'Message';
+      sections.push(
+        '<section data-role="' +
+          sectionTitle.toLowerCase() +
+          '"><h2>' +
+          sectionTitle +
+          '</h2>' +
+          messageHtml +
+          '</section>',
+      );
+    }
+    contentHtml = sections.join('\n\n').trim();
+    if (!author) {
+      author = 'ChatGPT';
+    }
+  } else {
+    const contentNode = html(selectorMap[currentAdapter] || selectorMap.generic);
+    if (contentNode) {
+      const clone = contentNode.cloneNode(true);
+      clone
+        .querySelectorAll(
+          'script,style,noscript,iframe,svg,form,button,.advertisement,.ad,.related-article,.recommend-wrap,.m-player-wrap',
+        )
+        .forEach((el) => el.remove());
+
+      clone.querySelectorAll('*').forEach((el) => {
+        const style = (el.getAttribute('style') || '').toLowerCase();
+        if (style.includes('display:none') || style.includes('visibility:hidden')) {
+          el.remove();
+          return;
         }
-      }
 
-      if (el.tagName.toLowerCase() === 'a') {
-        const href = el.getAttribute('href');
-        if (href?.startsWith('//')) {
-          el.setAttribute('href', 'https:' + href);
+        if (el.tagName.toLowerCase() === 'img') {
+          const preferred =
+            el.getAttribute('data-src') ||
+            el.getAttribute('data-original') ||
+            el.getAttribute('data-original-src') ||
+            el.getAttribute('data-lazy-src') ||
+            el.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0];
+          const src = el.getAttribute('src');
+          const isDataImage = (src || '').toLowerCase().startsWith('data:image/');
+          if ((!src || isDataImage) && preferred) {
+            el.setAttribute('src', preferred);
+          }
         }
-      }
-    });
 
-    contentHtml = clone.innerHTML;
+        if (el.tagName.toLowerCase() === 'a') {
+          const href = el.getAttribute('href');
+          if (href?.startsWith('//')) {
+            el.setAttribute('href', 'https:' + href);
+          }
+        }
+      });
+
+      contentHtml = clone.innerHTML;
+    }
   }
 
   const carouselImages =
@@ -539,6 +590,176 @@ async function crawlXPostViaOEmbed(url: string): Promise<CrawlResult | null> {
   };
 }
 
+function parseChatGPTSharePost(
+  post: ChatGPTSharePost | null | undefined,
+  sourceUrl: string,
+): CrawlResult | null {
+  if (!post) {
+    return null;
+  }
+  const title = post.text?.trim() || "ChatGPT Share";
+  const postedAtRaw = Number(post.posted_at ?? "");
+  const postedAtSeconds = Number.isFinite(postedAtRaw) ? Math.floor(postedAtRaw) : null;
+  const messages = Array.isArray(post.messages) ? post.messages : [];
+
+  const sections = messages
+    .map((message) => {
+      const role = (message.author?.role || "").trim().toLowerCase();
+      const parts = Array.isArray(message.content?.parts)
+        ? message.content?.parts.filter((part): part is string => typeof part === "string")
+        : [];
+      const body = parts.join("\n\n").trim();
+      if (!body) {
+        return "";
+      }
+      const sectionTitle = role === "user" ? "User" : role === "assistant" ? "Assistant" : "Message";
+      return `## ${sectionTitle}\n\n${body}`;
+    })
+    .filter(Boolean);
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  const published = normalizePublishedDateWithFallback(null, postedAtSeconds);
+  return {
+    title,
+    author: "ChatGPT",
+    published,
+    source_url: sourceUrl,
+    content_markdown: toMarkdown({
+      title,
+      author: "ChatGPT",
+      published,
+      sourceUrl,
+      contentBody: sections.join("\n\n"),
+    }),
+  };
+}
+
+function decodeEscapedJsonString(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`);
+  } catch {
+    return raw;
+  }
+}
+
+function extractHtmlMetaContent(
+  html: string,
+  key: string,
+  attr: "name" | "property" = "property",
+): string | null {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `<meta[^>]+${attr}=["']${escapedKey}["'][^>]+content=["']([^"']+)["']`,
+    "i",
+  );
+  return html.match(pattern)?.[1]?.trim() || null;
+}
+
+function extractCanonicalUrl(html: string): string | null {
+  return html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1]?.trim() || null;
+}
+
+function extractHtmlTitle(html: string): string | null {
+  const title = html.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.trim() || "";
+  if (!title) {
+    return null;
+  }
+  return title.replace(/^ChatGPT\s*-\s*/i, "").trim();
+}
+
+function parseChatGPTShareHtml(html: string, sourceUrl: string): CrawlResult | null {
+  const streamMatches = Array.from(
+    html.matchAll(/streamController\.enqueue\(("(?:\\.|[^"])*")\)/g),
+  );
+  if (streamMatches.length === 0) {
+    return null;
+  }
+
+  const sections: string[] = [];
+  let payloadTitle = "";
+  let payloadPostedAt: number | null = null;
+  let payloadSourceUrl = "";
+
+  for (const match of streamMatches) {
+    const encoded = match[1];
+    if (!encoded) {
+      continue;
+    }
+    let decoded = "";
+    try {
+      decoded = JSON.parse(encoded);
+    } catch {
+      continue;
+    }
+
+    if (!payloadTitle) {
+      const titleMatch = decoded.match(/"text","((?:\\.|[^"])*)"/);
+      if (titleMatch?.[1]) {
+        payloadTitle = decodeEscapedJsonString(titleMatch[1]).trim();
+      }
+    }
+
+    if (payloadPostedAt === null) {
+      const postedAtMatch = decoded.match(/"posted_at",([0-9.]+)/);
+      if (postedAtMatch?.[1]) {
+        const postedAt = Number(postedAtMatch[1]);
+        if (Number.isFinite(postedAt)) {
+          payloadPostedAt = Math.floor(postedAt);
+        }
+      }
+    }
+
+    if (!payloadSourceUrl) {
+      const permalinkMatch = decoded.match(/"permalink","((?:\\.|[^"])*)"/);
+      if (permalinkMatch?.[1]) {
+        payloadSourceUrl = decodeEscapedJsonString(permalinkMatch[1]).trim();
+      }
+    }
+
+    const messageMatches = Array.from(
+      decoded.matchAll(/"role","(assistant|user)"[\s\S]*?"parts",\[\d+\],"((?:\\.|[^"])*)"/g),
+    );
+    for (const messageMatch of messageMatches) {
+      const role = messageMatch[1]?.trim().toLowerCase() || "";
+      const body = decodeEscapedJsonString(messageMatch[2] || "").trim();
+      if (!body) {
+        continue;
+      }
+      const sectionTitle = role === "user" ? "User" : role === "assistant" ? "Assistant" : "Message";
+      sections.push(`## ${sectionTitle}\n\n${body}`);
+    }
+  }
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  const title = payloadTitle || extractHtmlMetaContent(html, "og:title") || extractHtmlTitle(html) || "ChatGPT Share";
+  const published =
+    normalizePublishedDateWithFallback(
+      extractHtmlMetaContent(html, "article:published_time"),
+      payloadPostedAt,
+    ) || null;
+  const finalSourceUrl = extractCanonicalUrl(html) || payloadSourceUrl || sourceUrl;
+
+  return {
+    title,
+    author: "ChatGPT",
+    published,
+    source_url: finalSourceUrl,
+    content_markdown: toMarkdown({
+      title,
+      author: "ChatGPT",
+      published,
+      sourceUrl: finalSourceUrl,
+      contentBody: sections.join("\n\n"),
+    }),
+  };
+}
+
 function createTurndownService(): TurndownService {
   const turndown = new TurndownService({
     headingStyle: "atx",
@@ -617,6 +838,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   if (host.includes("x.com") || host.includes("twitter.com")) {
     return "x";
   }
+  if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
+    return "chatgpt";
+  }
   return "generic";
 }
 
@@ -638,6 +862,23 @@ export const crawlWebArticleTool = tool(
       }
     }
 
+    if (adapter === "chatgpt") {
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const html = await response.text();
+          const parsed = parseChatGPTShareHtml(html, url);
+          if (parsed) {
+            logger.info("[tool:crawl_web_article] chatgpt html parse succeeded");
+            return parsed;
+          }
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        logger.warn(`[tool:crawl_web_article] chatgpt direct fetch parse failed: ${detail}`);
+      }
+    }
+
     const { chromium } = await import("playwright");
     let browser;
     try {
@@ -656,6 +897,15 @@ export const crawlWebArticleTool = tool(
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
       await page.waitForTimeout(adapter === "wechat" ? 1500 : 2200);
+
+      if (adapter === "chatgpt") {
+        const pageHtml = await page.content();
+        const chatgptResult = parseChatGPTShareHtml(pageHtml, url);
+        if (chatgptResult) {
+          logger.info("[tool:crawl_web_article] chatgpt page html parse succeeded");
+          return chatgptResult;
+        }
+      }
 
       const scraped = await page.evaluate(createBrowserScrapeFunction(), adapter);
 
@@ -715,4 +965,6 @@ export const __test__ = {
   formatUnixSecondsDate,
   createBrowserScrapeFunction,
   parseXOEmbedResponse,
+  parseChatGPTSharePost,
+  parseChatGPTShareHtml,
 };

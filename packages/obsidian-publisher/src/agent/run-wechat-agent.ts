@@ -23,6 +23,7 @@ import {
 import { createSaveToObsidianTool } from "../tools/save-to-obsidian.js";
 import { createTranscribeVideoTool } from "../tools/transcribe-video.js";
 import { findExistingSavedRecordByUrl } from "./existing-save-check.js";
+import { shouldForceRecrawlFromText } from "./recrawl-intent.js";
 import { extractArticleUrl, normalizeModelText } from "../utils/text.js";
 
 type CrawlToolResult = {
@@ -87,6 +88,7 @@ export type AgentRunOptions = {
 
 type AgentDeps = {
   loadEnv?: typeof loadEnv;
+  findExistingSavedRecordByUrl?: typeof findExistingSavedRecordByUrl;
   crawlWebArticleTool?: Pick<typeof crawlWebArticleTool, "invoke">;
   createSaveToObsidianTool?: typeof createSaveToObsidianTool;
   createTranscribeVideoTool?: typeof createTranscribeVideoTool;
@@ -373,6 +375,7 @@ export async function runAgent(
 ): Promise<AgentRunResult> {
   logger.info("[agent] start processing input");
   const env = (deps.loadEnv || loadEnv)();
+  const existingChecker = deps.findExistingSavedRecordByUrl || findExistingSavedRecordByUrl;
   const articleTool = deps.crawlWebArticleTool || crawlWebArticleTool;
   const buildSaveTool = deps.createSaveToObsidianTool || createSaveToObsidianTool;
   const buildTranscribeTool = deps.createTranscribeVideoTool || createTranscribeVideoTool;
@@ -417,18 +420,22 @@ export async function runAgent(
     };
   }
 
-  // const existingRecord = await findExistingSavedRecordByUrl(url);
-  // if (existingRecord) {
-  //   logger.info(`[agent] found existing record for url: ${url}`);
-  //   await emitStatus(options, {
-  //     stage: "save_done",
-  //     message: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：${existingRecord.vault}/${existingRecord.path}`,
-  //   });
-  //   return {
-  //     reply: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：\`${existingRecord.vault}/${existingRecord.path}\``,
-  //     usedTools,
-  //   };
-  // }
+  const forceRecrawl = shouldForceRecrawlFromText(userInput);
+  const existingRecord = forceRecrawl ? null : await existingChecker(url);
+  if (existingRecord) {
+    logger.info(`[agent] found existing record for url: ${url}`);
+    await emitStatus(options, {
+      stage: "save_done",
+      message: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：${existingRecord.vault}/${existingRecord.path}`,
+    });
+    return {
+      reply: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：\`${existingRecord.vault}/${existingRecord.path}\``,
+      usedTools,
+    };
+  }
+  if (forceRecrawl) {
+    logger.info(`[agent] force recrawl requested for url: ${url}`);
+  }
 
   const isVideoUrl = isSupportedVideoUrl(url);
 

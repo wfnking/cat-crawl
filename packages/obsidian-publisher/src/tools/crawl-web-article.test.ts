@@ -21,6 +21,7 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
   assert.equal(__test__.pickArticleAdapter("https://m.huxiu.com/article/4794991.html"), "huxiu");
   assert.equal(__test__.pickArticleAdapter("https://x.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://twitter.com/example/status/123"), "x");
+  assert.equal(__test__.pickArticleAdapter("https://chatgpt.com/s/t_123"), "chatgpt");
   assert.equal(__test__.pickArticleAdapter("https://example.com/blog/post"), "generic");
 });
 
@@ -52,6 +53,7 @@ test("createBrowserScrapeFunction should avoid ts helper leakage in page.evaluat
 
   assert.equal(source.includes("__name"), false);
   assert.match(source, /article\[data-testid="tweet"\]/);
+  assert.match(source, /\[data-message-author-role\]/);
 });
 
 test("parseXOEmbedResponse should extract public x post metadata", () => {
@@ -67,4 +69,65 @@ test("parseXOEmbedResponse should extract public x post metadata", () => {
   assert.equal(result.published, "2006-03-21");
   assert.equal(result.sourceUrl, "https://twitter.com/jack/status/20");
   assert.match(result.contentBody, /just setting up my twttr/);
+});
+
+test("parseChatGPTSharePost should extract messages from chatgpt share loader data", () => {
+  const result = __test__.parseChatGPTSharePost(
+    {
+      text: "Book Recommendations.",
+      posted_at: 1774172085.469512,
+      messages: [
+        {
+          author: { role: "user" },
+          content: { parts: ["Recommend a few self-help books."] },
+        },
+        {
+          author: { role: "assistant" },
+          content: {
+            parts: [
+              "Sure! Here are a few self-help book recommendations that you might find helpful:\n\n1. Atomic Habits",
+            ],
+          },
+        },
+      ],
+    },
+    "https://chatgpt.com/s/t_69bfb7b5782881918cf872d323e18145",
+  );
+
+  assert.ok(result);
+  assert.equal(result.title, "Book Recommendations.");
+  assert.equal(result.author, "ChatGPT");
+  assert.equal(result.published, "2026-03-22");
+  assert.equal(result.source_url, "https://chatgpt.com/s/t_69bfb7b5782881918cf872d323e18145");
+  assert.match(result.content_markdown, /Atomic Habits/);
+  assert.match(result.content_markdown, /Recommend a few self-help books/);
+  assert.match(result.content_markdown, /## User/);
+  assert.match(result.content_markdown, /## Assistant/);
+});
+
+test("parseChatGPTShareHtml should extract messages from react router stream html", () => {
+  const payload =
+    '["loaderData",{"routes/s.$postId":{"postWithProfile":{"post":{"text":"Book Recommendations.","posted_at":1774172085.469512,"messages",[45],{"author",{"role","assistant"},"content",{"parts",[62],"Sure! Here are a few self-help book recommendations that you might find helpful:\\n\\n1. \\"Atomic Habits\\""},"permalink","https://chatgpt.com/s/t_69bfb7b5782881918cf872d323e18145"}}}}]';
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>ChatGPT - Book Recommendations.</title>
+    <meta property="article:published_time" content="2026-03-22T09:34:45.469Z" />
+    <link rel="canonical" href="https://chatgpt.com/s/t_69bfb7b5782881918cf872d323e18145" />
+  </head>
+  <body>
+    <script>window.__reactRouterContext.streamController.enqueue(${JSON.stringify(payload)});</script>
+  </body>
+</html>`;
+
+  const result = __test__.parseChatGPTShareHtml(
+    html,
+    "https://chatgpt.com/s/t_69bfb7b5782881918cf872d323e18145",
+  );
+
+  assert.ok(result);
+  assert.equal(result.title, "Book Recommendations.");
+  assert.equal(result.author, "ChatGPT");
+  assert.equal(result.published, "2026-03-22");
+  assert.match(result.content_markdown, /Atomic Habits/);
 });

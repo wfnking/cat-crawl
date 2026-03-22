@@ -112,3 +112,79 @@ test('runWechatAgent should keep article URLs on crawl path', async () => {
   assert.deepEqual(result.usedTools, ['crawl_web_article', 'save_to_obsidian'])
   assert.match(result.reply, /文章已成功保存到 Obsidian/)
 })
+
+test('runWechatAgent should skip crawl when existing record is found by default', async () => {
+  let crawlCalled = false
+
+  const result = await runWechatAgent('看看这个 https://example.com/post', undefined, {
+    loadEnv: () =>
+      ({
+        obsidianDynamicFolders: []
+      }) as never,
+    findExistingSavedRecordByUrl: async () => ({
+      createdAt: '2026-03-22T00:00:00.000Z',
+      title: 'Existing Article',
+      vault: '知识库',
+      path: 'Clippings/Existing Article.md',
+      sourceUrl: 'https://example.com/post'
+    }),
+    crawlWebArticleTool: {
+      invoke: async () => {
+        crawlCalled = true
+        throw new Error('crawl should not be called when duplicate is skipped')
+      }
+    }
+  } as never)
+
+  assert.equal(crawlCalled, false)
+  assert.deepEqual(result.usedTools, [])
+  assert.match(result.reply, /之前已经帮您处理并保存过/)
+})
+
+test('runWechatAgent should force recrawl when user explicitly asks for it', async () => {
+  let crawlCalled = false
+  let saveCalled = false
+
+  const result = await runWechatAgent('重新爬这个 https://example.com/post', undefined, {
+    loadEnv: () =>
+      ({
+        obsidianDynamicFolders: []
+      }) as never,
+    findExistingSavedRecordByUrl: async () => ({
+      createdAt: '2026-03-22T00:00:00.000Z',
+      title: 'Existing Article',
+      vault: '知识库',
+      path: 'Clippings/Existing Article.md',
+      sourceUrl: 'https://example.com/post'
+    }),
+    crawlWebArticleTool: {
+      invoke: async () => {
+        crawlCalled = true
+        return {
+          title: 'Refetched Article',
+          author: 'Author',
+          published: '2026-03-22',
+          source_url: 'https://example.com/post',
+          content_markdown: '# Refetched\n\nBody'
+        }
+      }
+    },
+    createSaveToObsidianTool: () =>
+      ({
+        invoke: async () => {
+          saveCalled = true
+          return {
+            saved: true,
+            vault: '知识库',
+            path: 'Clippings/Refetched Article.md'
+          }
+        }
+      }) as never,
+    persistSuccessHistory: () => {}
+  } as never)
+
+  assert.equal(crawlCalled, true)
+  assert.equal(saveCalled, true)
+  assert.deepEqual(result.usedTools, ['crawl_web_article', 'save_to_obsidian'])
+  assert.match(result.reply, /文章已成功保存到 Obsidian/)
+})
