@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
-import { appendFile, access, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -420,6 +420,74 @@ function parseVaultsVerbose(output: string): Array<{ name: string; path: string 
     .filter((entry) => entry.name && entry.path);
 }
 
+function findVaultPathFromDesktopConfig(configText: string, vaultName?: string): string | undefined {
+  if (!configText.trim()) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(configText);
+  } catch {
+    return undefined;
+  }
+
+  const vaults = (parsed as { vaults?: Record<string, { path?: string; open?: boolean }> }).vaults;
+  const entries = Object.values(vaults || {})
+    .map((entry) => ({
+      path: entry?.path?.trim() || "",
+      open: Boolean(entry?.open),
+    }))
+    .filter((entry) => entry.path);
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  if (vaultName?.trim()) {
+    const matched = entries.find((entry) => basename(entry.path) === vaultName.trim());
+    return matched?.path;
+  }
+
+  return entries.find((entry) => entry.open)?.path || entries[0]?.path;
+}
+
+async function resolveVaultPathFromDesktopConfig(vaultName?: string): Promise<string | undefined> {
+  const configPath = join(
+    process.env.HOME || "",
+    "Library",
+    "Application Support",
+    "obsidian",
+    "obsidian.json",
+  );
+  try {
+    const configText = await readFile(configPath, "utf8");
+    return findVaultPathFromDesktopConfig(configText, vaultName);
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveVaultPathFromICloud(vaultName?: string): Promise<string | undefined> {
+  const name = vaultName?.trim();
+  if (!name) {
+    return undefined;
+  }
+  const candidate = join(
+    process.env.HOME || "",
+    "Library",
+    "Mobile Documents",
+    "iCloud~md~obsidian",
+    "Documents",
+    name,
+  );
+  try {
+    await access(candidate);
+    return candidate;
+  } catch {
+    return undefined;
+  }
+}
+
 function hasObsidianOutputError(output: string): boolean {
   const lower = output.toLowerCase();
   if (!lower) {
@@ -473,7 +541,8 @@ async function resolveActiveVaultName(): Promise<string | undefined> {
     }
     return normalized;
   } catch {
-    return undefined;
+    const fallbackPath = await resolveVaultPathFromDesktopConfig();
+    return fallbackPath ? sanitizeVaultName(basename(fallbackPath)) : undefined;
   }
 }
 
@@ -494,9 +563,17 @@ async function resolveVaultPath(vaultName?: string): Promise<string | undefined>
         return matched.path;
       }
     } catch {
-      return undefined;
+      const fallbackPath = await resolveVaultPathFromDesktopConfig(vaultName);
+      if (fallbackPath) {
+        return fallbackPath;
+      }
+      return resolveVaultPathFromICloud(vaultName);
     }
-    return undefined;
+    const fallbackPath = await resolveVaultPathFromDesktopConfig(vaultName);
+    if (fallbackPath) {
+      return fallbackPath;
+    }
+    return resolveVaultPathFromICloud(vaultName);
   }
 
   try {
@@ -521,7 +598,7 @@ async function resolveVaultPath(vaultName?: string): Promise<string | undefined>
     }
     return output;
   } catch {
-    return undefined;
+    return resolveVaultPathFromDesktopConfig();
   }
 }
 
@@ -658,6 +735,7 @@ export const __test__ = {
   resolveDescription,
   normalizeDateString,
   parseVaultsVerbose,
+  findVaultPathFromDesktopConfig,
   resolveAvailableNotePath,
   resolveVaultNotePath,
   sanitizeVaultName,

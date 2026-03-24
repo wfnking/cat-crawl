@@ -4,7 +4,7 @@ import TurndownService from "turndown";
 import { z } from "zod";
 import { extractArticleUrl } from "../utils/text.js";
 
-export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "generic";
+export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "baidu" | "generic";
 
 type CrawlResult = {
   title: string;
@@ -670,6 +670,66 @@ function extractHtmlTitle(html: string): string | null {
   return title.replace(/^ChatGPT\s*-\s*/i, "").trim();
 }
 
+function extractInnerHtmlByDataTestId(html: string, testId: string): string {
+  const marker = `data-testid="${testId}"`;
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex < 0) {
+    return "";
+  }
+
+  const startIndex = html.lastIndexOf("<div", markerIndex);
+  if (startIndex < 0) {
+    return "";
+  }
+
+  const contentStart = html.indexOf(">", markerIndex);
+  if (contentStart < 0) {
+    return "";
+  }
+
+  let depth = 0;
+  let cursor = startIndex;
+  while (cursor < html.length) {
+    const nextOpen = html.indexOf("<div", cursor);
+    const nextClose = html.indexOf("</div>", cursor);
+    if (nextClose < 0) {
+      return "";
+    }
+
+    if (nextOpen >= 0 && nextOpen < nextClose) {
+      depth += 1;
+      cursor = nextOpen + 4;
+      continue;
+    }
+
+    depth -= 1;
+    cursor = nextClose + 6;
+    if (depth === 0) {
+      return html.slice(contentStart + 1, nextClose).trim();
+    }
+  }
+
+  return "";
+}
+
+function extractTextByDataTestId(html: string, testId: string): string | null {
+  const escaped = testId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = html.match(new RegExp(`data-testid=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/`, "i"));
+  const text = stripHtmlTags(match?.[1] || "");
+  return text || null;
+}
+
+function extractBaiduSourceUrl(html: string, fallbackUrl: string): string {
+  const canonical = extractCanonicalUrl(html)?.replace(/^http:\/\//i, "https://") || "";
+  if (canonical) {
+    return canonical;
+  }
+  const readsrcMatch = html.match(/"readsrc"\s*:\s*\{[\s\S]*?"link":"((?:\\.|[^"])*)"/i);
+  const decoded = readsrcMatch?.[1] ? decodeEscapedJsonString(readsrcMatch[1]) : "";
+  const normalized = decoded.trim().replace(/^http:\/\//i, "https://");
+  return normalized || fallbackUrl;
+}
+
 function parseChatGPTShareHtml(html: string, sourceUrl: string): CrawlResult | null {
   const streamMatches = Array.from(
     html.matchAll(/streamController\.enqueue\(("(?:\\.|[^"])*")\)/g),
@@ -760,6 +820,36 @@ function parseChatGPTShareHtml(html: string, sourceUrl: string): CrawlResult | n
   };
 }
 
+function parseBaiduShareHtml(html: string, sourceUrl: string): CrawlResult | null {
+  const title = extractHtmlTitle(html);
+  const author = extractTextByDataTestId(html, "author-name");
+  const published = normalizePublishedDateWithFallback(extractTextByDataTestId(html, "updatetime"), null);
+  const contentHtml = extractInnerHtmlByDataTestId(html, "article");
+  if (!title || !contentHtml) {
+    return null;
+  }
+
+  const markdownBody = createTurndownService().turndown(contentHtml).replace(/\n{3,}/g, "\n\n").trim();
+  if (!markdownBody) {
+    return null;
+  }
+
+  const finalSourceUrl = extractBaiduSourceUrl(html, sourceUrl);
+  return {
+    title,
+    author,
+    published,
+    source_url: finalSourceUrl,
+    content_markdown: toMarkdown({
+      title,
+      author,
+      published,
+      sourceUrl: finalSourceUrl,
+      contentBody: markdownBody,
+    }),
+  };
+}
+
 function createTurndownService(): TurndownService {
   const turndown = new TurndownService({
     headingStyle: "atx",
@@ -841,6 +931,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
     return "chatgpt";
   }
+  if (host.includes("mo.mbd.baidu.com") || host.includes("mbd.baidu.com") || host.includes("baijiahao.baidu.com")) {
+    return "baidu";
+  }
   return "generic";
 }
 
@@ -876,6 +969,23 @@ export const crawlWebArticleTool = tool(
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         logger.warn(`[tool:crawl_web_article] chatgpt direct fetch parse failed: ${detail}`);
+      }
+    }
+
+    if (adapter === "baidu") {
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const html = await response.text();
+          const parsed = parseBaiduShareHtml(html, url);
+          if (parsed) {
+            logger.info("[tool:crawl_web_article] baidu html parse succeeded");
+            return parsed;
+          }
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        logger.warn(`[tool:crawl_web_article] baidu direct fetch parse failed: ${detail}`);
       }
     }
 
@@ -952,7 +1062,7 @@ export const crawlWebArticleTool = tool(
   },
   {
     name: "crawl_web_article",
-    description: "抓取通用网页文章，支持微信、虎嗅、X/Twitter 和普通文章页，返回标题、作者、来源和正文 markdown 内容",
+    description: "抓取通用网页文章，支持微信、虎嗅、百度百家号、X/Twitter、ChatGPT 分享页和普通文章页，返回标题、作者、来源和正文 markdown 内容",
     schema: inputSchema,
   },
 );
@@ -967,4 +1077,5 @@ export const __test__ = {
   parseXOEmbedResponse,
   parseChatGPTSharePost,
   parseChatGPTShareHtml,
+  parseBaiduShareHtml,
 };

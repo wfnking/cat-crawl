@@ -22,6 +22,8 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
   assert.equal(__test__.pickArticleAdapter("https://x.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://twitter.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://chatgpt.com/s/t_123"), "chatgpt");
+  assert.equal(__test__.pickArticleAdapter("https://mo.mbd.baidu.com/r/abc123"), "baidu");
+  assert.equal(__test__.pickArticleAdapter("https://mbd.baidu.com/newspage/data/landingshare"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://example.com/blog/post"), "generic");
 });
 
@@ -130,4 +132,36 @@ test("parseChatGPTShareHtml should extract messages from react router stream htm
   assert.equal(result.author, "ChatGPT");
   assert.equal(result.published, "2026-03-22");
   assert.match(result.content_markdown, /Atomic Habits/);
+});
+
+test("parseBaiduShareHtml should extract article metadata from baidu share landing html", () => {
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>为什么 Claude 写代码比国产 AI 强那么多？一个外行人的观察指南</title>
+    <link rel="canonical" href="https://mbd.baidu.com/newspage/data/landingshare?nid=sv_123" />
+  </head>
+  <body>
+    <div data-testid="author-name">粮草督运官</div>
+    <div data-testid="updatetime">2026-03-12 22:13</div>
+    <div class="_18p7x" data-testid="article">
+      <div class="dpu8C"><p>真正的差距，不是模型参数，而是工程完整度。</p></div>
+      <div class="dpu8C"><p>这类产品对上下文、工具链和错误恢复的处理更成熟。</p></div>
+    </div>
+  </body>
+</html>`;
+
+  const result = __test__.parseBaiduShareHtml(
+    html,
+    "https://mo.mbd.baidu.com/r/1TuVkZD9NWE",
+  );
+
+  assert.ok(result);
+  assert.equal(result.title, "为什么 Claude 写代码比国产 AI 强那么多？一个外行人的观察指南");
+  assert.equal(result.author, "粮草督运官");
+  assert.equal(result.published, "2026-03-12");
+  assert.equal(result.source_url, "https://mbd.baidu.com/newspage/data/landingshare?nid=sv_123");
+  assert.match(result.content_markdown, /真正的差距/);
+  assert.match(result.content_markdown, /工程完整度/);
+  assert.match(result.content_markdown, /上下文、工具链和错误恢复/);
 });

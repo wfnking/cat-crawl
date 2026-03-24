@@ -98,6 +98,29 @@ test("parseVaultsVerbose should parse tsv vault listings", () => {
   );
 });
 
+test("findVaultPathFromDesktopConfig should resolve configured vault by local obsidian config", () => {
+  const configText = JSON.stringify({
+    vaults: {
+      "5212a2d276cfc4a4": {
+        path: "/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库",
+        ts: 1769770344100,
+        open: true,
+      },
+      work: {
+        path: "/tmp/work",
+        ts: 1769770344101,
+        open: false,
+      },
+    },
+    cli: true,
+  });
+
+  assert.equal(
+    __test__.findVaultPathFromDesktopConfig(configText, "知识库"),
+    "/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库",
+  );
+});
+
 test("resolveVaultNotePath should keep notes inside vault", () => {
   assert.equal(
     __test__.resolveVaultNotePath("/tmp/vault", "Clippings/OPC/demo.md"),
