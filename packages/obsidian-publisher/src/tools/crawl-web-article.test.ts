@@ -22,6 +22,10 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
   assert.equal(__test__.pickArticleAdapter("https://x.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://twitter.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://chatgpt.com/s/t_123"), "chatgpt");
+  assert.equal(
+    __test__.pickArticleAdapter("https://www.zhihu.com/question/1/answer/2"),
+    "zhihu",
+  );
   assert.equal(__test__.pickArticleAdapter("https://mo.mbd.baidu.com/r/abc123"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://mbd.baidu.com/newspage/data/landingshare"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://example.com/blog/post"), "generic");
@@ -56,6 +60,7 @@ test("createBrowserScrapeFunction should avoid ts helper leakage in page.evaluat
   assert.equal(source.includes("__name"), false);
   assert.match(source, /article\[data-testid="tweet"\]/);
   assert.match(source, /\[data-message-author-role\]/);
+  assert.match(source, /QuestionAnswer-content/);
 });
 
 test("parseXOEmbedResponse should extract public x post metadata", () => {

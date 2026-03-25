@@ -4,7 +4,7 @@ import TurndownService from "turndown";
 import { z } from "zod";
 import { extractArticleUrl } from "../utils/text.js";
 
-export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "baidu" | "generic";
+export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "baidu" | "zhihu" | "generic";
 
 type CrawlResult = {
   title: string;
@@ -224,6 +224,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       'main article',
       'main',
     ],
+    zhihu: ['.QuestionAnswer-content', '.RichContent-inner', 'article', 'main'],
     x: ['article[data-testid="tweet"]', 'main'],
     generic: [
       'article',
@@ -239,7 +240,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
   const title =
     meta('og:title', 'property') ||
     meta('twitter:title', 'name') ||
-    text(['#activity-name', 'h1', '.article-title', '.title']) ||
+    text(['#activity-name', 'h1', '.QuestionHeader-title', '.article-title', '.title']) ||
     document.title ||
     'Untitled';
 
@@ -247,7 +248,10 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
     text([
       '#js_name',
       '.account_nickname_inner',
+      '.AuthorInfo-name .UserLink-link',
       '.author-info__username',
+      '.AuthorInfo-name',
+      '.UserLink-link',
       '.author-name',
       '.author',
       "[rel='author']",
@@ -269,6 +273,16 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
     }
   }
 
+  if (currentAdapter === 'zhihu') {
+    const zhihuAuthor =
+      document.querySelector('.AuthorInfo-name .UserLink-link')?.textContent?.trim() ||
+      document.querySelector('.AuthorInfo-name')?.textContent?.trim() ||
+      '';
+    if (zhihuAuthor) {
+      author = zhihuAuthor;
+    }
+  }
+
   const publishedRaw =
     text([
       '#publish_time',
@@ -278,10 +292,14 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       'time',
       '.article-time',
       '.publish-time',
+      '.ContentItem-time',
+      '.ContentItem-time span',
       '.time',
       "[data-role='publish-time']",
     ]) ||
     meta('article:published_time', 'property') ||
+    meta('dateCreated', 'itemprop') ||
+    meta('dateModified', 'itemprop') ||
     meta('publishdate', 'name') ||
     meta('pubdate', 'name');
 
@@ -931,6 +949,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
     return "chatgpt";
   }
+  if (host.includes("zhihu.com")) {
+    return "zhihu";
+  }
   if (host.includes("mo.mbd.baidu.com") || host.includes("mbd.baidu.com") || host.includes("baijiahao.baidu.com")) {
     return "baidu";
   }
@@ -990,23 +1011,45 @@ export const crawlWebArticleTool = tool(
     }
 
     const { chromium } = await import("playwright");
+    const launchOptions =
+      adapter === "zhihu"
+        ? { headless: true, args: ["--disable-blink-features=AutomationControlled"] }
+        : { headless: true };
     let browser;
     try {
-      browser = await chromium.launch({ headless: true });
+      browser = await chromium.launch(launchOptions);
       logger.info("[tool:crawl_web_article] using bundled playwright chromium");
     } catch (error) {
       if (!isMissingPlaywrightBrowserError(error)) {
         throw error;
       }
       logger.warn("[tool:crawl_web_article] bundled chromium missing, fallback to local Chrome channel");
-      browser = await chromium.launch({ channel: "chrome", headless: true });
+      browser = await chromium.launch({ ...launchOptions, channel: "chrome" });
       logger.info("[tool:crawl_web_article] using local chrome channel");
     }
 
-    const page = await browser.newPage();
+    const context =
+      adapter === "zhihu"
+        ? await browser.newContext({
+            userAgent:
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            locale: "zh-CN",
+            extraHTTPHeaders: {
+              "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+            },
+          })
+        : await browser.newContext();
+    if (adapter === "zhihu") {
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, "webdriver", {
+          get: () => undefined,
+        });
+      });
+    }
+    const page = await context.newPage();
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await page.waitForTimeout(adapter === "wechat" ? 1500 : 2200);
+      await page.waitForTimeout(adapter === "wechat" ? 1500 : adapter === "zhihu" ? 4000 : 2200);
 
       if (adapter === "chatgpt") {
         const pageHtml = await page.content();
@@ -1057,6 +1100,7 @@ export const crawlWebArticleTool = tool(
       };
     } finally {
       await page.close().catch(() => {});
+      await context.close().catch(() => {});
       await browser.close().catch(() => {});
     }
   },
