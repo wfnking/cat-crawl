@@ -26,6 +26,10 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
     __test__.pickArticleAdapter("https://www.zhihu.com/question/1/answer/2"),
     "zhihu",
   );
+  assert.equal(
+    __test__.pickArticleAdapter("https://cloud.tencent.com/developer/article/1761022"),
+    "tencent",
+  );
   assert.equal(__test__.pickArticleAdapter("https://mo.mbd.baidu.com/r/abc123"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://mbd.baidu.com/newspage/data/landingshare"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://example.com/blog/post"), "generic");
@@ -57,10 +61,11 @@ test("createBrowserScrapeFunction should avoid ts helper leakage in page.evaluat
   const browserFn = __test__.createBrowserScrapeFunction();
   const source = browserFn.toString();
 
-  assert.equal(source.includes("__name"), false);
+  assert.equal(/(?:const|var|let)\s+__name\b|__name\(/.test(source), false);
   assert.match(source, /article\[data-testid="tweet"\]/);
   assert.match(source, /\[data-message-author-role\]/);
   assert.match(source, /QuestionAnswer-content/);
+  assert.match(source, /mod-content__markdown/);
 });
 
 test("parseXOEmbedResponse should extract public x post metadata", () => {

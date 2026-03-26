@@ -4,7 +4,7 @@ import TurndownService from "turndown";
 import { z } from "zod";
 import { extractArticleUrl } from "../utils/text.js";
 
-export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "baidu" | "zhihu" | "generic";
+export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "baidu" | "zhihu" | "tencent" | "generic";
 
 type CrawlResult = {
   title: string;
@@ -224,6 +224,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       'main article',
       'main',
     ],
+    tencent: ['.mod-content__markdown', '.mod-content', '.cdc-article__body', 'main'],
     zhihu: ['.QuestionAnswer-content', '.RichContent-inner', 'article', 'main'],
     x: ['article[data-testid="tweet"]', 'main'],
     generic: [
@@ -250,6 +251,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       '.account_nickname_inner',
       '.AuthorInfo-name .UserLink-link',
       '.author-info__username',
+      '.mod-article-source__name',
       '.AuthorInfo-name',
       '.UserLink-link',
       '.author-name',
@@ -292,6 +294,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       'time',
       '.article-time',
       '.publish-time',
+      '.mod-header__detail',
       '.ContentItem-time',
       '.ContentItem-time span',
       '.time',
@@ -951,6 +954,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   }
   if (host.includes("zhihu.com")) {
     return "zhihu";
+  }
+  if (host.includes("cloud.tencent.com")) {
+    return "tencent";
   }
   if (host.includes("mo.mbd.baidu.com") || host.includes("mbd.baidu.com") || host.includes("baijiahao.baidu.com")) {
     return "baidu";
