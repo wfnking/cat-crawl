@@ -4,7 +4,16 @@ import TurndownService from "turndown";
 import { z } from "zod";
 import { extractArticleUrl } from "../utils/text.js";
 
-export type ArticleAdapterName = "wechat" | "huxiu" | "x" | "chatgpt" | "baidu" | "zhihu" | "tencent" | "generic";
+export type ArticleAdapterName =
+  | "wechat"
+  | "huxiu"
+  | "x"
+  | "chatgpt"
+  | "baidu"
+  | "zhihu"
+  | "tencent"
+  | "csdn"
+  | "generic";
 
 type CrawlResult = {
   title: string;
@@ -80,6 +89,18 @@ function isMissingPlaywrightBrowserError(error: unknown): boolean {
 
 function normalizeUrl(url: string): string {
   return url.startsWith("//") ? `https:${url}` : url;
+}
+
+function resolveSourceUrl(baseUrl: string, candidate: string | null | undefined): string {
+  const value = candidate?.trim() || "";
+  if (!value) {
+    return baseUrl;
+  }
+  try {
+    return new URL(normalizeUrl(value), baseUrl).toString();
+  } catch {
+    return baseUrl;
+  }
 }
 
 function isInlineDataImage(url: string): boolean {
@@ -224,6 +245,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       'main article',
       'main',
     ],
+    csdn: ['#content_views', '#article_content', '.blog-content-box', 'main'],
     tencent: ['.mod-content__markdown', '.mod-content', '.cdc-article__body', 'main'],
     zhihu: ['.QuestionAnswer-content', '.RichContent-inner', 'article', 'main'],
     x: ['article[data-testid="tweet"]', 'main'],
@@ -251,6 +273,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       '.account_nickname_inner',
       '.AuthorInfo-name .UserLink-link',
       '.author-info__username',
+      '.follow-nickName',
       '.mod-article-source__name',
       '.AuthorInfo-name',
       '.UserLink-link',
@@ -294,6 +317,7 @@ const BROWSER_SCRAPE_FUNCTION_SOURCE = String.raw`function(currentAdapter) {
       'time',
       '.article-time',
       '.publish-time',
+      '.article-time-box',
       '.mod-header__detail',
       '.ContentItem-time',
       '.ContentItem-time span',
@@ -958,6 +982,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   if (host.includes("cloud.tencent.com")) {
     return "tencent";
   }
+  if (host.includes("csdn.net")) {
+    return "csdn";
+  }
   if (host.includes("mo.mbd.baidu.com") || host.includes("mbd.baidu.com") || host.includes("baijiahao.baidu.com")) {
     return "baidu";
   }
@@ -1017,8 +1044,9 @@ export const crawlWebArticleTool = tool(
     }
 
     const { chromium } = await import("playwright");
+    const needsStealthBrowser = adapter === "zhihu" || adapter === "csdn";
     const launchOptions =
-      adapter === "zhihu"
+      needsStealthBrowser
         ? { headless: true, args: ["--disable-blink-features=AutomationControlled"] }
         : { headless: true };
     let browser;
@@ -1035,7 +1063,7 @@ export const crawlWebArticleTool = tool(
     }
 
     const context =
-      adapter === "zhihu"
+      needsStealthBrowser
         ? await browser.newContext({
             userAgent:
               "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
@@ -1045,7 +1073,7 @@ export const crawlWebArticleTool = tool(
             },
           })
         : await browser.newContext();
-    if (adapter === "zhihu") {
+    if (needsStealthBrowser) {
       await context.addInitScript(() => {
         Object.defineProperty(navigator, "webdriver", {
           get: () => undefined,
@@ -1055,7 +1083,9 @@ export const crawlWebArticleTool = tool(
     const page = await context.newPage();
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await page.waitForTimeout(adapter === "wechat" ? 1500 : adapter === "zhihu" ? 4000 : 2200);
+      await page.waitForTimeout(
+        adapter === "wechat" ? 1500 : adapter === "zhihu" ? 4000 : adapter === "csdn" ? 9000 : 2200,
+      );
 
       if (adapter === "chatgpt") {
         const pageHtml = await page.content();
@@ -1086,7 +1116,7 @@ export const crawlWebArticleTool = tool(
         throw new Error("Failed to extract article content.");
       }
 
-      const sourceUrl = scraped.canonical ? normalizeUrl(scraped.canonical) : url;
+      const sourceUrl = resolveSourceUrl(url, scraped.canonical);
       const published = normalizePublishedDateWithFallback(
         scraped.published,
         scraped.publishedTimestamp ?? null,
@@ -1128,4 +1158,5 @@ export const __test__ = {
   parseChatGPTSharePost,
   parseChatGPTShareHtml,
   parseBaiduShareHtml,
+  resolveSourceUrl,
 };

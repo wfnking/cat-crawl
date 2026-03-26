@@ -30,6 +30,10 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
     __test__.pickArticleAdapter("https://cloud.tencent.com/developer/article/1761022"),
     "tencent",
   );
+  assert.equal(
+    __test__.pickArticleAdapter("https://blog.csdn.net/seccloud/article/details/8192707"),
+    "csdn",
+  );
   assert.equal(__test__.pickArticleAdapter("https://mo.mbd.baidu.com/r/abc123"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://mbd.baidu.com/newspage/data/landingshare"), "baidu");
   assert.equal(__test__.pickArticleAdapter("https://example.com/blog/post"), "generic");
@@ -66,6 +70,17 @@ test("createBrowserScrapeFunction should avoid ts helper leakage in page.evaluat
   assert.match(source, /\[data-message-author-role\]/);
   assert.match(source, /QuestionAnswer-content/);
   assert.match(source, /mod-content__markdown/);
+  assert.match(source, /content_views/);
+});
+
+test("resolveSourceUrl should convert relative canonical urls to absolute urls", () => {
+  assert.equal(
+    __test__.resolveSourceUrl(
+      "https://houbb.github.io/2020/01/23/data-struct-learn-07-base-dp",
+      "/2020/01/23/data-struct-learn-07-base-dp",
+    ),
+    "https://houbb.github.io/2020/01/23/data-struct-learn-07-base-dp",
+  );
 });
 
 test("parseXOEmbedResponse should extract public x post metadata", () => {
