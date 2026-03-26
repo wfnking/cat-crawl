@@ -8,6 +8,7 @@ export type ArticleAdapterName =
   | "wechat"
   | "huxiu"
   | "x"
+  | "reddit"
   | "chatgpt"
   | "baidu"
   | "zhihu"
@@ -574,6 +575,24 @@ function buildXOEmbedLookupUrl(url: string): string {
   return endpoint.toString();
 }
 
+function normalizeRedditSourceUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hostname = "www.reddit.com";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function buildRedditEmbedUrl(url: string): string {
+  const parsed = new URL(normalizeRedditSourceUrl(url));
+  parsed.hostname = "embed.reddit.com";
+  return parsed.toString();
+}
+
 function parseXOEmbedResponse(payload: XOEmbedResponse): ParsedXOEmbedResult | null {
   const html = payload.html?.trim() || "";
   if (!html) {
@@ -633,6 +652,90 @@ async function crawlXPostViaOEmbed(url: string): Promise<CrawlResult | null> {
       contentBody: parsed.contentBody,
     }),
   };
+}
+
+async function resolveRedditSourceUrl(url: string): Promise<string | null> {
+  const parsed = new URL(url);
+  if (parsed.pathname.includes("/comments/")) {
+    return normalizeRedditSourceUrl(parsed.toString());
+  }
+  if (!parsed.pathname.includes("/s/")) {
+    return null;
+  }
+
+  const redirectLookupUrl = new URL(parsed.pathname + parsed.search, "https://rxddit.com");
+  const response = await fetch(redirectLookupUrl, {
+    headers: {
+      "user-agent": "Mozilla/5.0",
+    },
+    redirect: "manual",
+  });
+  const location = response.headers.get("location")?.trim() || "";
+  if (!location) {
+    return null;
+  }
+  return normalizeRedditSourceUrl(location);
+}
+
+function parseRedditEmbedHtml(html: string, sourceUrl: string): CrawlResult | null {
+  const title = decodeHtmlEntities(
+    html.match(/<shreddit-embed-title>([\s\S]*?)<\/shreddit-embed-title>/i)?.[1]?.trim() || "",
+  );
+  const author = decodeHtmlEntities(
+    html.match(/href="https:\/\/www\.reddit\.com\/user\/[^"]+"[^>]*>([\s\S]*?)<\/a>/i)?.[1]?.trim() || "",
+  );
+  const published = normalizePublishedDateWithFallback(
+    html.match(/<faceplate-timeago[^>]*ts="([^"]+)"/i)?.[1]?.trim() || null,
+    null,
+  );
+  const contentHtml =
+    html.match(/<div id="t3_[^"]+-post-rtjson-content"[^>]*>([\s\S]*?)<\/div>/i)?.[1]?.trim() || "";
+  if (!title || !contentHtml) {
+    return null;
+  }
+
+  const markdownBody = createTurndownService().turndown(contentHtml).replace(/\n{3,}/g, "\n\n").trim();
+  if (!markdownBody) {
+    return null;
+  }
+
+  const embeddedSourceUrl =
+    html.match(/<a id="embed-title"[^>]*href="([^"]+)"/i)?.[1]?.trim().replace(/&amp;/g, "&") || "";
+  const finalSourceUrl = normalizeRedditSourceUrl(embeddedSourceUrl || sourceUrl);
+
+  return {
+    title,
+    author: author || null,
+    published,
+    source_url: finalSourceUrl,
+    content_markdown: toMarkdown({
+      title,
+      author: author || null,
+      published,
+      sourceUrl: finalSourceUrl,
+      contentBody: markdownBody,
+    }),
+  };
+}
+
+async function crawlRedditPostViaEmbed(url: string): Promise<CrawlResult | null> {
+  const sourceUrl = await resolveRedditSourceUrl(url);
+  if (!sourceUrl) {
+    return null;
+  }
+
+  const response = await fetch(buildRedditEmbedUrl(sourceUrl), {
+    headers: {
+      "user-agent": "Mozilla/5.0",
+      "accept-language": "en-US,en;q=0.9",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`reddit embed request failed with ${response.status}`);
+  }
+
+  const html = await response.text();
+  return parseRedditEmbedHtml(html, sourceUrl);
 }
 
 function parseChatGPTSharePost(
@@ -973,6 +1076,9 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   if (host.includes("x.com") || host.includes("twitter.com")) {
     return "x";
   }
+  if (host.includes("reddit.com")) {
+    return "reddit";
+  }
   if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
     return "chatgpt";
   }
@@ -1006,6 +1112,19 @@ export const crawlWebArticleTool = tool(
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         logger.warn(`[tool:crawl_web_article] x oembed fallback failed: ${detail}`);
+      }
+    }
+
+    if (adapter === "reddit") {
+      try {
+        const redditResult = await crawlRedditPostViaEmbed(url);
+        if (redditResult) {
+          logger.info("[tool:crawl_web_article] reddit embed fallback succeeded");
+          return redditResult;
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        logger.warn(`[tool:crawl_web_article] reddit embed fallback failed: ${detail}`);
       }
     }
 
@@ -1142,7 +1261,7 @@ export const crawlWebArticleTool = tool(
   },
   {
     name: "crawl_web_article",
-    description: "抓取通用网页文章，支持微信、虎嗅、百度百家号、X/Twitter、ChatGPT 分享页和普通文章页，返回标题、作者、来源和正文 markdown 内容",
+    description: "抓取通用网页文章，支持微信、虎嗅、百度百家号、Reddit、X/Twitter、ChatGPT 分享页和普通文章页，返回标题、作者、来源和正文 markdown 内容",
     schema: inputSchema,
   },
 );
@@ -1155,6 +1274,7 @@ export const __test__ = {
   formatUnixSecondsDate,
   createBrowserScrapeFunction,
   parseXOEmbedResponse,
+  parseRedditEmbedHtml,
   parseChatGPTSharePost,
   parseChatGPTShareHtml,
   parseBaiduShareHtml,

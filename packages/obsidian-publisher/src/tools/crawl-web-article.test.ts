@@ -21,6 +21,13 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
   assert.equal(__test__.pickArticleAdapter("https://m.huxiu.com/article/4794991.html"), "huxiu");
   assert.equal(__test__.pickArticleAdapter("https://x.com/example/status/123"), "x");
   assert.equal(__test__.pickArticleAdapter("https://twitter.com/example/status/123"), "x");
+  assert.equal(__test__.pickArticleAdapter("https://www.reddit.com/r/AppBusiness/s/qrXYmV2EGZ"), "reddit");
+  assert.equal(
+    __test__.pickArticleAdapter(
+      "https://www.reddit.com/r/AppBusiness/comments/1s336tn/how_im_building_toward_200k_arr_by_cloning_apps/",
+    ),
+    "reddit",
+  );
   assert.equal(__test__.pickArticleAdapter("https://chatgpt.com/s/t_123"), "chatgpt");
   assert.equal(
     __test__.pickArticleAdapter("https://www.zhihu.com/question/1/answer/2"),
@@ -189,4 +196,40 @@ test("parseBaiduShareHtml should extract article metadata from baidu share landi
   assert.match(result.content_markdown, /真正的差距/);
   assert.match(result.content_markdown, /工程完整度/);
   assert.match(result.content_markdown, /上下文、工具链和错误恢复/);
+});
+
+test("parseRedditEmbedHtml should extract reddit post metadata from embed html", () => {
+  const html = `<!DOCTYPE html>
+<html>
+  <body>
+    <a id="embed-title" href="https://www.reddit.com/r/AppBusiness/comments/1s336tn/how_im_building_toward_200k_arr_by_cloning_apps/?utm_source=embedv2&amp;utm_medium=post_embed&amp;utm_content=post_title">
+      <shreddit-embed-title>How I&#39;m Building Toward $200K ARR by Cloning Apps</shreddit-embed-title>
+    </a>
+    <div class="text-12 leading-4 text-neutral-content-weak line-clamp-1">
+      <span>Posted by</span>
+      <a href="https://www.reddit.com/user/Fun-Garbage-1386/?utm_source=embedv2&amp;utm_medium=post_embed&amp;utm_content=header" target="_blank">Fun-Garbage-1386</a>
+      <faceplate-timeago ts="2026-03-25T06:35:09.698000+0000" short></faceplate-timeago>
+    </div>
+    <div id="t3_1s336tn-post-rtjson-content" class="md" dir="auto">
+      <p>I see so many people on this sub stressing over finding a &quot;unique&quot; idea.</p>
+      <p>I’ve already done this with two apps, and my friends are doing the same thing and seeing real progress.</p>
+    </div>
+  </body>
+</html>`;
+
+  const result = __test__.parseRedditEmbedHtml(
+    html,
+    "https://www.reddit.com/r/AppBusiness/comments/1s336tn/how_im_building_toward_200k_arr_by_cloning_apps/",
+  );
+
+  assert.ok(result);
+  assert.equal(result.title, "How I'm Building Toward $200K ARR by Cloning Apps");
+  assert.equal(result.author, "Fun-Garbage-1386");
+  assert.equal(result.published, "2026-03-25");
+  assert.equal(
+    result.source_url,
+    "https://www.reddit.com/r/AppBusiness/comments/1s336tn/how_im_building_toward_200k_arr_by_cloning_apps/",
+  );
+  assert.match(result.content_markdown, /unique/);
+  assert.match(result.content_markdown, /friends are doing the same thing/);
 });
