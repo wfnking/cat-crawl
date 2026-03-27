@@ -2,6 +2,11 @@ import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
 import TurndownService from "turndown";
 import { z } from "zod";
+import { loadEnv, type AppEnv } from "../config/env.js";
+import { extractAudioFromVideo } from "../services/media/extract-audio.js";
+import { transcribeAudio } from "../services/transcription/index.js";
+import { resolveXVideoSource } from "../services/video-sources/x.js";
+import { buildTranscriptMarkdownWithModel } from "./transcribe-video.js";
 import { extractArticleUrl } from "../utils/text.js";
 
 export type ArticleAdapterName =
@@ -48,6 +53,14 @@ type ParsedXOEmbedResult = {
   published: string | null;
   sourceUrl: string;
   contentBody: string;
+};
+
+type XVideoTranscriptDeps = {
+  loadEnv?: typeof loadEnv;
+  resolveXVideoSource?: typeof resolveXVideoSource;
+  extractAudioFromVideo?: typeof extractAudioFromVideo;
+  transcribeAudio?: typeof transcribeAudio;
+  buildTranscriptMarkdown?: typeof buildTranscriptMarkdownWithModel;
 };
 
 type ChatGPTShareMessage = {
@@ -639,17 +652,37 @@ async function crawlXPostViaOEmbed(url: string): Promise<CrawlResult | null> {
     return null;
   }
 
+  let author = parsed.author;
+  let published = parsed.published;
+  let sourceUrl = parsed.sourceUrl || url;
+  let contentBody = parsed.contentBody;
+  try {
+    const videoResult = await maybeAppendXVideoTranscript({
+      url: sourceUrl,
+      tweetBody: parsed.contentBody,
+    });
+    if (videoResult) {
+      author = videoResult.author || author;
+      published = videoResult.published || published;
+      sourceUrl = videoResult.sourceUrl || sourceUrl;
+      contentBody = videoResult.contentBody;
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    logger.warn(`[tool:crawl_web_article] x video transcript append failed: ${detail}`);
+  }
+
   return {
     title: parsed.title,
-    author: parsed.author,
-    published: parsed.published,
-    source_url: parsed.sourceUrl || url,
+    author,
+    published,
+    source_url: sourceUrl,
     content_markdown: toMarkdown({
       title: parsed.title,
-      author: parsed.author,
-      published: parsed.published,
-      sourceUrl: parsed.sourceUrl || url,
-      contentBody: parsed.contentBody,
+      author,
+      published,
+      sourceUrl,
+      contentBody,
     }),
   };
 }
@@ -1065,6 +1098,85 @@ function toMarkdown(result: {
     .trim();
 }
 
+function stripLeadingSourceLine(markdown: string): string {
+  return markdown
+    .replace(/^- Source:\s.*(?:\r?\n){1,2}/, "")
+    .trim();
+}
+
+function buildXPostContentBody(input: {
+  tweetBody: string;
+  videoSummaryMarkdown?: string;
+  transcriptText?: string;
+}): string {
+  const sections: string[] = ["## Tweet", "", input.tweetBody.trim()];
+  const videoSummary = stripLeadingSourceLine(input.videoSummaryMarkdown?.trim() || "");
+  if (videoSummary) {
+    sections.push("", "## Video Summary", "", videoSummary);
+  }
+  const transcriptText = input.transcriptText?.trim() || "";
+  if (transcriptText) {
+    sections.push("", "## Transcript", "", transcriptText);
+  }
+  return sections.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+async function maybeAppendXVideoTranscript(
+  input: {
+    url: string;
+    tweetBody: string;
+  },
+  deps: XVideoTranscriptDeps = {},
+): Promise<{
+  contentBody: string;
+  author?: string;
+  published?: string;
+  sourceUrl?: string;
+} | null> {
+  const envLoader = deps.loadEnv || loadEnv;
+  const resolveVideo = deps.resolveXVideoSource || resolveXVideoSource;
+  const extractAudio = deps.extractAudioFromVideo || extractAudioFromVideo;
+  const transcribe = deps.transcribeAudio || transcribeAudio;
+  const buildTranscriptMarkdown = deps.buildTranscriptMarkdown || buildTranscriptMarkdownWithModel;
+
+  const env = envLoader() as AppEnv;
+  const resolved = await resolveVideo(input.url, {
+    outputDir: "/tmp/cat-crawl-x-video",
+  });
+  if (!resolved) {
+    return null;
+  }
+
+  const audioPath = await extractAudio(resolved.mediaPath, {
+    outputDir: "/tmp/cat-crawl-audio",
+  });
+  const transcription = await transcribe(audioPath, {
+    provider: "whisper_cpp",
+    whisperCpp: {
+      bin: env.whisperCppBin,
+      modelPath: env.whisperCppModelPath,
+      language: env.whisperCppLanguage,
+      outputDir: "/tmp/cat-crawl-whisper",
+    },
+  });
+  const transcriptMarkdown = await buildTranscriptMarkdown(env, {
+    sourceUrl: resolved.sourceUrl,
+    transcriptText: transcription.text,
+    transcriptSrt: transcription.srt,
+  });
+
+  return {
+    contentBody: buildXPostContentBody({
+      tweetBody: input.tweetBody,
+      videoSummaryMarkdown: transcriptMarkdown.markdown,
+      transcriptText: transcription.text,
+    }),
+    author: resolved.author,
+    published: resolved.published,
+    sourceUrl: resolved.sourceUrl,
+  };
+}
+
 export function pickArticleAdapter(url: string): ArticleAdapterName {
   const host = new URL(url).hostname.toLowerCase();
   if (host.includes("mp.weixin.qq.com")) {
@@ -1274,6 +1386,8 @@ export const __test__ = {
   formatUnixSecondsDate,
   createBrowserScrapeFunction,
   parseXOEmbedResponse,
+  buildXPostContentBody,
+  maybeAppendXVideoTranscript,
   parseRedditEmbedHtml,
   parseChatGPTSharePost,
   parseChatGPTShareHtml,

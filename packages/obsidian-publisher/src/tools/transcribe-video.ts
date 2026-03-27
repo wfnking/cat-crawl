@@ -185,7 +185,7 @@ function pickGeminiSummarizeModel(env: AppEnv, translateToChinese: boolean): str
   return env.geminiModel || "gemini-2.5-pro";
 }
 
-async function buildTranscriptMarkdownWithModel(
+export async function buildTranscriptMarkdownWithModel(
   env: AppEnv,
   input: {
     sourceUrl: string;

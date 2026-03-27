@@ -105,6 +105,68 @@ test("parseXOEmbedResponse should extract public x post metadata", () => {
   assert.match(result.contentBody, /just setting up my twttr/);
 });
 
+test("buildXPostContentBody should append video summary and transcript after tweet text", () => {
+  const result = __test__.buildXPostContentBody({
+    tweetBody: "Introducing Chroma Context-1",
+    videoSummaryMarkdown: "- Source: https://x.com/trychroma/status/2037243681988894950\n\n## 为什么它更快\n\n核心在于检索链路优化。",
+    transcriptText: "hello world transcript",
+  });
+
+  assert.match(result, /^## Tweet/m);
+  assert.match(result, /Introducing Chroma Context-1/);
+  assert.match(result, /^## Video Summary/m);
+  assert.match(result, /## 为什么它更快/);
+  assert.match(result, /^## Transcript/m);
+  assert.match(result, /hello world transcript/);
+});
+
+test("maybeAppendXVideoTranscript should merge tweet body with video summary when video transcription succeeds", async () => {
+  const result = await __test__.maybeAppendXVideoTranscript(
+    {
+      url: "https://x.com/trychroma/status/2037243681988894950",
+      tweetBody: "Introducing Chroma Context-1",
+    },
+    {
+      loadEnv: () => ({
+        aiSummarizeProvider: "openai",
+        aiProvider: "openai",
+        agent: "openai",
+        openaiModel: "gpt-4o-mini",
+        whisperCppBin: "whisper-cli",
+        whisperCppModelPath: "/models/base.bin",
+        whisperCppLanguage: "en",
+        geminiModel: "gemini-2.5-pro",
+      }),
+      resolveXVideoSource: async () => ({
+        adapter: "x",
+        sourceUrl: "https://x.com/trychroma/status/2037243681988894950",
+        mediaPath: "/tmp/cat-crawl-x-video/video.mp4",
+        title: "Introducing Chroma Context-1",
+        author: "@trychroma",
+        published: "2026-03-26",
+      }),
+      extractAudioFromVideo: async () => "/tmp/cat-crawl-audio/audio.mp3",
+      transcribeAudio: async () => ({
+        providerUsed: "whisper_cpp",
+        text: "hello transcript body",
+        srt: "1\n00:00:00,000 --> 00:00:02,000\nhello transcript body",
+        fallbackUsed: false,
+      }),
+      buildTranscriptMarkdown: async () => ({
+        markdown:
+          "- Source: https://x.com/trychroma/status/2037243681988894950\n\n## Why it matters\n\nSearch got cheaper.",
+      }),
+    },
+  );
+
+  assert.ok(result);
+  assert.match(result.contentBody, /^## Tweet/m);
+  assert.match(result.contentBody, /^## Video Summary/m);
+  assert.match(result.contentBody, /^## Transcript/m);
+  assert.match(result.contentBody, /Search got cheaper/);
+  assert.match(result.contentBody, /hello transcript body/);
+});
+
 test("parseChatGPTSharePost should extract messages from chatgpt share loader data", () => {
   const result = __test__.parseChatGPTSharePost(
     {
