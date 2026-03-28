@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ArticleCrawlerStrategy } from "../crawl/types.js";
 import { selectCrawlerStrategy } from "../crawl/registry.js";
+import {
+  BROWSER_SCRAPE_FUNCTION_SOURCE,
+  createBrowserScrapeFunction,
+} from "../crawl/helpers/browser.js";
+import {
+  formatUnixSecondsDate,
+  normalizePublishedDateWithFallback,
+} from "../crawl/helpers/dates.js";
+import { resolveArticleImageSrc, resolveSourceUrl } from "../crawl/helpers/urls.js";
 import { __test__ } from "./crawl-web-article.js";
 
 test("selectCrawlerStrategy should return the first matching strategy", () => {
@@ -107,7 +116,7 @@ test("pickArticleAdapter should map hosts to known adapters", () => {
 
 test("resolveArticleImageSrc should skip inline placeholders", () => {
   assert.equal(
-    __test__.resolveArticleImageSrc({
+    resolveArticleImageSrc({
       src: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
       dataSrc: "//cdn.example.com/real.jpg",
     }),
@@ -116,24 +125,28 @@ test("resolveArticleImageSrc should skip inline placeholders", () => {
 });
 
 test("normalizePublishedDateWithFallback should use timestamp year for wechat short date", () => {
-  assert.equal(__test__.normalizePublishedDateWithFallback("2/28 20:50", 1772283000), "2026-02-28");
+  assert.equal(normalizePublishedDateWithFallback("2/28 20:50", 1772283000), "2026-02-28");
 });
 
 test("normalizePublishedDateWithFallback should fall back to unix timestamp when raw date missing", () => {
-  assert.equal(__test__.normalizePublishedDateWithFallback(null, 1772283000), "2026-02-28");
+  assert.equal(normalizePublishedDateWithFallback(null, 1772283000), "2026-02-28");
 });
 
 test("normalizePublishedDateWithFallback should parse english month dates from x oembed", () => {
-  assert.equal(__test__.normalizePublishedDateWithFallback("March 21, 2006", null), "2006-03-21");
+  assert.equal(normalizePublishedDateWithFallback("March 21, 2006", null), "2006-03-21");
+});
+
+test("formatUnixSecondsDate should normalize second timestamps into YYYY-MM-DD", () => {
+  assert.equal(formatUnixSecondsDate(1772283000), "2026-02-28");
 });
 
 test("createBrowserScrapeFunction should avoid ts helper leakage in page.evaluate", () => {
-  const browserFn = __test__.createBrowserScrapeFunction();
+  const browserFn = createBrowserScrapeFunction(BROWSER_SCRAPE_FUNCTION_SOURCE);
   const source = browserFn.toString();
 
   assert.equal(/(?:const|var|let)\s+__name\b|__name\(/.test(source), false);
   assert.match(source, /article\[data-testid="tweet"\]/);
-  assert.match(source, /\[data-message-author-role\]/);
+  assert.match(source, /data-message-author-role/);
   assert.match(source, /QuestionAnswer-content/);
   assert.match(source, /mod-content__markdown/);
   assert.match(source, /content_views/);
@@ -141,7 +154,7 @@ test("createBrowserScrapeFunction should avoid ts helper leakage in page.evaluat
 
 test("resolveSourceUrl should convert relative canonical urls to absolute urls", () => {
   assert.equal(
-    __test__.resolveSourceUrl(
+    resolveSourceUrl(
       "https://houbb.github.io/2020/01/23/data-struct-learn-07-base-dp",
       "/2020/01/23/data-struct-learn-07-base-dp",
     ),
