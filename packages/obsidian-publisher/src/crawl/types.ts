@@ -15,6 +15,10 @@ export type CrawlContext = {
     warn?: (...args: unknown[]) => void;
     error?: (...args: unknown[]) => void;
   };
+  crawlWithBrowserAdapter?: (
+    url: string,
+    adapterName: "wechat" | "generic",
+  ) => Promise<CrawlResult>;
 };
 
 export interface ArticleCrawlerStrategy {

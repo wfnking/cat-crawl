@@ -6,6 +6,8 @@ import {
   BROWSER_SCRAPE_FUNCTION_SOURCE,
   createBrowserScrapeFunction,
 } from "../crawl/helpers/browser.js";
+import { genericCrawler } from "../crawl/crawlers/generic.js";
+import { wechatCrawler } from "../crawl/crawlers/wechat.js";
 import {
   formatUnixSecondsDate,
   normalizePublishedDateWithFallback,
@@ -68,6 +70,21 @@ test("selectCrawlerStrategy should return the fallback strategy when nothing mat
   );
 
   assert.equal(selected.name, "fallback");
+});
+
+test("wechatCrawler should handle mp.weixin.qq.com article urls", () => {
+  assert.equal(wechatCrawler.canHandle(new URL("https://mp.weixin.qq.com/s/abc123")), true);
+  assert.equal(wechatCrawler.canHandle(new URL("https://example.com/post")), false);
+});
+
+test("selectCrawlerStrategy should fall back to genericCrawler for unknown hosts", () => {
+  const selected = selectCrawlerStrategy(
+    new URL("https://example.com/post"),
+    [wechatCrawler],
+    genericCrawler,
+  );
+
+  assert.equal(selected.name, "generic");
 });
 
 test("extractArticleUrl should detect generic article links", () => {
