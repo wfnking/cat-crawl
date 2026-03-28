@@ -94,6 +94,13 @@ test("xCrawler should handle both x.com and twitter.com status urls", () => {
   assert.equal(xCrawler.canHandle(new URL("https://example.com/post")), false);
 });
 
+test("isRegistryManagedAdapter should only route migrated adapters through the registry", () => {
+  assert.equal(__test__.isRegistryManagedAdapter("wechat"), true);
+  assert.equal(__test__.isRegistryManagedAdapter("x"), true);
+  assert.equal(__test__.isRegistryManagedAdapter("generic"), true);
+  assert.equal(__test__.isRegistryManagedAdapter("reddit"), false);
+});
+
 test("extractArticleUrl should detect generic article links", () => {
   assert.equal(
     __test__.extractArticleUrl("看看这个 https://m.huxiu.com/article/4794991.html 很有意思"),

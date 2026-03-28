@@ -19,6 +19,8 @@ import {
   resolveArticleImageSrc,
   resolveSourceUrl,
 } from "../crawl/helpers/urls.js";
+import { fallbackCrawler, sourceCrawlers } from "../crawl/crawlers/index.js";
+import { selectCrawlerStrategy } from "../crawl/registry.js";
 import { buildTranscriptMarkdownWithModel } from "./transcribe-video.js";
 import { extractArticleUrl } from "../utils/text.js";
 
@@ -769,10 +771,110 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
   return "generic";
 }
 
+function isRegistryManagedAdapter(adapter: ArticleAdapterName): boolean {
+  return adapter === "wechat" || adapter === "x" || adapter === "generic";
+}
+
+async function crawlBrowserAdapterArticle(
+  url: string,
+  adapter: "wechat" | "generic" | "x",
+): Promise<CrawlResult> {
+  const { chromium } = await import("playwright");
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    logger.info("[tool:crawl_web_article] using bundled playwright chromium");
+  } catch (error) {
+    if (!isMissingPlaywrightBrowserError(error)) {
+      throw error;
+    }
+    logger.warn("[tool:crawl_web_article] bundled chromium missing, fallback to local Chrome channel");
+    browser = await chromium.launch({ headless: true, channel: "chrome" });
+    logger.info("[tool:crawl_web_article] using local chrome channel");
+  }
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await page.waitForTimeout(adapter === "wechat" ? 1500 : 2200);
+
+    const scraped = await page.evaluate(
+      createBrowserScrapeFunction<[ArticleAdapterName], BrowserScrapeResult>(
+        BROWSER_SCRAPE_FUNCTION_SOURCE,
+      ),
+      adapter,
+    );
+
+    const turndown = createTurndownService();
+    const markdownBody =
+      adapter === "x" && scraped.xContentMarkdown
+        ? scraped.xContentMarkdown
+        : turndown.turndown(scraped.contentHtml || "");
+    const carouselMarkdown = (scraped.carouselImages || [])
+      .map((src: string, index: number) => `![Carousel ${index + 1}](${normalizeUrl(src)})`)
+      .join("\n\n");
+    const contentBody = [carouselMarkdown, markdownBody]
+      .filter(Boolean)
+      .join("\n\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, 30000);
+    if (!contentBody) {
+      throw new Error("Failed to extract article content.");
+    }
+
+    const sourceUrl = resolveSourceUrl(url, scraped.canonical);
+    const published = normalizePublishedDateWithFallback(
+      scraped.published,
+      scraped.publishedTimestamp ?? null,
+    );
+    return {
+      title: scraped.title,
+      author: scraped.author,
+      published,
+      source_url: sourceUrl,
+      content_markdown: toMarkdown({
+        title: scraped.title,
+        author: scraped.author,
+        published,
+        sourceUrl,
+        contentBody,
+      }),
+    };
+  } finally {
+    await page.close().catch(() => {});
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
+  }
+}
+
 export const crawlWebArticleTool = tool(
   async ({ url }): Promise<CrawlResult> => {
     const adapter = pickArticleAdapter(url);
     logger.info(`[tool:crawl_web_article] start url=${url} adapter=${adapter}`);
+
+    if (isRegistryManagedAdapter(adapter)) {
+      const strategy = selectCrawlerStrategy(new URL(url), sourceCrawlers, fallbackCrawler);
+      return strategy.crawl(new URL(url), {
+        env: loadEnv(),
+        logger,
+        crawlWithBrowserAdapter: crawlBrowserAdapterArticle,
+        crawlXPost: async (sourceUrl) => {
+          try {
+            const xResult = await crawlXPostViaOEmbed(sourceUrl);
+            if (xResult) {
+              logger.info("[tool:crawl_web_article] x oembed fallback succeeded");
+              return xResult;
+            }
+          } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            logger.warn(`[tool:crawl_web_article] x oembed fallback failed: ${detail}`);
+          }
+          return crawlBrowserAdapterArticle(sourceUrl, "x");
+        },
+      });
+    }
 
     if (adapter === "x") {
       try {
@@ -945,6 +1047,7 @@ export const crawlWebArticleTool = tool(
 
 export const __test__ = {
   extractArticleUrl,
+  isRegistryManagedAdapter,
   pickArticleAdapter,
   resolveArticleImageSrc,
   normalizePublishedDateWithFallback,
