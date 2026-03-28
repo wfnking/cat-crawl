@@ -19,6 +19,7 @@ export type CrawlContext = {
     url: string,
     adapterName: "wechat" | "generic",
   ) => Promise<CrawlResult>;
+  crawlXPost?: (url: string) => Promise<CrawlResult>;
 };
 
 export interface ArticleCrawlerStrategy {

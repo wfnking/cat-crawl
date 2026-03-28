@@ -8,6 +8,7 @@ import {
 } from "../crawl/helpers/browser.js";
 import { genericCrawler } from "../crawl/crawlers/generic.js";
 import { wechatCrawler } from "../crawl/crawlers/wechat.js";
+import { xCrawler } from "../crawl/crawlers/x.js";
 import {
   formatUnixSecondsDate,
   normalizePublishedDateWithFallback,
@@ -85,6 +86,12 @@ test("selectCrawlerStrategy should fall back to genericCrawler for unknown hosts
   );
 
   assert.equal(selected.name, "generic");
+});
+
+test("xCrawler should handle both x.com and twitter.com status urls", () => {
+  assert.equal(xCrawler.canHandle(new URL("https://x.com/example/status/123")), true);
+  assert.equal(xCrawler.canHandle(new URL("https://twitter.com/example/status/123")), true);
+  assert.equal(xCrawler.canHandle(new URL("https://example.com/post")), false);
 });
 
 test("extractArticleUrl should detect generic article links", () => {
