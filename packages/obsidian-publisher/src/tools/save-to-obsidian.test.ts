@@ -341,4 +341,13 @@ test("inferTags should keep source tags and add the project tag", () => {
     }),
     ["youtube", "cat-crawl"],
   );
+  assert.deepEqual(
+    __test__.inferTags({
+      title: "Demo",
+      source_url: "https://www.reddit.com/r/AppBusiness/comments/1s336tn/demo/",
+      content_markdown: "hello",
+      mode: "create",
+    }),
+    ["reddit", "cat-crawl"],
+  );
 });

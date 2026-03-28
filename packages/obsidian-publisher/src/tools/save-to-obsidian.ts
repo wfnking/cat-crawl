@@ -59,6 +59,9 @@ function inferTags(input: SaveInput): string[] {
   if (host.includes("x.com") || host.includes("twitter.com")) {
     normalizedTags.push("x");
   }
+  if (host.includes("reddit.com")) {
+    normalizedTags.push("reddit");
+  }
   if (host.includes("youtube.com") || host.includes("youtu.be")) {
     normalizedTags.push("youtube");
   }
