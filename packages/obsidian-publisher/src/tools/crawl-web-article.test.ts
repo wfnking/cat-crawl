@@ -1,6 +1,65 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ArticleCrawlerStrategy } from "../crawl/types.js";
+import { selectCrawlerStrategy } from "../crawl/registry.js";
 import { __test__ } from "./crawl-web-article.js";
+
+test("selectCrawlerStrategy should return the first matching strategy", () => {
+  const firstStrategy: ArticleCrawlerStrategy = {
+    name: "first",
+    canHandle: (url) => url.hostname === "example.com",
+    crawl: async () => {
+      throw new Error("not used in selection test");
+    },
+  };
+  const secondStrategy: ArticleCrawlerStrategy = {
+    name: "second",
+    canHandle: (url) => url.hostname === "example.com",
+    crawl: async () => {
+      throw new Error("not used in selection test");
+    },
+  };
+  const fallbackStrategy: ArticleCrawlerStrategy = {
+    name: "fallback",
+    canHandle: () => true,
+    crawl: async () => {
+      throw new Error("not used in selection test");
+    },
+  };
+
+  const selected = selectCrawlerStrategy(
+    new URL("https://example.com/post"),
+    [firstStrategy, secondStrategy],
+    fallbackStrategy,
+  );
+
+  assert.equal(selected.name, "first");
+});
+
+test("selectCrawlerStrategy should return the fallback strategy when nothing matches", () => {
+  const specificStrategy: ArticleCrawlerStrategy = {
+    name: "specific",
+    canHandle: (url) => url.hostname === "mp.weixin.qq.com",
+    crawl: async () => {
+      throw new Error("not used in selection test");
+    },
+  };
+  const fallbackStrategy: ArticleCrawlerStrategy = {
+    name: "fallback",
+    canHandle: () => true,
+    crawl: async () => {
+      throw new Error("not used in selection test");
+    },
+  };
+
+  const selected = selectCrawlerStrategy(
+    new URL("https://example.com/post"),
+    [specificStrategy],
+    fallbackStrategy,
+  );
+
+  assert.equal(selected.name, "fallback");
+});
 
 test("extractArticleUrl should detect generic article links", () => {
   assert.equal(
