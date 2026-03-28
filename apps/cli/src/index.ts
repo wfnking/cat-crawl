@@ -17,7 +17,7 @@ import {
   loadEnv,
   parseAgentConfig,
   parseChannelConfig,
-  runWechatAgent,
+  runAgent,
   startDiscordBridge,
   startFeishuBridge,
   startTelegramPollingChannel,
@@ -524,7 +524,7 @@ async function startChannels(modes: ChannelModes): Promise<void> {
 }
 
 async function runCliMode(input: string): Promise<void> {
-  const result = await runWechatAgent(input, {
+  const result = await runAgent(input, {
     context: {
       channel: "cli",
     },

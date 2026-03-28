@@ -1,8 +1,8 @@
-import { runAgent } from "../agent/run-wechat-agent.js";
+import { runAgent } from "../workflows/run-agent.js";
 import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
 import { ensureTelegramPairingCodeForUser, isTelegramUserApproved } from "../config/telegram-pairing.js";
-import { toUserFacingErrorMessage } from "./user-facing-error.js";
+import { toUserFacingErrorMessage } from "./helpers/user-facing-error.js";
 
 type TelegramUpdate = {
   update_id?: number;

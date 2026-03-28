@@ -16,7 +16,7 @@
 2. Node 创建后台任务，提取消息内容并转发给 LangChain。
 3. LangChain 判断消息是否包含“微信公众号文章链接”。
 4. 若是公众号链接：
-- LangChain 自动调用 `crawl_wechat_article` 工具。
+- LangChain 自动调用 `crawl_web_article` 工具。
 - 该工具内部调用 Playwright 抓取文章内容。
 - 抓取完成后，LangChain 调用 `save_to_obsidian` 工具，通过 Obsidian CLI 保存为 Markdown 文件。
 - 保存成功后返回成功结果（附带 Obsidian 文件路径）。
@@ -28,7 +28,7 @@
 ### 阶段 1（当前先做）
 
 - 搭建 TypeScript 工程架构。
-- 用 LangChain Tool 跑通 `crawl_wechat_article` + `save_to_obsidian`。
+- 用 LangChain Tool 跑通 `crawl_web_article` + `save_to_obsidian`。
 - 使用 DeepSeek API 驱动 Agent。
 - 先在本地输入文本验证抓取与保存链路。
 

@@ -1,4 +1,4 @@
-export { runAgent, runWechatAgent } from "./agent/run-wechat-agent.js";
+export { runAgent } from "./workflows/run-agent.js";
 export { startDiscordBridge } from "./channels/discord-bridge.js";
 export { startFeishuBridge } from "./channels/feishu-bridge.js";
 export { startTelegramPollingChannel } from "./channels/telegram-webhook.js";
@@ -13,4 +13,3 @@ export {
   type ChannelConfigValue,
 } from "@cat-crawl/core";
 export { approveTelegramPairingCode } from "./config/telegram-pairing.js";
-export { createTranscribeVideoTool } from "./tools/transcribe-video.js";

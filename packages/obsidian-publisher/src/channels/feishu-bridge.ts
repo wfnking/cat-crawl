@@ -1,7 +1,7 @@
-import { runAgent } from "../agent/run-wechat-agent.js";
+import { runAgent } from "../workflows/run-agent.js";
 import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
-import { toUserFacingErrorMessage } from "./user-facing-error.js";
+import { toUserFacingErrorMessage } from "./helpers/user-facing-error.js";
 
 type FeishuMessageEvent = {
   message?: {

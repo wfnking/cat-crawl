@@ -8,7 +8,7 @@
 
 2. 实现 LangChain 调用工具
 - 用 LangChain Agent + Tools 模式。
-- 最小只暴露两个工具：`crawl_wechat_article`、`save_to_obsidian`。
+- 最小只暴露两个工具：`crawl_web_article`、`save_to_obsidian`。
 - 规则：非公众号链接直接返回友好提示。
 
 3. 使用 DeepSeek API

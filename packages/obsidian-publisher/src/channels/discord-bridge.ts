@@ -1,8 +1,8 @@
 import { Client, GatewayIntentBits, Partials, type Message } from "discord.js";
 import { createLogger } from "@cat-crawl/core";
-import { runAgent } from "../agent/run-wechat-agent.js";
+import { runAgent } from "../workflows/run-agent.js";
 import type { AppEnv } from "../config/env.js";
-import { toUserFacingErrorMessage } from "./user-facing-error.js";
+import { toUserFacingErrorMessage } from "./helpers/user-facing-error.js";
 
 const MESSAGE_DEDUP_TTL_MS = 10 * 60 * 1000;
 const processedMessageIds = new Map<string, number>();
