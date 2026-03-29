@@ -22,8 +22,45 @@ const inputSchema = z.object({
 
 const logger = createLogger();
 
+function tryResolveAbsoluteUrl(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function resolveInputArticleUrl(input: string): string {
+  const parsed = new URL(input);
+  const host = parsed.hostname.toLowerCase();
+  const isGoogleHost = host === "google.com" || host.endsWith(".google.com");
+  const isGoogleRedirectLike = isGoogleHost && parsed.pathname === "/url";
+  if (!isGoogleRedirectLike) {
+    return input;
+  }
+
+  const candidate = [
+    parsed.searchParams.get("url"),
+    parsed.searchParams.get("u"),
+    parsed.searchParams.get("imgurl"),
+  ]
+    .map((value) => tryResolveAbsoluteUrl(value))
+    .find(Boolean);
+
+  if (candidate) {
+    return candidate;
+  }
+  return input;
+}
+
 export function pickArticleAdapter(url: string): ArticleAdapterName {
   const host = new URL(url).hostname.toLowerCase();
+  if ((host === "google.com" || host.endsWith(".google.com")) && new URL(url).pathname === "/search") {
+    return "google_search";
+  }
   if (host.includes("mp.weixin.qq.com")) {
     return "wechat";
   }
@@ -56,6 +93,7 @@ export function pickArticleAdapter(url: string): ArticleAdapterName {
 
 function isRegistryManagedAdapter(adapter: ArticleAdapterName): boolean {
   return (
+    adapter === "google_search" ||
     adapter === "wechat" ||
     adapter === "huxiu" ||
     adapter === "x" ||
@@ -71,14 +109,15 @@ function isRegistryManagedAdapter(adapter: ArticleAdapterName): boolean {
 
 export const crawlWebArticleTool = tool(
   async ({ url }): Promise<IngestContentResult> => {
-    const adapter = pickArticleAdapter(url);
-    logger.info(`[tool:crawl_web_article] start url=${url} adapter=${adapter}`);
+    const resolvedUrl = resolveInputArticleUrl(url);
+    const adapter = pickArticleAdapter(resolvedUrl);
+    logger.info(`[tool:crawl_web_article] start url=${resolvedUrl} adapter=${adapter}`);
 
     if (!isRegistryManagedAdapter(adapter)) {
       throw new Error(`Unsupported article adapter: ${adapter}`);
     }
 
-    const parsedUrl = new URL(url);
+    const parsedUrl = new URL(resolvedUrl);
     const handler = selectArticleHandler(parsedUrl, articleHandlers, fallbackArticleHandler);
     const context: CrawlContext = {
       env: loadEnv(),
@@ -90,7 +129,7 @@ export const crawlWebArticleTool = tool(
   },
   {
     name: "crawl_web_article",
-    description: "抓取通用网页文章，支持微信、虎嗅、百度百家号、Reddit、X/Twitter、ChatGPT 分享页和普通文章页，返回标题、作者、来源和正文 markdown 内容",
+    description: "抓取通用网页文章，支持 Google 搜索页、微信、虎嗅、百度百家号、Reddit、X/Twitter、ChatGPT 分享页和普通文章页，返回标题、作者、来源和正文 markdown 内容",
     schema: inputSchema,
   },
 );
@@ -103,4 +142,5 @@ export const __test__ = {
   formatUnixSecondsDate,
   createBrowserScrapeFunction,
   resolveSourceUrl,
+  resolveInputArticleUrl,
 };

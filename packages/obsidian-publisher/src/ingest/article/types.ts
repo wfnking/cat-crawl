@@ -3,6 +3,7 @@ import type { IngestContentResult } from "../types.js";
 export type { IngestContentResult } from "../types.js";
 
 export type ArticleAdapterName =
+  | "google_search"
   | "wechat"
   | "huxiu"
   | "x"
