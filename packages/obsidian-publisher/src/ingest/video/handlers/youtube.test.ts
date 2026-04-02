@@ -7,6 +7,8 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
     outputDir: "/tmp/cat-crawl-video",
     execFileAsync: async (file, args) => {
       assert.equal(file, "yt-dlp");
+      assert.ok(args.includes("--cookies-from-browser"));
+      assert.ok(args.includes("chrome"));
       assert.ok(args.includes("-f"));
       assert.ok(args.includes("bestaudio/best"));
       assert.ok(args.includes("published:%(upload_date)s"));
@@ -81,4 +83,27 @@ test("resolveYouTubeVideoSource should ignore yt-dlp warnings when filepath is p
 
   assert.equal(result.title, "Warning Resistant Title");
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video.webm");
+});
+
+test("resolveYouTubeVideoSource should retry without browser cookies when cookie loading fails", async () => {
+  let callCount = 0;
+  const result = await resolveYouTubeVideoSource("https://www.youtube.com/watch?v=abc123", {
+    outputDir: "/tmp/cat-crawl-video",
+    execFileAsync: async (_file, args) => {
+      callCount += 1;
+      if (callCount === 1) {
+        assert.ok(args.includes("--cookies-from-browser"));
+        throw new Error("yt-dlp: could not extract cookies from chrome");
+      }
+      assert.ok(!args.includes("--cookies-from-browser"));
+      return {
+        stdout: "published:20251123\nauthor:AI Engineer\ntitle:Retried Title\n/tmp/cat-crawl-video/retried.webm\n",
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(callCount, 2);
+  assert.equal(result.title, "Retried Title");
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/retried.webm");
 });

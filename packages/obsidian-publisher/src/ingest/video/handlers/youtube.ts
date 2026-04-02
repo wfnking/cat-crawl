@@ -72,6 +72,36 @@ function isMissingYtDlpError(error: unknown): boolean {
   return message.includes("spawn yt-dlp ENOENT") || message.includes("yt-dlp: command not found");
 }
 
+function isBrowserCookieExtractionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /cookies-from-browser/i.test(message) ||
+    /extract cookies from chrome/i.test(message) ||
+    /could not extract cookies from chrome/i.test(message) ||
+    /could not copy chrome cookie database/i.test(message)
+  );
+}
+
+function buildYtDlpArgs(sourceUrl: string, outputTemplate: string, useBrowserCookies: boolean): string[] {
+  return [
+    "--no-progress",
+    ...(useBrowserCookies ? ["--cookies-from-browser", "chrome"] : []),
+    "-f",
+    "bestaudio/best",
+    "--print",
+    "published:%(upload_date)s",
+    "--print",
+    "author:%(uploader)s",
+    "--print",
+    "title:%(title)s",
+    "--print",
+    "after_move:filepath",
+    "-o",
+    outputTemplate,
+    sourceUrl,
+  ];
+}
+
 export async function resolveYouTubeVideoSource(
   sourceUrl: string,
   options: ResolveYouTubeVideoSourceOptions,
@@ -81,26 +111,24 @@ export async function resolveYouTubeVideoSource(
   const execFileAsync = options.execFileAsync || execFileAsyncDefault;
   const outputTemplate = join(options.outputDir, "audio.%(ext)s");
   try {
-    const { stdout, stderr } = await execFileAsync(
-      "yt-dlp",
-      [
-        "--no-progress",
-        "-f",
-        "bestaudio/best",
-        "--print",
-        "published:%(upload_date)s",
-        "--print",
-        "author:%(uploader)s",
-        "--print",
-        "title:%(title)s",
-        "--print",
-        "after_move:filepath",
-        "-o",
-        outputTemplate,
-        sourceUrl,
-      ],
-      { maxBuffer: 10 * 1024 * 1024 },
-    );
+    let stdout = "";
+    let stderr = "";
+    try {
+      ({ stdout, stderr } = await execFileAsync(
+        "yt-dlp",
+        buildYtDlpArgs(sourceUrl, outputTemplate, true),
+        { maxBuffer: 10 * 1024 * 1024 },
+      ));
+    } catch (error) {
+      if (!isBrowserCookieExtractionError(error)) {
+        throw error;
+      }
+      ({ stdout, stderr } = await execFileAsync(
+        "yt-dlp",
+        buildYtDlpArgs(sourceUrl, outputTemplate, false),
+        { maxBuffer: 10 * 1024 * 1024 },
+      ));
+    }
     const { published, author, title, mediaPath } = parseYtDlpOutput(stdout, stderr);
     if (!mediaPath || mediaPath === "NA") {
       // yt-dlp outputs "NA" when download failed (e.g. n challenge error)
