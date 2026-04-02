@@ -29,11 +29,10 @@ type ResolvedYouTubeVideoSource = {
   author?: string;
 };
 
-function parseYtDlpOutput(stdout: string, stderr: string): {
+function parseMetadataOutput(stdout: string): {
   published: string | undefined;
   author: string | undefined;
   title: string | undefined;
-  mediaPath: string;
 } {
   const meta: Record<string, string> = {};
   for (const line of stdout.split(/\r?\n/g)) {
@@ -52,7 +51,10 @@ function parseYtDlpOutput(stdout: string, stderr: string): {
   const author = meta["author"] || undefined;
   const title = meta["title"] || undefined;
 
-  // filepath is always the last line, same as original behavior
+  return { published, author, title };
+}
+
+function parseDownloadedMediaPath(stdout: string, stderr: string): string {
   const stdoutLines = stdout.split(/\r?\n/g).map((l) => l.trim()).filter(Boolean);
   let mediaPath = stdoutLines[stdoutLines.length - 1] ?? "";
   if (!mediaPath) {
@@ -63,8 +65,7 @@ function parseYtDlpOutput(stdout: string, stderr: string): {
       .filter((l) => !/^warning:/i.test(l));
     mediaPath = stderrLines[stderrLines.length - 1] ?? "";
   }
-
-  return { published, author, title, mediaPath };
+  return mediaPath;
 }
 
 function isMissingYtDlpError(error: unknown): boolean {
@@ -102,6 +103,20 @@ function buildYtDlpArgs(sourceUrl: string, outputTemplate: string, useBrowserCoo
   ];
 }
 
+function buildYtDlpMetadataArgs(sourceUrl: string): string[] {
+  return [
+    "--no-progress",
+    "--skip-download",
+    "--print",
+    "published:%(upload_date)s",
+    "--print",
+    "author:%(uploader)s",
+    "--print",
+    "title:%(title)s",
+    sourceUrl,
+  ];
+}
+
 export async function resolveYouTubeVideoSource(
   sourceUrl: string,
   options: ResolveYouTubeVideoSourceOptions,
@@ -111,10 +126,17 @@ export async function resolveYouTubeVideoSource(
   const execFileAsync = options.execFileAsync || execFileAsyncDefault;
   const outputTemplate = join(options.outputDir, "audio.%(ext)s");
   try {
-    let stdout = "";
-    let stderr = "";
+    const metadataResult = await execFileAsync(
+      "yt-dlp",
+      buildYtDlpMetadataArgs(sourceUrl),
+      { maxBuffer: 10 * 1024 * 1024 },
+    );
+    const { published, author, title } = parseMetadataOutput(metadataResult.stdout);
+
+    let downloadStdout = "";
+    let downloadStderr = "";
     try {
-      ({ stdout, stderr } = await execFileAsync(
+      ({ stdout: downloadStdout, stderr: downloadStderr } = await execFileAsync(
         "yt-dlp",
         buildYtDlpArgs(sourceUrl, outputTemplate, true),
         { maxBuffer: 10 * 1024 * 1024 },
@@ -123,17 +145,17 @@ export async function resolveYouTubeVideoSource(
       if (!isBrowserCookieExtractionError(error)) {
         throw error;
       }
-      ({ stdout, stderr } = await execFileAsync(
+      ({ stdout: downloadStdout, stderr: downloadStderr } = await execFileAsync(
         "yt-dlp",
         buildYtDlpArgs(sourceUrl, outputTemplate, false),
         { maxBuffer: 10 * 1024 * 1024 },
       ));
     }
-    const { published, author, title, mediaPath } = parseYtDlpOutput(stdout, stderr);
+    const mediaPath = parseDownloadedMediaPath(downloadStdout, downloadStderr);
     if (!mediaPath || mediaPath === "NA") {
       // yt-dlp outputs "NA" when download failed (e.g. n challenge error)
       // extract the actual error from stderr for a useful message
-      const stderrHint = stderr
+      const stderrHint = downloadStderr
         .split(/\r?\n/g)
         .map((l) => l.trim())
         .filter((l) => /^error:/i.test(l))
