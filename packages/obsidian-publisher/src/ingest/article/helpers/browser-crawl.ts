@@ -4,6 +4,7 @@ import {
   createBrowserScrapeFunction,
 } from "../helpers/browser.js";
 import { normalizePublishedDateWithFallback } from "../helpers/dates.js";
+import { extractWithDefuddle } from "../helpers/defuddle.js";
 import { createTurndownService, toMarkdown } from "../helpers/markdown.js";
 import { normalizeUrl, resolveSourceUrl } from "../helpers/urls.js";
 import { ChatGPTHandler } from "../handlers/chatgpt.js";
@@ -95,6 +96,16 @@ export async function crawlBrowserAdapterArticle(
         logger?.info?.("[tool:crawl_web_article] chatgpt page html parse succeeded");
         return chatgptResult;
       }
+    }
+
+    if (adapter === "generic") {
+      const pageHtml = await page.content();
+      const defuddleResult = await extractWithDefuddle(pageHtml, url);
+      if (defuddleResult) {
+        logger?.info?.("[tool:crawl_web_article] generic defuddle parse succeeded");
+        return defuddleResult;
+      }
+      logger?.info?.("[tool:crawl_web_article] generic defuddle parse yielded no content");
     }
 
     const scraped = await page.evaluate(

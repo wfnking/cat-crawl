@@ -92,6 +92,91 @@ test('transcribe video tool should return description and tags without folder cl
   assert.equal(result.dynamic_folder, undefined)
 })
 
+test('transcribe video tool should append full transcript after structured markdown', async () => {
+  const tool = createTranscribeVideoTool(
+    {
+      transcriptionProvider: 'whisper_cpp',
+      whisperCppBin: 'whisper-cli',
+      whisperCppModelPath: '/models/base.bin',
+      whisperCppLanguage: undefined,
+      geminiApiKey: 'gemini-demo-key',
+      geminiModel: 'gemini-2.5-pro',
+      obsidianFolder: 'Clippings',
+      obsidianDynamicFolders: []
+    } as never,
+    {
+      selectVideoHandler: () => ({ name: 'file' }),
+      resolveFileVideoSource: async (source) => ({
+        adapter: 'file',
+        sourceUrl: source,
+        mediaPath: source
+      }),
+      extractAudioFromVideo: async () => '/tmp/audio.mp3',
+      transcribeAudio: async () => ({
+        providerUsed: 'whisper_cpp',
+        text: 'Sentence one. Sentence two. Sentence three. Sentence four. Sentence five. Sentence six.',
+        srt: undefined,
+        fallbackUsed: false
+      }),
+      buildTranscriptMarkdown: async () => ({
+        markdown: '## Summary\n\nShort structured recap.'
+      })
+    }
+  )
+
+  const result = await tool.invoke({
+    source: '/tmp/input.mp4',
+    title: 'Long Video'
+  })
+
+  assert.match(result.content_markdown, /## Summary/)
+  assert.match(result.content_markdown, /## Full Transcript/)
+  assert.match(result.content_markdown, /Sentence one\./)
+  assert.match(result.content_markdown, /Sentence six\./)
+})
+
+test('transcribe video tool should not append full transcript for Chinese source text', async () => {
+  const tool = createTranscribeVideoTool(
+    {
+      transcriptionProvider: 'whisper_cpp',
+      whisperCppBin: 'whisper-cli',
+      whisperCppModelPath: '/models/base.bin',
+      whisperCppLanguage: undefined,
+      geminiApiKey: 'gemini-demo-key',
+      geminiModel: 'gemini-2.5-pro',
+      obsidianFolder: 'Clippings',
+      obsidianDynamicFolders: []
+    } as never,
+    {
+      selectVideoHandler: () => ({ name: 'file' }),
+      resolveFileVideoSource: async (source) => ({
+        adapter: 'file',
+        sourceUrl: source,
+        mediaPath: source
+      }),
+      extractAudioFromVideo: async () => '/tmp/audio.mp3',
+      transcribeAudio: async () => ({
+        providerUsed: 'whisper_cpp',
+        text: '这是第一句。这是第二句。这是第三句。',
+        srt: undefined,
+        fallbackUsed: false
+      }),
+      buildTranscriptMarkdown: async () => ({
+        markdown: '## 中文内容\n\n这是整理后的正文。'
+      })
+    }
+  )
+
+  const result = await tool.invoke({
+    source: '/tmp/input.mp4',
+    title: '中文视频'
+  })
+
+  assert.match(result.content_markdown, /## 中文内容/)
+  assert.doesNotMatch(result.content_markdown, /## Full Transcript/)
+  assert.doesNotMatch(result.content_markdown, /这是第一句。这是第二句。这是第三句。/)
+})
+
 test('transcribe video tool should pass Douyin cookie to resolver', async () => {
   let receivedCookieHeader: string | undefined
   const tool = createTranscribeVideoTool(
@@ -167,4 +252,35 @@ test('shouldTranslateToChinese should detect non-Chinese transcript', () => {
 test('pickGeminiSummarizeModel should route translation to pro preview', () => {
   assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, true), 'gemini-2.5-pro')
   assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, false), 'gemini-2.5-pro')
+})
+
+test('pickTranscriptSourceMaterial should prefer plain transcript over verbose srt', () => {
+  assert.equal(
+    __test__.pickTranscriptSourceMaterial({
+      transcriptText: 'plain transcript text',
+      transcriptSrt: '1\n00:00:00,000 --> 00:00:02,000\nplain transcript text\n'
+    }),
+    'plain transcript text'
+  )
+})
+
+test('buildTranscriptSystemPrompt should not request English translation for Chinese source', () => {
+  const prompt = __test__.buildTranscriptSystemPrompt({
+    sourceUrl: 'https://example.com/video',
+    translateToChinese: false
+  })
+
+  assert.match(prompt, /如果原文已经是中文，只保留中文整理稿，不要翻译成英文/)
+  assert.doesNotMatch(prompt, /紧接着写对应的中文翻译内容/)
+  assert.match(prompt, /每章只写原始语言内容（保真整理，轻微断句即可）/)
+})
+
+test('buildTranscriptSystemPrompt should request Chinese translation for non-Chinese source', () => {
+  const prompt = __test__.buildTranscriptSystemPrompt({
+    sourceUrl: 'https://example.com/video',
+    translateToChinese: true
+  })
+
+  assert.match(prompt, /每章先写原始语言内容（保真整理，轻微断句即可），紧接着写对应的中文翻译内容/)
+  assert.match(prompt, /若内容过长，优先确保原文完整输出；译文可以按段落精炼翻译/)
 })

@@ -80,6 +80,114 @@ function pickGeminiSummarizeModel(env: AppEnv, translateToChinese: boolean): str
   return env.geminiModel || "gemini-2.5-pro";
 }
 
+function pickTranscriptSourceMaterial(input: {
+  transcriptText: string;
+  transcriptSrt?: string;
+}): string {
+  return input.transcriptText.trim() || input.transcriptSrt?.trim() || "";
+}
+
+function splitTranscriptIntoParagraphs(text: string, maxChars = 480): string[] {
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (!normalized) {
+    return [];
+  }
+
+  const sentences = normalized
+    .split(/(?<=[.!?。！？])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  if (sentences.length <= 1) {
+    return [normalized];
+  }
+
+  const paragraphs: string[] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    const candidate = current ? `${current} ${sentence}` : sentence;
+    if (candidate.length > maxChars && current) {
+      paragraphs.push(current.trim());
+      current = sentence;
+      continue;
+    }
+    current = candidate;
+  }
+
+  if (current.trim()) {
+    paragraphs.push(current.trim());
+  }
+
+  return paragraphs;
+}
+
+function appendFullTranscript(markdown: string, transcriptText: string): string {
+  if (!transcriptText.trim()) {
+    return markdown.trim();
+  }
+  if (/^##\s+Full Transcript$/im.test(markdown)) {
+    return markdown.trim();
+  }
+
+  const paragraphs = splitTranscriptIntoParagraphs(transcriptText);
+  if (paragraphs.length === 0) {
+    return markdown.trim();
+  }
+
+  return [markdown.trim(), "## Full Transcript", ...paragraphs]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function buildTranscriptSystemPrompt(input: {
+  sourceUrl: string;
+  translateToChinese: boolean;
+}): string {
+  const translationInstruction = input.translateToChinese
+    ? [
+        "每章先写原始语言内容（保真整理，轻微断句即可），紧接着写对应的中文翻译内容，原文和译文之间不要加分隔线。",
+        "若内容过长，优先确保原文完整输出；译文可以按段落精炼翻译，但必须覆盖对应原文段落。",
+      ]
+    : [
+        "如果原文已经是中文，只保留中文整理稿，不要翻译成英文，也不要额外附加双语版本。",
+        "每章只写原始语言内容（保真整理，轻微断句即可）。",
+      ];
+
+  return [
+    "你是视频 SRT 转 Markdown 助手（保真模式）。",
+    "把输入的 SRT/转写文本整理为可直接保存的 Markdown，目标是提升可读性，而不是压缩成摘要。",
+    "硬约束：必须完整覆盖原文信息与顺序，不要大幅改写，不要删掉有实质信息的句子。",
+    "不要把长内容缩成短总结；信息保留优先于文采。",
+    "原文完整性优先级高于一切；如果篇幅压力过大，宁可压缩译文，也不要压缩原文。",
+    "不要输出导语、结语、总结、编者按、过渡总结；正文只保留原文整理和对应翻译。",
+    "轻微断句可以，但不得同义改写、不得合并删减句意、不得漏掉例子、数字、限定词。",
+    "必须直接输出最终 Markdown，不要输出 JSON，不要输出解释，不要输出代码块。",
+    "第一行必须是：[Description] 2-3 句摘要，覆盖核心主题，不要过度简写。",
+    "第二行必须是：[Tags] 3-5个相关标签，用逗号分隔，标签应该反映视频的主题和关键概念。",
+    `第三行必须是：- Source: ${input.sourceUrl}`,
+    "按主题分章节，章节标题格式：## 标题，标题尽量简短，不要占用过多输出长度。",
+    "章节标题和第一段之间必须有一个空行。",
+    "章节必须按内容大意和主题转折拆分，不要按固定时长或固定字数机械切分。",
+    ...translationInstruction,
+    "整体文风参考微信公众号文章：结构清晰、节奏舒适、适合手机阅读。",
+    "长内容需要拆成多章，避免整篇只有一章或一段。",
+    "每个章节内部要自然分段，不要把整章写成一整段。",
+    "每段尽量短：1-3 句为宜；中文单段建议不超过120字，英文单段建议不超过80词。",
+    "段落之间必须保留空行，禁止输出大段连续文本。",
+    "如遇并列要点，可用简短无序列表；否则优先自然段。",
+    "不要编造、不补充未出现的信息。",
+    "优先保留术语、专有名词、数字、例子、对比关系和结论。",
+  ].join("\n");
+}
+
 export async function buildTranscriptMarkdownWithModel(
   env: AppEnv,
   input: {
@@ -89,7 +197,7 @@ export async function buildTranscriptMarkdownWithModel(
   },
 ): Promise<{ markdown: string; description?: string; tags?: string[] }> {
   logger.info(`[tool:transcribe_video] chapterize start source_url=${input.sourceUrl}`);
-  const sourceMaterial = input.transcriptSrt?.trim() || input.transcriptText.trim();
+  const sourceMaterial = pickTranscriptSourceMaterial(input);
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
   const configuredProvider = env.aiSummarizeProvider || env.aiProvider || env.agent;
   const summarizeModel =
@@ -98,7 +206,7 @@ export async function buildTranscriptMarkdownWithModel(
       : pickGeminiSummarizeModel(env, translateToChinese);
   const summarizeMaxTokens = Math.max(
     8000,
-    Math.min(32000, Math.ceil(sourceMaterial.length / 5)),
+    Math.min(64000, Math.ceil(sourceMaterial.length / 5)),
   );
   const summarizeTimeoutMs = Math.max(
     60000,
@@ -118,28 +226,10 @@ export async function buildTranscriptMarkdownWithModel(
   try {
     const message = await model.invoke([
       new SystemMessage(
-        [
-          "你是视频 SRT 转 Markdown 助手（保真模式）。",
-          "把输入的 SRT/转写文本整理为可直接保存的 Markdown，目标是提升可读性，而不是压缩成摘要。",
-          "必须尽量保留原文信息与顺序，不要大幅改写，不要删掉有实质信息的句子。",
-          "不要把长内容缩成短总结；信息保留优先于文采。",
-          "必须直接输出最终 Markdown，不要输出 JSON，不要输出解释，不要输出代码块。",
-          "第一行必须是：[Description] 2-3 句摘要，覆盖核心主题，不要过度简写。",
-          "第二行必须是：[Tags] 3-5个相关标签，用逗号分隔，标签应该反映视频的主题和关键概念。",
-          `第三行必须是：- Source: ${input.sourceUrl}`,
-          "按主题分章节，章节标题格式：## 标题",
-          "章节标题和第一段之间必须有一个空行。",
-          "章节必须按内容大意和主题转折拆分，不要按固定时长或固定字数机械切分。",
-          "每章先写原始语言内容（保真整理，轻微断句即可），紧接着写对应的中文翻译内容，原文和译文之间不要加分隔线。",
-          "整体文风参考微信公众号文章：结构清晰、节奏舒适、适合手机阅读。",
-          "长内容需要拆成多章，避免整篇只有一章或一段。",
-          "每个章节内部要自然分段，不要把整章写成一整段。",
-          "每段尽量短：1-3 句为宜；中文单段建议不超过120字，英文单段建议不超过80词。",
-          "段落之间必须保留空行，禁止输出大段连续文本。",
-          "如遇并列要点，可用简短无序列表；否则优先自然段。",
-          "不要编造、不补充未出现的信息。",
-          "优先保留术语、专有名词、数字、例子、对比关系和结论。",
-        ].join("\n"),
+        buildTranscriptSystemPrompt({
+          sourceUrl: input.sourceUrl,
+          translateToChinese,
+        }),
       ),
       new HumanMessage(
         [`Source: ${input.sourceUrl}`, "", "Transcript Input:", sourceMaterial].join("\n"),
@@ -259,10 +349,13 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       const noteTags = Array.from(
         new Set(["video", "transcript", ...normalized.tags, ...(aiGeneratedTags || [])]),
       );
+      const contentMarkdown = shouldTranslateToChinese(transcription.text)
+        ? appendFullTranscript(transcriptMarkdown, transcription.text)
+        : transcriptMarkdown.trim();
       return {
         title,
         source_url: resolved.sourceUrl,
-        content_markdown: transcriptMarkdown,
+        content_markdown: contentMarkdown,
         tags: noteTags,
         published:
           resolved.adapter === "youtube" || resolved.adapter === "douyin"
@@ -291,6 +384,10 @@ export const __test__ = {
   buildTranscriptMarkdownWithModel,
   shouldTranslateToChinese,
   pickGeminiSummarizeModel,
+  pickTranscriptSourceMaterial,
+  splitTranscriptIntoParagraphs,
+  appendFullTranscript,
+  buildTranscriptSystemPrompt,
   extractHashtags,
   normalizeVideoTitle,
 };

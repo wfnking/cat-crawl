@@ -7,7 +7,7 @@ test("GoogleSearchHandler should prefer rendered AI overview content when availa
     crawlRenderedSearch: async (_url, _cookies) => ({
       title: "initiative - Google Search",
       content:
-        "initiative\nInitiative is the ability to independently assess situations and act to achieve goals.\n\n## Sources\n- [Indeed](https://www.indeed.com/example)",
+        "initiative\n3 hours ago\nInitiative is the ability to independently assess situations and act to achieve goals.\n\nKey Characteristics of Taking Initiative\n\nProactivity: Identifying problems and taking action before being asked.\n\n## Sources\n- [Indeed](https://www.indeed.com/example)",
     }),
     fetchPageHtml: async () => {
       throw new Error("html fallback should not run");
@@ -22,9 +22,11 @@ test("GoogleSearchHandler should prefer rendered AI overview content when availa
   });
 
   assert.equal(result.title, "initiative - Google Search");
-  assert.match(result.content_markdown, /Search Query: initiative/);
+  assert.doesNotMatch(result.content_markdown, /Search Query: initiative/);
+  assert.doesNotMatch(result.content_markdown, /3 hours ago/);
   assert.match(result.content_markdown, /Initiative is the ability to independently assess situations/);
-  assert.match(result.content_markdown, /## Sources/);
+  assert.match(result.content_markdown, /Key Characteristics of Taking Initiative/);
+  assert.doesNotMatch(result.content_markdown, /## Sources/);
 });
 
 test("GoogleSearchHandler should pass Chrome cookies into rendered crawl", async () => {

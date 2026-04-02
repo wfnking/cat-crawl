@@ -16,6 +16,8 @@ type RenderedGoogleSearch = {
   content: string | null;
 };
 
+const GOOGLE_TIME_LINE_PATTERN = /^\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago$/i;
+
 type BrowserCookie = ReturnType<typeof loadChromeCookiesForDomains>[number];
 
 type GoogleSearchHandlerDeps = {
@@ -335,16 +337,7 @@ export class GoogleSearchHandler extends BaseArticleHandler {
 
   private buildRenderedResult(query: string, sourceUrl: string, rendered: RenderedGoogleSearch): IngestContentResult {
     const title = rendered.title?.trim() || `${query} - Google Search`;
-    const contentBody = [
-      `Search Query: ${query}`,
-      "",
-      "## Search Content",
-      "",
-      rendered.content || "",
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+    const contentBody = this.cleanRenderedContent(query, rendered.content || "");
 
     return {
       title,
@@ -360,6 +353,30 @@ export class GoogleSearchHandler extends BaseArticleHandler {
       }),
       tags: ["google"],
     };
+  }
+
+  private cleanRenderedContent(query: string, content: string): string {
+    const normalizedQuery = query.trim().toLowerCase();
+    const lines = content
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+
+    const cleaned: string[] = [];
+    for (const line of lines) {
+      if (line.toLowerCase() === normalizedQuery) {
+        continue;
+      }
+      if (GOOGLE_TIME_LINE_PATTERN.test(line)) {
+        continue;
+      }
+      if (/^##\s+Sources$/i.test(line) || /^Sources$/i.test(line)) {
+        break;
+      }
+      cleaned.push(line);
+    }
+
+    return cleaned.join("\n\n").trim();
   }
 
   private buildFallbackResult(query: string, sourceUrl: string, fallbackUrl: string | null): IngestContentResult {

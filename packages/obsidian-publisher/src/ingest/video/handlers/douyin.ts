@@ -195,7 +195,7 @@ async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
 }
 
 async function waitForDouyinPageReady(page: DouyinPage, sourceUrl: string): Promise<void> {
-  await page.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.goto(sourceUrl, { waitUntil: "domcontentloaded", timeout: 200 * 1000 });
   await page.waitForURL(
     (url) => {
       const href = url.href.toLowerCase();
