@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsyncDefault = promisify(execFile);
@@ -24,13 +24,23 @@ function isMissingFfmpegError(error: unknown): boolean {
   return message.includes("spawn ffmpeg ENOENT") || message.includes("ffmpeg: command not found");
 }
 
+function buildAudioOutputPath(inputPath: string, outputDir: string): string {
+  const sourceBase = basename(inputPath, extname(inputPath)).trim();
+  const normalized = sourceBase
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return join(outputDir, `${normalized || "audio"}.mp3`);
+}
+
 export async function extractAudioFromVideo(
   inputPath: string,
   options: ExtractAudioOptions,
 ): Promise<string> {
   const execFileAsync = options.execFileAsync || execFileAsyncDefault;
   const statAsync = options.statAsync || stat;
-  const outputPath = join(options.outputDir, "audio.mp3");
+  const outputPath = buildAudioOutputPath(inputPath, options.outputDir);
 
   await mkdir(options.outputDir, { recursive: true });
   try {

@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import { createBrowserScrapeFunction } from "../helpers/browser.js";
 import { normalizePublishedDateWithFallback } from "../helpers/dates.js";
 import { createTurndownService, toMarkdown } from "../helpers/markdown.js";
-import { normalizeUrl, resolveSourceUrl } from "../helpers/urls.js";
+import { resolveSourceUrl } from "../helpers/urls.js";
 import { BaseArticleHandler, type CrawlContext, type IngestContentResult } from "../types.js";
 
 type WechatScrapeResult = {
@@ -11,11 +11,17 @@ type WechatScrapeResult = {
   published: string | null;
   publishedTimestamp: number | null;
   contentHtml: string;
-  carouselImages: string[];
   canonical: string | null;
 };
 
 export const WECHAT_SCRAPE_FUNCTION_SOURCE = String.raw`function() {
+  const normalizeAssetUrl = (value) => {
+    const raw = (value || '').trim();
+    if (!raw) {
+      return '';
+    }
+    return raw.startsWith('//') ? window.location.protocol + raw : raw;
+  };
   const meta = (name, attr = 'name') =>
     document.querySelector('meta[' + attr + '="' + name + '"]')?.getAttribute('content')?.trim() || null;
   const text = (selectors) => {
@@ -90,21 +96,31 @@ export const WECHAT_SCRAPE_FUNCTION_SOURCE = String.raw`function() {
     document.querySelector('#js_content') ||
     document.querySelector('.rich_media_content') ||
     document.querySelector('article');
-  const contentHtml = contentNode instanceof HTMLElement ? contentNode.innerHTML.trim() : '';
-
-  const carouselImages = Array.from(
-    document.querySelectorAll('.js_article img, #img-content img, .rich_media_content img'),
-  )
-    .map((img) => {
-      const src =
-        img.getAttribute('data-src') ||
-        img.getAttribute('data-original') ||
-        img.getAttribute('data-lazy-src') ||
-        img.getAttribute('src') ||
-        '';
-      return src.trim();
-    })
-    .filter(Boolean);
+  let contentHtml = '';
+  if (contentNode instanceof HTMLElement) {
+    const clonedNode = contentNode.cloneNode(true);
+    if (clonedNode instanceof HTMLElement) {
+      const seenImageUrls = new Set();
+      for (const imageNode of clonedNode.querySelectorAll('img')) {
+        const src = normalizeAssetUrl(
+          imageNode.getAttribute('data-src') ||
+            imageNode.getAttribute('data-original') ||
+            imageNode.getAttribute('data-lazy-src') ||
+            imageNode.getAttribute('src') ||
+            '',
+        );
+        if (!src) {
+          continue;
+        }
+        if (seenImageUrls.has(src)) {
+          imageNode.remove();
+          continue;
+        }
+        seenImageUrls.add(src);
+      }
+      contentHtml = clonedNode.innerHTML.trim();
+    }
+  }
 
   const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute('href')?.trim() || null;
 
@@ -114,7 +130,6 @@ export const WECHAT_SCRAPE_FUNCTION_SOURCE = String.raw`function() {
     published: published || null,
     publishedTimestamp,
     contentHtml,
-    carouselImages: Array.from(new Set(carouselImages)),
     canonical,
   };
 }`;
@@ -175,13 +190,8 @@ export class WechatHandler extends BaseArticleHandler {
 
   private buildResult(url: URL, scraped: WechatScrapeResult): IngestContentResult {
     const turndown = createTurndownService();
-    const markdownBody = turndown.turndown(scraped.contentHtml || "");
-    const carouselMarkdown = (scraped.carouselImages || [])
-      .map((src, index) => `![Carousel ${index + 1}](${normalizeUrl(src)})`)
-      .join("\n\n");
-    const contentBody = [carouselMarkdown, markdownBody]
-      .filter(Boolean)
-      .join("\n\n")
+    const contentBody = turndown
+      .turndown(scraped.contentHtml || "")
       .replace(/\n{3,}/g, "\n\n")
       .trim()
       .slice(0, 30000);

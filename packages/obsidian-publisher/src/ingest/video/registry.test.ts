@@ -35,6 +35,16 @@ test("selectVideoHandler should choose douyin adapter for douyin urls", () => {
   assert.equal(selectVideoHandler("https://v.douyin.com/ABCDE/").name, "douyin");
 });
 
+test("selectVideoHandler should reject douyin ai answer share urls", () => {
+  assert.throws(
+    () =>
+      selectVideoHandler(
+        "https://so-landing.douyin.com/search_ai_mobile/share?schema_type=66&scene=answer",
+      ),
+    /Unsupported video source/,
+  );
+});
+
 test("selectVideoHandler should reject unsupported urls", () => {
   assert.throws(
     () => selectVideoHandler("https://example.com/video/123"),

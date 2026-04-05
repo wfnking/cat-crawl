@@ -179,6 +179,7 @@ test('transcribe video tool should not append full transcript for Chinese source
 
 test('transcribe video tool should pass Douyin cookie to resolver', async () => {
   let receivedCookieHeader: string | undefined
+  let receivedOutputDir: string | undefined
   const tool = createTranscribeVideoTool(
     {
       transcriptionProvider: 'whisper_cpp',
@@ -195,6 +196,7 @@ test('transcribe video tool should pass Douyin cookie to resolver', async () => 
       selectVideoHandler: () => ({ name: 'douyin' }),
       resolveDouyinVideoSource: async (_source, options) => {
         receivedCookieHeader = options?.cookieHeader
+        receivedOutputDir = options?.outputDir
         return {
           adapter: 'douyin',
           sourceUrl: 'https://www.douyin.com/video/123456',
@@ -220,7 +222,62 @@ test('transcribe video tool should pass Douyin cookie to resolver', async () => 
   })
 
   assert.equal(receivedCookieHeader, 'ttwid=abc')
+  assert.equal(receivedOutputDir, '/tmp/cat-crawl/douyin')
   assert.equal(result.source_url, 'https://www.douyin.com/video/123456')
+})
+
+test('transcribe video tool should use unified temp directories under /tmp/cat-crawl', async () => {
+  let receivedYoutubeOutputDir: string | undefined
+  let receivedAudioOutputDir: string | undefined
+  let receivedWhisperOutputDir: string | undefined
+  const tool = createTranscribeVideoTool(
+    {
+      transcriptionProvider: 'whisper_cpp',
+      whisperCppBin: 'whisper-cli',
+      whisperCppModelPath: '/models/base.bin',
+      whisperCppLanguage: undefined,
+      geminiApiKey: 'gemini-demo-key',
+      geminiModel: 'gemini-2.5-pro',
+      obsidianFolder: 'Clippings',
+      obsidianDynamicFolders: []
+    } as never,
+    {
+      selectVideoHandler: () => ({ name: 'youtube' }),
+      resolveYouTubeVideoSource: async (_source, options) => {
+        receivedYoutubeOutputDir = options?.outputDir
+        return {
+          adapter: 'youtube',
+          sourceUrl: 'https://www.youtube.com/watch?v=abc123',
+          mediaPath: '/tmp/cat-crawl/youtube/audio.webm',
+          title: 'Demo Title'
+        }
+      },
+      extractAudioFromVideo: async (_inputPath, options) => {
+        receivedAudioOutputDir = options.outputDir
+        return '/tmp/cat-crawl/audio/audio.mp3'
+      },
+      transcribeAudio: async (_audioPath, options) => {
+        receivedWhisperOutputDir = options.whisperCpp.outputDir
+        return {
+          providerUsed: 'whisper_cpp',
+          text: 'hello transcript',
+          srt: undefined,
+          fallbackUsed: false
+        }
+      },
+      buildTranscriptMarkdown: async () => ({
+        markdown: '## Summary\n\nhello transcript'
+      })
+    }
+  )
+
+  await tool.invoke({
+    source: 'https://www.youtube.com/watch?v=abc123'
+  })
+
+  assert.equal(receivedYoutubeOutputDir, '/tmp/cat-crawl/youtube')
+  assert.equal(receivedAudioOutputDir, '/tmp/cat-crawl/audio')
+  assert.equal(receivedWhisperOutputDir, '/tmp/cat-crawl/whisper')
 })
 
 test('normalizeVideoTitle should strip hashtags and source suffix into tags', () => {

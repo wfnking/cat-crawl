@@ -2,6 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { createLogger } from "@cat-crawl/core";
 import fs from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import type { AppEnv } from "../../config/env.js";
 import { extractAudioFromVideo } from "../../ingest/video/media/extract-audio.js";
@@ -36,6 +37,11 @@ type TranscribeVideoDeps = {
 };
 
 const logger = createLogger();
+const TEMP_ROOT_DIR = "/tmp/cat-crawl";
+const YOUTUBE_TEMP_DIR = join(TEMP_ROOT_DIR, "youtube");
+const DOUYIN_TEMP_DIR = join(TEMP_ROOT_DIR, "douyin");
+const AUDIO_TEMP_DIR = join(TEMP_ROOT_DIR, "audio");
+const WHISPER_TEMP_DIR = join(TEMP_ROOT_DIR, "whisper");
 
 function extractHashtags(text: string): string[] {
   return Array.from(text.matchAll(/#([^\s#]+)/g))
@@ -282,7 +288,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
 
   return tool(
     async (input: TranscribeVideoInput) => {
-      const tempDirs = ["/tmp/cat-crawl-youtube", "/tmp/cat-crawl-audio", "/tmp/cat-crawl-whisper"];
+      const tempDirs = [YOUTUBE_TEMP_DIR, DOUYIN_TEMP_DIR, AUDIO_TEMP_DIR, WHISPER_TEMP_DIR];
       for (const dir of tempDirs) {
         try {
           fs.rmSync(dir, { recursive: true, force: true });
@@ -302,9 +308,10 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           ? await resolveFile(input.source)
           : handler.name === "youtube"
             ? await resolveYoutube(input.source, {
-                outputDir: "/tmp/cat-crawl-youtube",
+                outputDir: YOUTUBE_TEMP_DIR,
               })
             : await resolveDouyin(input.source, {
+                outputDir: DOUYIN_TEMP_DIR,
                 cookieHeader: env.douyinCookie,
               });
       logger.info(
@@ -312,7 +319,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       );
 
       const audioPath = await extractAudio(resolved.mediaPath, {
-        outputDir: "/tmp/cat-crawl-audio",
+        outputDir: AUDIO_TEMP_DIR,
       });
       logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
       const requestedProvider = input.provider || "whisper_cpp";
@@ -326,7 +333,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           bin: env.whisperCppBin,
           modelPath: env.whisperCppModelPath,
           language: input.language || env.whisperCppLanguage,
-          outputDir: "/tmp/cat-crawl-whisper",
+          outputDir: WHISPER_TEMP_DIR,
         },
       });
       logger.info(

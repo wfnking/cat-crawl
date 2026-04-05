@@ -1,10 +1,14 @@
 import { chromium } from "playwright";
 import { extractWithDefuddle } from "../helpers/defuddle.js";
 import { BaseArticleHandler, type CrawlContext, type IngestContentResult } from "../types.js";
+import { loadChromeCookiesForDomains } from "../../video/helpers/chrome-cookies.js";
+
+type BrowserCookie = ReturnType<typeof loadChromeCookiesForDomains>[number];
 
 type XHandlerDeps = {
-  fetchRenderedHtml?: (url: string) => Promise<string>;
+  fetchRenderedHtml?: (url: string, cookies: BrowserCookie[]) => Promise<string>;
   extractWithDefuddle?: typeof extractWithDefuddle;
+  loadChromeCookies?: (domains: string[]) => BrowserCookie[];
 };
 
 function isMissingPlaywrightBrowserError(error: unknown): boolean {
@@ -27,7 +31,7 @@ function normalizeXSourceUrl(url: string): string {
   }
 }
 
-async function fetchRenderedHtmlDefault(url: string): Promise<string> {
+async function fetchRenderedHtmlDefault(url: string, cookies: BrowserCookie[]): Promise<string> {
   const launchOptions = { headless: true as const, args: ["--disable-blink-features=AutomationControlled"] };
   let browser;
   try {
@@ -47,6 +51,21 @@ async function fetchRenderedHtmlDefault(url: string): Promise<string> {
       "accept-language": "en-US,en;q=0.9",
     },
   });
+
+  if (cookies.length > 0) {
+    await context.addCookies(
+      cookies.map((cookie) => ({
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path,
+        secure: cookie.secure,
+        httpOnly: cookie.httpOnly,
+        expires: cookie.expires,
+        sameSite: cookie.sameSite,
+      })),
+    );
+  }
 
   await context.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", {
@@ -82,9 +101,10 @@ export class XHandler extends BaseArticleHandler {
     const requestedUrl = normalizeXSourceUrl(url.toString());
     const renderHtml = this.deps.fetchRenderedHtml || fetchRenderedHtmlDefault;
     const parseWithDefuddle = this.deps.extractWithDefuddle || extractWithDefuddle;
+    const cookies = this.loadChromeCookies();
 
     try {
-      const html = await renderHtml(requestedUrl);
+      const html = await renderHtml(requestedUrl, cookies);
       const extracted = await parseWithDefuddle(html, requestedUrl);
       if (!extracted) {
         throw new Error("x defuddle parse failed");
@@ -97,6 +117,15 @@ export class XHandler extends BaseArticleHandler {
       const detail = error instanceof Error ? error.message : String(error);
       context.logger?.warn?.(`[tool:crawl_web_article] x defuddle parse failed: ${detail}`);
       return context.crawlWithBrowserAdapter(requestedUrl, "generic");
+    }
+  }
+
+  private loadChromeCookies(): BrowserCookie[] {
+    const loader = this.deps.loadChromeCookies || loadChromeCookiesForDomains;
+    try {
+      return loader([".x.com", "x.com", ".twitter.com", "twitter.com"]);
+    } catch {
+      return [];
     }
   }
 }

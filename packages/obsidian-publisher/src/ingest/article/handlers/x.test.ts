@@ -2,6 +2,53 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { XHandler } from "./x.js";
 
+test("XHandler should pass Chrome cookies into rendered crawl", async () => {
+  let renderedCookies: Array<{ domain: string; name: string }> = [];
+  const handler = new XHandler({
+    loadChromeCookies: () => [
+      {
+        name: "auth_token",
+        value: "secret",
+        domain: ".x.com",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+      },
+      {
+        name: "twid",
+        value: "u=1",
+        domain: ".twitter.com",
+        path: "/",
+        secure: true,
+        httpOnly: false,
+      },
+    ],
+    fetchRenderedHtml: async (_url, cookies) => {
+      renderedCookies = cookies.map((cookie) => ({ domain: cookie.domain, name: cookie.name }));
+      return "<html><body>rendered x page</body></html>";
+    },
+    extractWithDefuddle: async (html, url) => ({
+      title: "Thread by @yaroslavvb",
+      author: "@yaroslavvb",
+      published: "2026-04-06",
+      source_url: url,
+      content_markdown: html,
+    }),
+  });
+
+  await handler.handle(new URL("https://x.com/yaroslavvb/status/2039043379825360988"), {
+    env: {} as never,
+    crawlWithBrowserAdapter: async () => {
+      throw new Error("browser fallback should not run");
+    },
+  });
+
+  assert.deepEqual(renderedCookies, [
+    { domain: ".x.com", name: "auth_token" },
+    { domain: ".twitter.com", name: "twid" },
+  ]);
+});
+
 test("XHandler should use defuddle output from rendered html", async () => {
   let renderedUrl = "";
   let extractedHtml = "";

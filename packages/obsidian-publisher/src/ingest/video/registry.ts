@@ -11,6 +11,14 @@ function isYoutubeUrl(url: URL): boolean {
 
 function isDouyinUrl(url: URL): boolean {
   const host = url.hostname.toLowerCase();
+  const path = url.pathname.toLowerCase();
+  const isAiAnswerShare =
+    host === "so-landing.douyin.com" &&
+    path === "/search_ai_mobile/share" &&
+    (url.searchParams.get("scene") === "answer" || url.searchParams.get("schema_type") === "66");
+  if (isAiAnswerShare) {
+    return false;
+  }
   return host === "douyin.com" || host.endsWith(".douyin.com") || host === "v.douyin.com";
 }
 

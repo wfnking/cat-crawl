@@ -14,14 +14,36 @@ test("extractAudioFromVideo should build ffmpeg command and return output path",
         "-vn",
         "-acodec",
         "libmp3lame",
-        "/tmp/cat-crawl-audio/audio.mp3",
+        "/tmp/cat-crawl-audio/input.mp3",
       ]);
       return { stdout: "", stderr: "" };
     },
     statAsync: async () => ({ size: 128 }),
   });
 
-  assert.equal(result, "/tmp/cat-crawl-audio/audio.mp3");
+  assert.equal(result, "/tmp/cat-crawl-audio/input.mp3");
+});
+
+test("extractAudioFromVideo should derive output filename from source basename", async () => {
+  const result = await extractAudioFromVideo("/tmp/My Video (Final).mp4", {
+    outputDir: "/tmp/cat-crawl-audio",
+    execFileAsync: async (file, args) => {
+      assert.equal(file, "ffmpeg");
+      assert.deepEqual(args, [
+        "-y",
+        "-i",
+        "/tmp/My Video (Final).mp4",
+        "-vn",
+        "-acodec",
+        "libmp3lame",
+        "/tmp/cat-crawl-audio/my-video-final.mp3",
+      ]);
+      return { stdout: "", stderr: "" };
+    },
+    statAsync: async () => ({ size: 128 }),
+  });
+
+  assert.equal(result, "/tmp/cat-crawl-audio/my-video-final.mp3");
 });
 
 test("extractAudioFromVideo should report missing ffmpeg", async () => {
