@@ -122,8 +122,8 @@ export const crawlWebArticleTool = tool(
     const context: CrawlContext = {
       env: loadEnv(),
       logger,
-      crawlWithBrowserAdapter: (sourceUrl, adapterName) =>
-        crawlBrowserAdapterArticle(sourceUrl, adapterName, logger),
+      crawlWithBrowserAdapter: (sourceUrl, adapterName, options) =>
+        crawlBrowserAdapterArticle(sourceUrl, adapterName, logger, options),
     };
     return handler.handle(parsedUrl, context);
   },

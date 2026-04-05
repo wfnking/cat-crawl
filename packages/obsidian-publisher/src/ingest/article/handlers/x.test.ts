@@ -114,6 +114,54 @@ test("XHandler should fallback to generic browser adapter when defuddle returns 
   assert.equal(result.title, "Generic fallback result");
 });
 
+test("XHandler should pass Chrome cookies into generic browser fallback", async () => {
+  let fallbackCookies: Array<{ domain: string; name: string }> = [];
+  const handler = new XHandler({
+    loadChromeCookies: () => [
+      {
+        name: "auth_token",
+        value: "secret",
+        domain: ".x.com",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+      },
+      {
+        name: "twid",
+        value: "u=1",
+        domain: ".twitter.com",
+        path: "/",
+        secure: true,
+        httpOnly: false,
+      },
+    ],
+    fetchRenderedHtml: async () => "<html><body>rendered x page</body></html>",
+    extractWithDefuddle: async () => null,
+  });
+
+  await handler.handle(new URL("https://x.com/yaroslavvb/status/2039043379825360988"), {
+    env: {} as never,
+    crawlWithBrowserAdapter: (async (_url, _adapter, options) => {
+      fallbackCookies = (options?.cookies || []).map((cookie) => ({
+        domain: cookie.domain,
+        name: cookie.name,
+      }));
+      return {
+        title: "Generic fallback result",
+        author: "@yaroslavvb",
+        published: "2026-04-06",
+        source_url: "https://x.com/yaroslavvb/status/2039043379825360988",
+        content_markdown: "# Generic fallback result\n\nFallback body.",
+      };
+    }) as never,
+  });
+
+  assert.deepEqual(fallbackCookies, [
+    { domain: ".x.com", name: "auth_token" },
+    { domain: ".twitter.com", name: "twid" },
+  ]);
+});
+
 test("XHandler should fallback to generic browser adapter when rendered html fetch fails", async () => {
   const handler = new XHandler({
     fetchRenderedHtml: async () => {

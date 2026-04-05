@@ -1,4 +1,5 @@
 import type { AppEnv } from "../../config/env.js";
+import type { ChromeCookie } from "../video/helpers/chrome-cookies.js";
 import type { IngestContentResult } from "../types.js";
 export type { IngestContentResult } from "../types.js";
 
@@ -21,10 +22,18 @@ export type CrawlLogger = {
   error?: (...args: unknown[]) => void;
 };
 
+export type CrawlBrowserAdapterOptions = {
+  cookies?: ChromeCookie[];
+};
+
 export type CrawlContext = {
   env: AppEnv;
   logger?: CrawlLogger;
-  crawlWithBrowserAdapter: (url: string, adapterName: ArticleAdapterName) => Promise<IngestContentResult>;
+  crawlWithBrowserAdapter: (
+    url: string,
+    adapterName: ArticleAdapterName,
+    options?: CrawlBrowserAdapterOptions,
+  ) => Promise<IngestContentResult>;
 };
 
 export interface ArticleHandler {

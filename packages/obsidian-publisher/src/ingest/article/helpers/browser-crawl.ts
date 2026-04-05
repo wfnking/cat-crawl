@@ -8,7 +8,12 @@ import { extractWithDefuddle } from "../helpers/defuddle.js";
 import { createTurndownService, toMarkdown } from "../helpers/markdown.js";
 import { normalizeUrl, resolveSourceUrl } from "../helpers/urls.js";
 import { ChatGPTHandler } from "../handlers/chatgpt.js";
-import type { ArticleAdapterName, CrawlLogger, IngestContentResult } from "../types.js";
+import type {
+  ArticleAdapterName,
+  CrawlBrowserAdapterOptions,
+  CrawlLogger,
+  IngestContentResult,
+} from "../types.js";
 
 export type BrowserScrapeResult = {
   title: string;
@@ -45,10 +50,33 @@ function getBrowserWaitMs(adapter: ArticleAdapterName): number {
   return 2200;
 }
 
+type PlaywrightPage = { evaluate: <T>(fn: () => T) => Promise<T>; waitForTimeout: (ms: number) => Promise<void> };
+
+async function waitForContentStable(
+  page: PlaywrightPage,
+  { pollInterval = 500, maxWait = 10000 }: { pollInterval?: number; maxWait?: number } = {},
+): Promise<void> {
+  let lastLength = 0;
+  let stableCount = 0;
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    const currentLength = await page.evaluate(() => document.body?.innerHTML?.length ?? 0);
+    if (currentLength === lastLength && currentLength > 0) {
+      stableCount++;
+      if (stableCount >= 2) return;
+    } else {
+      stableCount = 0;
+    }
+    lastLength = currentLength;
+    await page.waitForTimeout(pollInterval);
+  }
+}
+
 export async function crawlBrowserAdapterArticle(
   url: string,
   adapter: ArticleAdapterName,
   logger?: CrawlLogger,
+  options: CrawlBrowserAdapterOptions = {},
 ): Promise<IngestContentResult> {
   const launchOptions = needsStealthBrowser(adapter)
     ? { headless: true as const, args: ["--disable-blink-features=AutomationControlled"] }
@@ -83,11 +111,19 @@ export async function crawlBrowserAdapterArticle(
       });
     });
   }
+  if ((options.cookies || []).length > 0) {
+    await context.addCookies(options.cookies || []);
+  }
 
   const page = await context.newPage();
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(getBrowserWaitMs(adapter));
+    const waitUntil = adapter === "generic" ? "load" as const : "domcontentloaded" as const;
+    await page.goto(url, { waitUntil, timeout: 45000 });
+    if (adapter === "generic") {
+      await waitForContentStable(page);
+    } else {
+      await page.waitForTimeout(getBrowserWaitMs(adapter));
+    }
 
     if (adapter === "chatgpt") {
       const pageHtml = await page.content();

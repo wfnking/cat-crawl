@@ -1,9 +1,9 @@
 import { chromium } from "playwright";
 import { extractWithDefuddle } from "../helpers/defuddle.js";
 import { BaseArticleHandler, type CrawlContext, type IngestContentResult } from "../types.js";
-import { loadChromeCookiesForDomains } from "../../video/helpers/chrome-cookies.js";
+import { loadChromeCookiesForDomains, type ChromeCookie } from "../../video/helpers/chrome-cookies.js";
 
-type BrowserCookie = ReturnType<typeof loadChromeCookiesForDomains>[number];
+type BrowserCookie = ChromeCookie;
 
 type XHandlerDeps = {
   fetchRenderedHtml?: (url: string, cookies: BrowserCookie[]) => Promise<string>;
@@ -116,7 +116,7 @@ export class XHandler extends BaseArticleHandler {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       context.logger?.warn?.(`[tool:crawl_web_article] x defuddle parse failed: ${detail}`);
-      return context.crawlWithBrowserAdapter(requestedUrl, "generic");
+      return context.crawlWithBrowserAdapter(requestedUrl, "generic", { cookies });
     }
   }
 

@@ -18,7 +18,7 @@ type ChromeCookieRow = {
   last_access_utc: number;
 };
 
-type ChromeCookie = {
+export type ChromeCookie = {
   name: string;
   value: string;
   domain: string;
