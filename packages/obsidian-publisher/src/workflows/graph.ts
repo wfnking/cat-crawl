@@ -580,9 +580,9 @@ function createSaveNoteNode(runtime: AgentRuntime) {
           author: state.ingestResult.author ?? undefined,
           published: state.ingestResult.published ?? undefined,
           description:
-            state.contentType === "article"
-              ? buildClassificationSummary(state.ingestResult.content_markdown).slice(0, 200)
-              : state.ingestResult.description ?? undefined,
+            state.contentType === "article" ? undefined : state.ingestResult.description ?? undefined,
+          description_source:
+            state.contentType === "article" ? state.ingestResult.content_markdown : undefined,
           tags: state.contentType === "video" ? state.ingestResult.tags : undefined,
           dynamic_folder: state.dynamicFolder || state.ingestResult.dynamic_folder,
           source: state.contentType === "video" ? "Video" : "WeChat",

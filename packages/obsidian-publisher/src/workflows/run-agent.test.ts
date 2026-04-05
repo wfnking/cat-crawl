@@ -179,6 +179,45 @@ test('runAgent should keep article URLs on crawl path', async () => {
   assert.match(result.reply, /文章已成功保存到 Obsidian/)
 })
 
+test('runAgent should pass article description_source instead of eager description text', async () => {
+  let saveCalled = false
+  const contentMarkdown =
+    '**Yaroslav Bulatov** @yaroslavvb [2026-04-06](https://x.com/yaroslavvb/status/1)\n\nMain tweet.\n\n---\n\n**Reply** @reply [2026-04-06](https://x.com/yaroslavvb/status/2)\n\nReply text.'
+
+  await runAgent('看看这个 https://x.com/yaroslavvb/status/1', undefined, {
+    loadEnv: () =>
+      ({
+        obsidianDynamicFolders: []
+      }) as never,
+    crawlWebArticleTool: {
+      invoke: async () => ({
+        title: 'Example Thread',
+        author: '@yaroslavvb',
+        published: '2026-04-06',
+        source_url: 'https://x.com/yaroslavvb/status/1',
+        content_markdown: contentMarkdown
+      })
+    },
+    createSaveToObsidianTool: () =>
+      ({
+        invoke: async (input: { description?: string; description_source?: string; content_markdown: string }) => {
+          saveCalled = true
+          assert.equal(input.description, undefined)
+          assert.equal(input.description_source, contentMarkdown)
+          assert.equal(input.content_markdown, contentMarkdown)
+          return {
+            saved: true,
+            vault: '知识库',
+            path: 'Clippings/Example Thread.md'
+          }
+        }
+      }) as never,
+    persistSuccessHistory: () => {}
+  })
+
+  assert.equal(saveCalled, true)
+})
+
 test('runAgent should skip crawl when existing record is found by default', async () => {
   let crawlCalled = false
 

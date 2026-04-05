@@ -2,112 +2,91 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { XHandler } from "./x.js";
 
-const MAIN_TEXT = [
-  "- Drafted a blog post",
-  "- Used an LLM to meticulously improve the argument over 4 hours.",
-  "- Wow, feeling great, it’s so convincing!",
-  "- Fun idea let’s ask it to argue the opposite.",
-  "- LLM demolishes the entire argument and convinces me that the opposite is in fact true.",
-  "- lol",
-  "",
-  "The LLMs may elicit an opinion when asked but are extremely competent in arguing almost any direction. This is actually super useful as a tool for forming your own opinions, just make sure to ask different directions and be careful with the sycophancy.",
-].join("\n");
-
-const mainPayload = {
-  code: 200,
-  message: "OK",
-  tweet: {
-    url: "https://x.com/karpathy/status/2037921699824607591",
-    text: MAIN_TEXT,
-    raw_text: { text: MAIN_TEXT, facets: [] },
-    created_at: "Sat Mar 28 15:56:10 +0000 2026",
-    created_timestamp: 1774713370,
-    author: {
-      name: "Andrej Karpathy",
-      screen_name: "karpathy",
-    },
-  },
-};
-
-test("XHandler should use full main tweet text and derive a semantic title", async () => {
+test("XHandler should use defuddle output from rendered html", async () => {
+  let renderedUrl = "";
+  let extractedHtml = "";
+  let extractedUrl = "";
   const handler = new XHandler({
-    fetchPrimaryTweet: async () => mainPayload,
-    fetchReplies: async () => [],
-    appendVideoTranscript: async ({ sourceUrl, title, author, published, contentBody }) => ({
-      sourceUrl,
-      title,
-      author,
-      published,
-      contentBody,
-    }),
+    fetchRenderedHtml: async (url) => {
+      renderedUrl = url;
+      return "<html><body>rendered x page</body></html>";
+    },
+    extractWithDefuddle: async (html, url) => {
+      extractedHtml = html;
+      extractedUrl = url;
+      return {
+        title: "Thread by @yaroslavvb",
+        author: "@yaroslavvb",
+        published: "2026-04-06",
+        source_url: url,
+        content_markdown: "# Thread by @yaroslavvb\n\nBody from defuddle.\n\n---\n\nReply from defuddle.",
+      };
+    },
   });
 
-  const result = await handler.handle(new URL("https://x.com/karpathy/status/2037921699824607591"), {
+  const result = await handler.handle(new URL("https://twitter.com/yaroslavvb/status/2039043379825360988?t=1"), {
     env: {} as never,
     crawlWithBrowserAdapter: async () => {
       throw new Error("browser fallback should not run");
     },
   });
 
-  assert.equal(
-    result.title,
-    "The LLMs may elicit an opinion when asked but are extremely competent in arguing almost any direction.",
-  );
-  assert.match(result.content_markdown, /The LLMs may elicit an opinion when asked/);
-  assert.doesNotMatch(result.content_markdown, /The…/);
+  assert.equal(renderedUrl, "https://x.com/yaroslavvb/status/2039043379825360988");
+  assert.equal(extractedHtml, "<html><body>rendered x page</body></html>");
+  assert.equal(extractedUrl, "https://x.com/yaroslavvb/status/2039043379825360988");
+  assert.equal(result.source_url, "https://x.com/yaroslavvb/status/2039043379825360988");
+  assert.match(result.content_markdown, /Body from defuddle/);
+  assert.match(result.content_markdown, /Reply from defuddle/);
 });
 
-test("XHandler should append only the first three replies when replies are available", async () => {
+test("XHandler should fallback to generic browser adapter when defuddle returns null", async () => {
+  let fallbackUrl = "";
+  let fallbackAdapter = "";
   const handler = new XHandler({
-    fetchPrimaryTweet: async () => mainPayload,
-    fetchReplies: async () => [
-      {
-        authorName: "Sebastian Raschka",
-        author: "@rasbt",
-        published: "2026-03-28",
-        sourceUrl: "https://x.com/rasbt/status/1",
-        text: "Reply one.",
-      },
-      {
-        authorName: "Jed Polglase",
-        author: "@jedpolglase",
-        published: "2026-03-28",
-        sourceUrl: "https://x.com/jedpolglase/status/2",
-        text: "Reply two.",
-      },
-      {
-        authorName: "Luong NGUYEN",
-        author: "@luongnv89",
-        published: "2026-03-28",
-        sourceUrl: "https://x.com/luongnv89/status/3",
-        text: "Reply three.",
-      },
-      {
-        authorName: "Aryaman Iyer",
-        author: "@AryamanIyer3",
-        published: "2026-03-28",
-        sourceUrl: "https://x.com/AryamanIyer3/status/4",
-        text: "Reply four should be dropped.",
-      },
-    ],
-    appendVideoTranscript: async ({ sourceUrl, title, author, published, contentBody }) => ({
-      sourceUrl,
-      title,
-      author,
-      published,
-      contentBody,
-    }),
+    fetchRenderedHtml: async () => "<html><body>rendered x page</body></html>",
+    extractWithDefuddle: async () => null,
   });
 
-  const result = await handler.handle(new URL("https://x.com/karpathy/status/2037921699824607591"), {
+  const result = await handler.handle(new URL("https://x.com/yaroslavvb/status/2039043379825360988"), {
     env: {} as never,
-    crawlWithBrowserAdapter: async () => {
-      throw new Error("browser fallback should not run");
+    crawlWithBrowserAdapter: async (url, adapter) => {
+      fallbackUrl = url;
+      fallbackAdapter = adapter;
+      return {
+        title: "Generic fallback result",
+        author: "@yaroslavvb",
+        published: "2026-04-06",
+        source_url: url,
+        content_markdown: "# Generic fallback result\n\nFallback body.",
+      };
     },
   });
 
-  assert.match(result.content_markdown, /Sebastian Raschka/);
-  assert.match(result.content_markdown, /Jed Polglase/);
-  assert.match(result.content_markdown, /Luong NGUYEN/);
-  assert.doesNotMatch(result.content_markdown, /Aryaman Iyer/);
+  assert.equal(fallbackUrl, "https://x.com/yaroslavvb/status/2039043379825360988");
+  assert.equal(fallbackAdapter, "generic");
+  assert.equal(result.title, "Generic fallback result");
+});
+
+test("XHandler should fallback to generic browser adapter when rendered html fetch fails", async () => {
+  const handler = new XHandler({
+    fetchRenderedHtml: async () => {
+      throw new Error("playwright failed");
+    },
+    extractWithDefuddle: async () => {
+      throw new Error("defuddle should not run");
+    },
+  });
+
+  const result = await handler.handle(new URL("https://x.com/yaroslavvb/status/2039043379825360988"), {
+    env: {} as never,
+    crawlWithBrowserAdapter: async (url, adapter) => ({
+      title: `Fallback via ${adapter}`,
+      author: "@yaroslavvb",
+      published: "2026-04-06",
+      source_url: url,
+      content_markdown: "# Fallback\n\nFallback body.",
+    }),
+  });
+
+  assert.equal(result.title, "Fallback via generic");
 });
