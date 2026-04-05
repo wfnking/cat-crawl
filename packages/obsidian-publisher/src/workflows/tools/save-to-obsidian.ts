@@ -6,7 +6,10 @@ import { basename, dirname, extname, isAbsolute, join, normalize } from "node:pa
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { AppEnv } from "../../config/env.js";
-import { generateDescriptionWithModel } from "../llm/generate-description.js";
+import {
+  generateTitleAndDescription,
+  type TitleDescriptionResult,
+} from "../llm/generate-title-description.js";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger();
@@ -36,9 +39,12 @@ const inputSchema = z.object({
 });
 
 type SaveInput = z.infer<typeof inputSchema>;
-type DescriptionGenerator = (markdown: string) => Promise<string>;
+type TitleDescriptionGenerator = (
+  title: string,
+  contentMarkdown: string,
+) => Promise<TitleDescriptionResult>;
 type SaveToObsidianDeps = {
-  generateDescription?: DescriptionGenerator;
+  generateTitleAndDescription?: TitleDescriptionGenerator;
 };
 
 function formatLocalDate(date: Date): string {
@@ -182,137 +188,6 @@ function normalizeSingleLineText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function normalizeFrontmatterDescription(value: string): string {
-  return normalizeSingleLineText(cleanMarkdownParagraph(value).replace(/^#+\s*/, ""));
-}
-function cleanMarkdownParagraph(paragraph: string): string {
-  return paragraph
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/[`*_>]/g, " ")
-    .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isMetadataParagraph(paragraph: string): boolean {
-  return /^(source|author|published|created|title|tags)\s*:/i.test(paragraph);
-}
-
-function isTimestampParagraph(paragraph: string): boolean {
-  return /^\d{1,2}:\d{2}(?:\s*[-–]\s*\d{1,2}:\d{2})?$/.test(paragraph);
-}
-
-function isNoiseParagraph(paragraph: string): boolean {
-  if (!paragraph) {
-    return true;
-  }
-  if (paragraph.startsWith("#")) {
-    return true;
-  }
-  if (isMetadataParagraph(paragraph)) {
-    return true;
-  }
-  if (isTimestampParagraph(paragraph)) {
-    return true;
-  }
-  if (/^https?:\/\//i.test(paragraph)) {
-    return true;
-  }
-  if (/^(sure!?|here(?:'|’)s)\b/i.test(paragraph)) {
-    return true;
-  }
-  if (/^the following table provides/i.test(paragraph)) {
-    return true;
-  }
-  if (/^(本文来自|文章来源|原文链接|题图来自|本文转载|微信公众号[:：]?)/u.test(paragraph)) {
-    return true;
-  }
-  return false;
-}
-
-function extractLeadSentence(paragraph: string): string {
-  const normalized = cleanMarkdownParagraph(paragraph);
-  if (!normalized) {
-    return "";
-  }
-  const matched = normalized.match(/^(.+?[。！？.!?])/u);
-  const sentence = matched?.[1]?.trim() || normalized;
-  return sentence.slice(0, 200).trim();
-}
-
-function extractDescriptionCandidate(markdown: string): string {
-  const paragraphs = markdown
-    .split(/\n\s*\n/g)
-    .map((paragraph) => cleanMarkdownParagraph(paragraph))
-    .filter(Boolean);
-
-  for (const paragraph of paragraphs) {
-    if (isNoiseParagraph(paragraph)) {
-      continue;
-    }
-    const leadSentence = extractLeadSentence(paragraph);
-    if (leadSentence) {
-      return leadSentence;
-    }
-  }
-
-  return "";
-}
-
-function shouldFallbackToGeneratedDescription(candidate: string): boolean {
-  const text = candidate.trim();
-  if (!text) {
-    return true;
-  }
-  if (text.length < 24) {
-    return true;
-  }
-  if (/https?:\/\//i.test(text)) {
-    return true;
-  }
-  if (/\b(source|author|published|created|title|tags)\s*:/i.test(text)) {
-    return true;
-  }
-  if (/\b\d{1,2}:\d{2}\b/.test(text)) {
-    return true;
-  }
-  if (/^(sure!?|here(?:'|’)s)\b/i.test(text)) {
-    return true;
-  }
-  return false;
-}
-
-async function resolveDescription(
-  input: Pick<SaveInput, "content_markdown" | "description">,
-  generateDescription?: DescriptionGenerator,
-): Promise<string> {
-  const explicit = input.description?.trim();
-  if (explicit) {
-    return explicit.slice(0, 200);
-  }
-
-  const candidate = extractDescriptionCandidate(input.content_markdown);
-  if (!generateDescription) {
-    return candidate.slice(0, 200);
-  }
-
-  let generated = "";
-  try {
-    generated = (await generateDescription(input.content_markdown)).trim();
-  } catch {
-    return candidate.slice(0, 200);
-  }
-  if (!generated) {
-    return candidate.slice(0, 200);
-  }
-  const cleaned = cleanMarkdownParagraph(generated).slice(0, 200);
-  if (cleaned) {
-    return cleaned;
-  }
-  return candidate.slice(0, 200);
-}
-
 function normalizeDateString(value: string): string {
   const text = value.trim();
   if (!text) {
@@ -325,13 +200,20 @@ function normalizeDateString(value: string): string {
   return `${matched[1]}-${matched[2].padStart(2, "0")}-${matched[3].padStart(2, "0")}`;
 }
 
-function buildNoteContent(input: SaveInput, tags: string[], description?: string): string {
-  const safeTitle = normalizeSingleLineText(input.title);
+function buildNoteContent(
+  input: SaveInput,
+  tags: string[],
+  overrides: { title?: string; description?: string } = {},
+): string {
+  const effectiveTitle = overrides.title || input.title;
+  const effectiveDescription = overrides.description || input.description || "";
+  const safeTitle = normalizeSingleLineText(effectiveTitle);
   const safeAuthor = normalizeSingleLineText(input.author?.trim() || "Unknown");
   const created = formatLocalDate(new Date());
-  const published = normalizeDateString(normalizeSingleLineText(input.published?.trim() || created));
-  const rawDescription = description?.trim() || input.description?.trim() || "";
-  const resolvedDescription = normalizeFrontmatterDescription(rawDescription);
+  const published = normalizeDateString(
+    normalizeSingleLineText(input.published?.trim() || created),
+  );
+  const safeDescription = normalizeSingleLineText(effectiveDescription).slice(0, 200);
   const tagInline = tags.map((t) => quoteYamlValue(t)).join(", ");
 
   const frontmatter = [
@@ -341,7 +223,7 @@ function buildNoteContent(input: SaveInput, tags: string[], description?: string
     `author: ${quoteYamlValue(safeAuthor)}`,
     `published: ${quoteYamlValue(published)}`,
     `created: ${quoteYamlValue(created)}`,
-    `description: ${quoteYamlValue(resolvedDescription)}`,
+    `description: ${quoteYamlValue(safeDescription)}`,
     `tags: [${tagInline}]`,
     "---",
     "",
@@ -431,7 +313,10 @@ function parseVaultsVerbose(output: string): Array<{ name: string; path: string 
     .filter((entry) => entry.name && entry.path);
 }
 
-function findVaultPathFromDesktopConfig(configText: string, vaultName?: string): string | undefined {
+function findVaultPathFromDesktopConfig(
+  configText: string,
+  vaultName?: string,
+): string | undefined {
   if (!configText.trim()) {
     return undefined;
   }
@@ -629,30 +514,30 @@ function resolveVaultNotePath(vaultPath: string, notePath: string): string {
 }
 
 export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps = {}) {
-  const generateDescription =
-    deps.generateDescription ||
-    (async (markdown: string) => {
+  const resolveTitleAndDescription =
+    deps.generateTitleAndDescription ||
+    (async (title: string, contentMarkdown: string) => {
       const startedAt = Date.now();
-      const timeoutMs = 20_000;
+      const timeoutMs = 60_000;
       const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
       const model = provider === "openai" ? env.openaiModel : env.geminiModel;
       logger.info(
-        `[tool:save_to_obsidian] description_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
+        `[tool:save_to_obsidian] title_desc_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
       );
       try {
-        const description = await generateDescriptionWithModel(markdown, {
+        const result = await generateTitleAndDescription(title, contentMarkdown, {
           env,
           provider,
           model,
           timeoutMs,
         });
         logger.info(
-          `[tool:save_to_obsidian] description_done chars=${description.length} elapsed_ms=${Date.now() - startedAt}`,
+          `[tool:save_to_obsidian] title_desc_done original_title="${title}" resolved_title="${result.title}" desc_chars=${result.description.length} elapsed_ms=${Date.now() - startedAt}`,
         );
-        return description;
+        return result;
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        logger.warn(`[tool:save_to_obsidian] description_failed msg=${msg}`);
+        logger.warn(`[tool:save_to_obsidian] title_desc_failed msg=${msg}`);
         throw error;
       }
     });
@@ -662,10 +547,25 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
+
+      // Use LLM to resolve title and description
+      let resolvedTitle = input.title;
+      let resolvedDescription = input.description || "";
+      try {
+        const result = await resolveTitleAndDescription(input.title, input.content_markdown);
+        resolvedTitle = result.title;
+        resolvedDescription = result.description;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.warn(`[tool:save_to_obsidian] title_desc generation failed, using original: ${msg}`);
+      }
+
       const initialPath =
-        input.path || buildDefaultPath(input.title, env.obsidianFolder, dynamicFolder);
-      const description = await resolveDescription(input, generateDescription);
-      const content = buildNoteContent(input, tags, description);
+        input.path || buildDefaultPath(resolvedTitle, env.obsidianFolder, dynamicFolder);
+      const content = buildNoteContent(input, tags, {
+        title: resolvedTitle,
+        description: resolvedDescription,
+      });
       logger.info(
         `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${initialPath} dynamic_folder=${dynamicFolder}`,
       );
@@ -741,9 +641,6 @@ export const __test__ = {
   normalizeObsidianTags,
   formatObsidianCommandForLog,
   hasObsidianOutputError,
-  extractDescriptionCandidate,
-  shouldFallbackToGeneratedDescription,
-  resolveDescription,
   normalizeDateString,
   parseVaultsVerbose,
   findVaultPathFromDesktopConfig,
