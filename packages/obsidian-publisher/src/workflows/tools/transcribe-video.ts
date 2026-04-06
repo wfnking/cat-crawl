@@ -68,7 +68,7 @@ function shouldTranslateToChinese(sourceText: string): boolean {
   if (!sample.trim()) {
     return false;
   }
-  const latinMatches = sample.match(/[A-Za-z]/g) || [];
+  const latinMatches = sample.match(/\b[A-Za-z]+(?:['’-][A-Za-z]+)*\b/g) || [];
   const cjkMatches = sample.match(/[\u3400-\u9fff]/g) || [];
   if (latinMatches.length === 0) {
     return false;

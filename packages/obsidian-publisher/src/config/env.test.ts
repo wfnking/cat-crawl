@@ -308,8 +308,13 @@ test('loadEnv should read obsidian settings from structured camelCase config', (
   try {
     const env = loadEnv()
     assert.equal(env.obsidianVault, '知识库')
-    assert.equal(env.obsidianFolder, 'Clippings/AI')
-    assert.equal('obsidianDynamicFolders' in env, false)
+    assert.equal(env.obsidianFolder, 'Clippings')
+    assert.deepEqual(env.obsidianFolders, [
+      {
+        folder: 'Clippings/AI',
+        description: ''
+      }
+    ])
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()

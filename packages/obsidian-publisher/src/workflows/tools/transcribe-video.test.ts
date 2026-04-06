@@ -371,6 +371,20 @@ test('shouldTranslateToChinese should detect non-Chinese transcript', () => {
   )
 })
 
+test('shouldTranslateToChinese should keep Chinese transcript monolingual when English translation is mixed in', () => {
+  assert.equal(
+    __test__.shouldTranslateToChinese(
+      [
+        '2026做自媒体一定要有长期价值，做深度内容，不要害怕做长视频没人看。',
+        "In 2026, if you're doing self-media, you must have long-term value and create in-depth content.",
+        '所以视频时长和完播是不会影响你视频流量的。',
+        "Therefore, video length and completion rate do not affect your video's traffic."
+      ].join('\n\n')
+    ),
+    false
+  )
+})
+
 test('pickGeminiSummarizeModel should route translation to pro preview', () => {
   assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, true), 'gemini-2.5-pro')
   assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, false), 'gemini-2.5-pro')

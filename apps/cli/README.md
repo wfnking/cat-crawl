@@ -87,6 +87,7 @@ Recommended nested format:
   },
   "obsidian": {
     "vault": "知识库",
+    "folder": "Clippings",
     "folders": [
       {
         "folder": "Clippings/AI",
@@ -96,6 +97,8 @@ Recommended nested format:
   }
 }
 ```
+
+`obsidian.folder` is the base save directory. `obsidian.folders` provides candidate subfolders for model-based classification, and uncertain cases fall back to the base folder.
 
 `vertex` uses Vertex AI's ADC/OAuth flow. Configure the agent through the CLI or `~/.cat-crawl/config.json`.
 

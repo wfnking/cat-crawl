@@ -1,5 +1,10 @@
 import { getLocalConfigStore } from '@cat-crawl/core'
 
+export type ObsidianFolderOption = {
+  folder: string
+  description: string
+}
+
 export type AppEnv = {
   agent: 'openai' | 'gemini' | 'vertex'
   aiProvider: 'openai' | 'gemini' | 'vertex'
@@ -36,6 +41,7 @@ export type AppEnv = {
   discordBotToken?: string
   obsidianVault?: string
   obsidianFolder: string
+  obsidianFolders: ObsidianFolderOption[]
   maxToolSteps: number
 }
 
@@ -66,6 +72,27 @@ function readStringFromPaths(root: Record<string, unknown>, paths: string[][]): 
     }
   }
   return undefined
+}
+
+function readStructuredObsidianFolders(): ObsidianFolderOption[] {
+  const raw = getLocalConfigStore().readRaw()
+  const value = readFromPath(raw, ['obsidian', 'folders'])
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => {
+      const record = asObject(item)
+      const folder = typeof record?.folder === 'string' ? record.folder.trim() : ''
+      const description =
+        typeof record?.description === 'string' ? record.description.trim() : ''
+      if (!folder) {
+        return null
+      }
+      return { folder, description }
+    })
+    .filter((item): item is ObsidianFolderOption => Boolean(item))
 }
 
 function readFromStructuredConfig(name: string): string | undefined {
@@ -134,29 +161,11 @@ function readFromStructuredConfig(name: string): string | undefined {
   }
 
   if (name === 'OBSIDIAN_DYNAMIC_FOLDERS') {
-    const value = readFromPath(raw, ['obsidian', 'folders'])
-    if (Array.isArray(value)) {
-      return value
-        .map((item) => {
-          const folder = asObject(item)?.folder
-          return typeof folder === 'string' ? folder.trim() : ''
-        })
-        .filter(Boolean)
-        .join(',')
-    }
-    return undefined
+    const folders = readStructuredObsidianFolders()
+    return folders.length > 0 ? folders.map((item) => item.folder).join(',') : undefined
   }
 
   if (name === 'OBSIDIAN_FOLDER') {
-    const folders = readFromPath(raw, ['obsidian', 'folders'])
-    if (Array.isArray(folders)) {
-      for (const item of folders) {
-        const folder = asObject(item)?.folder
-        if (typeof folder === 'string' && folder.trim()) {
-          return folder.trim()
-        }
-      }
-    }
     const legacyValue = readFromPath(raw, ['obsidian', 'folder'])
     return typeof legacyValue === 'string' && legacyValue.trim() ? legacyValue.trim() : undefined
   }
@@ -368,6 +377,7 @@ export function loadEnv(): AppEnv {
   const aiChatProvider = getAiProvider('AI_CHAT_PROVIDER')
   const aiClassifyProvider = getAiProvider('AI_CLASSIFY_PROVIDER')
   const aiSummarizeProvider = getAiProvider('AI_SUMMARIZE_PROVIDER')
+  const obsidianFolders = readStructuredObsidianFolders()
   const configuredGeminiApiKey = readRaw('GEMINI_API_KEY') || undefined
   const configuredGoogleApiKey = readRaw('GOOGLE_API_KEY') || undefined
   const configuredVertexApiKey = readRaw('GOOGLE_VERTEX_API_KEY') || undefined
@@ -417,6 +427,7 @@ export function loadEnv(): AppEnv {
     discordBotToken: readRaw('DISCORD_BOT_TOKEN') || undefined,
     obsidianVault: readRaw('OBSIDIAN_VAULT') || undefined,
     obsidianFolder: readRaw('OBSIDIAN_FOLDER') || 'Clippings',
+    obsidianFolders,
     maxToolSteps: getNumber('MAX_TOOL_STEPS', 4)
   }
 }

@@ -12,15 +12,16 @@ test("resolveDouyinVideoSource should resolve redirected share urls and download
         title: "Demo Douyin Video",
       };
     },
-    downloadVideo: async (mediaUrl) => {
+    downloadVideo: async (mediaUrl, _outputDir, preferredName) => {
       assert.equal(mediaUrl, "https://video-cdn.example.com/demo.mp4");
-      return "/tmp/cat-crawl-video/douyin.mp4";
+      assert.equal(preferredName, "Demo Douyin Video");
+      return "/tmp/cat-crawl-video/Demo Douyin Video.mp4";
     },
   });
 
   assert.equal(result.adapter, "douyin");
   assert.equal(result.sourceUrl, "https://www.douyin.com/video/123456");
-  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/douyin.mp4");
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/Demo Douyin Video.mp4");
   assert.equal(result.title, "Demo Douyin Video");
 });
 
@@ -36,8 +37,9 @@ test("resolveDouyinVideoSource should retry candidate urls until one has audio",
       ],
       title: "Demo Douyin Video",
     }),
-    downloadVideo: async (mediaUrl) => {
+    downloadVideo: async (mediaUrl, _outputDir, preferredName) => {
       downloaded.push(mediaUrl);
+      assert.equal(preferredName, "Demo Douyin Video");
       return mediaUrl.includes("video-only")
         ? "/tmp/cat-crawl-video/video-only.mp4"
         : "/tmp/cat-crawl-video/video-with-audio.mp4";

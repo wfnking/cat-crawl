@@ -11,11 +11,11 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "tsx apps/cli/src/index.ts",
-    "dev:feishu": "tsx apps/cli/src/index.ts obsidian start --feishu",
-    "dev:telegram": "tsx apps/cli/src/index.ts obsidian start --telegram",
-    "dev:discord": "tsx apps/cli/src/index.ts obsidian start --discord",
-    "dev:all": "tsx apps/cli/src/index.ts obsidian start --all-channels",
+    "dev": "NODE_ENV=development tsx apps/cli/src/index.ts",
+    "dev:feishu": "NODE_ENV=development tsx apps/cli/src/index.ts obsidian start --feishu",
+    "dev:telegram": "NODE_ENV=development tsx apps/cli/src/index.ts obsidian start --telegram",
+    "dev:discord": "NODE_ENV=development tsx apps/cli/src/index.ts obsidian start --discord",
+    "dev:all": "NODE_ENV=development tsx apps/cli/src/index.ts obsidian start --all-channels",
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "start": "node dist/apps/cli/src/index.js",
     "test": "tsx --test src/**/*.test.ts apps/**/*.test.ts packages/**/*.test.ts",

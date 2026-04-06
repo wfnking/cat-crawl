@@ -25,8 +25,9 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
       assert.ok(args.includes("-f"));
       assert.ok(args.includes("bestaudio/best"));
       assert.ok(args.includes("after_move:filepath"));
+      assert.ok(args.includes("/tmp/cat-crawl-video/Demo Title.%(ext)s"));
       return {
-        stdout: "/tmp/cat-crawl-video/audio.webm\n",
+        stdout: "/tmp/cat-crawl-video/Demo Title.webm\n",
         stderr: "",
       };
     },
@@ -38,7 +39,7 @@ test("resolveYouTubeVideoSource should return local file path from yt-dlp output
   assert.equal(result.published, "2025-11-23");
   assert.equal(result.author, "AI Engineer");
   assert.equal(result.title, "Demo Title");
-  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/audio.webm");
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/Demo Title.webm");
 });
 
 test("resolveYouTubeVideoSource should report missing yt-dlp", async () => {
@@ -71,23 +72,25 @@ test("resolveYouTubeVideoSource should handle empty uploader field", async () =>
   let callCount = 0;
   const result = await resolveYouTubeVideoSource("https://www.youtube.com/watch?v=abc123", {
     outputDir: "/tmp/cat-crawl-video",
-    execFileAsync: async () => {
+    execFileAsync: async (_file, args) => {
       callCount += 1;
-      return callCount === 1
-        ? {
-            stdout: "published:20251123\nauthor:\ntitle:Some Title\n",
-            stderr: "",
-          }
-        : {
-            stdout: "/tmp/cat-crawl-video/audio.webm\n",
-            stderr: "",
-          };
+      if (callCount === 1) {
+        return {
+          stdout: "published:20251123\nauthor:\ntitle:Some Title\n",
+          stderr: "",
+        };
+      }
+      assert.ok(args.includes("/tmp/cat-crawl-video/Some Title.%(ext)s"));
+      return {
+        stdout: "/tmp/cat-crawl-video/Some Title.webm\n",
+        stderr: "",
+      };
     },
   });
 
   assert.equal(result.author, undefined);
   assert.equal(result.title, "Some Title");
-  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/audio.webm");
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/Some Title.webm");
 });
 
 test("resolveYouTubeVideoSource should ignore yt-dlp warnings when filepath is present", async () => {

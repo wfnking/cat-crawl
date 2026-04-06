@@ -174,6 +174,132 @@ test("resolveAvailableNotePath should append numeric suffix when file already ex
   assert.equal(resolved, "Clippings/demo (3).md");
 });
 
+test("resolveTargetFolder should prefer explicit folder override", () => {
+  assert.equal(
+    __test__.resolveTargetFolder("Clippings/AI/ai-coding", "Clippings"),
+    "Clippings/AI/ai-coding",
+  );
+});
+
+test("resolveTargetFolder should fall back to base folder when override is empty", () => {
+  assert.equal(__test__.resolveTargetFolder("", "Clippings"), "Clippings");
+  assert.equal(__test__.resolveTargetFolder(undefined, "Clippings"), "Clippings");
+});
+
+test("isDevelopmentMode should only enable debug logging in development", () => {
+  assert.equal(__test__.isDevelopmentMode("development"), true);
+  assert.equal(__test__.isDevelopmentMode("production"), false);
+  assert.equal(__test__.isDevelopmentMode(undefined), false);
+});
+
+test("buildFolderClassificationDebugLogPath should group logs by date", () => {
+  const path = __test__.buildFolderClassificationDebugLogPath(
+    new Date("2026-04-06T22:17:03.000Z"),
+    "/tmp/cat-crawl",
+  );
+
+  assert.equal(
+    path,
+    "/tmp/cat-crawl/log/2026-04-07/folder-classification-2026-04-06T22-17-03.000Z.log",
+  );
+});
+
+test("buildFolderClassificationDebugLog should include content preview and raw response", () => {
+  const rendered = __test__.buildFolderClassificationDebugLog({
+    title: "娶妻不娶妾，男人擦亮眼睛",
+    sourceUrl: "https://example.com/post",
+    description: "关于两性关系判断的内容。",
+    baseFolder: "Clippings",
+    candidates: [{ folder: "Clippings/Relationship", description: "两性关系" }],
+    contentPreview: "这是发给 LLM 的正文预览。",
+    rawResponse: '{"folder":""}',
+    selectedFolder: null,
+  });
+
+  assert.match(rendered, /\[content_preview_sent_to_llm\]\n这是发给 LLM 的正文预览。/);
+  assert.match(rendered, /\[raw_response\]\n\{"folder":""\}/);
+  assert.match(rendered, /Clippings\/Relationship :: 两性关系/);
+});
+
+test("parseFolderClassifierOutput should only accept configured folders", () => {
+  const allowedFolders = new Set(["Clippings/Writing", "Clippings/AI/ai-coding"]);
+
+  assert.equal(
+    __test__.parseFolderClassifierOutput('{"folder":"Clippings/Writing"}', allowedFolders),
+    "Clippings/Writing",
+  );
+  assert.equal(
+    __test__.parseFolderClassifierOutput('{"folder":"Clippings/Unknown"}', allowedFolders),
+    null,
+  );
+  assert.equal(__test__.parseFolderClassifierOutput('{"folder":""}', allowedFolders), null);
+});
+
+test("resolveObsidianRouting should prefer current config loaded at save time", () => {
+  assert.deepEqual(
+    __test__.resolveObsidianRouting(
+      {
+        obsidianFolder: "Clippings",
+        obsidianFolders: [{ folder: "Clippings/Writing", description: "写作与思考" }],
+      },
+      {
+        obsidianFolder: "Archive",
+        obsidianFolders: [],
+      },
+    ),
+    {
+      env: {
+        obsidianFolder: "Clippings",
+        obsidianFolders: [{ folder: "Clippings/Writing", description: "写作与思考" }],
+      },
+      baseFolder: "Clippings",
+      candidates: [{ folder: "Clippings/Writing", description: "写作与思考" }],
+    },
+  );
+});
+
+test("determineTargetFolder should choose configured folder during save", async () => {
+  const folder = await __test__.determineTargetFolder(
+    {
+      title: "Write More to Improve Your Thinking",
+      source_url: "https://x.com/example/status/1",
+      description: "A post about writing and thinking.",
+      content_markdown: "Write more essays to sharpen your thinking.",
+    },
+    {
+      env: { obsidianFolder: "Clippings", obsidianFolders: [] },
+      baseFolder: "Clippings",
+      candidates: [{ folder: "Clippings/Writing", description: "写作与思考" }],
+    },
+    async (input: { baseFolder: string; candidates: Array<{ folder: string }> }) => {
+      assert.equal(input.baseFolder, "Clippings");
+      assert.equal(input.candidates[0]?.folder, "Clippings/Writing");
+      return "Clippings/Writing";
+    },
+  );
+
+  assert.equal(folder, "Clippings/Writing");
+});
+
+test("determineTargetFolder should fall back to base folder when classifier is unsure", async () => {
+  const folder = await __test__.determineTargetFolder(
+    {
+      title: "Relationship Advice",
+      source_url: "https://x.com/example/status/1",
+      description: "A post about relationships.",
+      content_markdown: "How to judge whether someone is a friend or partner.",
+    },
+    {
+      env: { obsidianFolder: "Clippings", obsidianFolders: [] },
+      baseFolder: "Clippings",
+      candidates: [{ folder: "Clippings/Writing", description: "写作与思考" }],
+    },
+    async () => "",
+  );
+
+  assert.equal(folder, "Clippings");
+});
+
 test("normalizeObsidianTag should convert unsupported tag characters", () => {
   assert.equal(__test__.normalizeObsidianTag("Google Stitch"), "Google-Stitch");
   assert.equal(__test__.normalizeObsidianTag("#AI News"), "AI-News");

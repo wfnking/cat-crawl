@@ -121,6 +121,7 @@ cat-crawl obsidian pairing approve telegram <code>
   },
   "obsidian": {
     "vault": "知识库",
+    "folder": "Clippings",
     "folders": [
       {
         "folder": "Clippings/AI",
@@ -130,6 +131,12 @@ cat-crawl obsidian pairing approve telegram <code>
   }
 }
 ```
+
+说明：
+
+- `obsidian.folder` 是默认保存根目录，通常设为 `Clippings`
+- `obsidian.folders` 是给 LLM 做分类判断的候选子目录
+- 如果 LLM 没把握，就会直接保存到 `obsidian.folder`
 
 ## 视频转写配置要点
 

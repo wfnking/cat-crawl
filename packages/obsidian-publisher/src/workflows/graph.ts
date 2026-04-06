@@ -153,7 +153,6 @@ export function normalizeModelText(content: unknown): string {
   return String(content ?? "").trim();
 }
 
-
 async function detectHistoryIntent(userInput: string, runtime: AgentRuntime) {
   const fallback = parseHistoryIntentFromText(userInput);
   const classifyModel = createModel(runtime.env, {
@@ -419,15 +418,6 @@ function createTranscribeVideoNode(runtime: AgentRuntime) {
   };
 }
 
-function createClassifyFolderNode(runtime: AgentRuntime) {
-  return async (state: AgentGraphStateShape): Promise<Partial<AgentGraphStateShape>> => {
-    if (!state.ingestResult) {
-      return {};
-    }
-    return {};
-  };
-}
-
 function createSaveNoteNode(runtime: AgentRuntime) {
   return async (state: AgentGraphStateShape): Promise<Partial<AgentGraphStateShape>> => {
     const saveContent = state.ingestResult
@@ -520,7 +510,6 @@ export function createAgentGraph(runtime: AgentRuntime) {
     .addNode("route_content", routeContentNode)
     .addNode("crawl_article", createCrawlArticleNode(runtime))
     .addNode("transcribe_video", createTranscribeVideoNode(runtime))
-    .addNode("classify_folder", createClassifyFolderNode(runtime))
     .addNode("save_note", createSaveNoteNode(runtime))
     .addNode("build_reply", createBuildReplyNode(runtime))
     .addEdge(START, "parse_input")
@@ -540,9 +529,8 @@ export function createAgentGraph(runtime: AgentRuntime) {
     .addConditionalEdges("route_content", (state) => {
       return state.contentType === "video" ? "transcribe_video" : "crawl_article";
     })
-    .addEdge("transcribe_video", "classify_folder")
-    .addEdge("crawl_article", "classify_folder")
-    .addEdge("classify_folder", "save_note")
+    .addEdge("transcribe_video", "save_note")
+    .addEdge("crawl_article", "save_note")
     .addEdge("save_note", "build_reply")
     .addEdge("build_reply", END)
     .compile();

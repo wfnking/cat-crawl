@@ -29,6 +29,16 @@ type ResolvedYouTubeVideoSource = {
   author?: string;
 };
 
+function sanitizeMediaFileName(input: string): string {
+  return input
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^\.+$/g, "")
+    .slice(0, 120)
+    .trim();
+}
+
 function parseMetadataOutput(stdout: string): {
   published: string | undefined;
   author: string | undefined;
@@ -124,7 +134,6 @@ export async function resolveYouTubeVideoSource(
   await mkdir(options.outputDir, { recursive: true });
 
   const execFileAsync = options.execFileAsync || execFileAsyncDefault;
-  const outputTemplate = join(options.outputDir, "audio.%(ext)s");
   try {
     const metadataResult = await execFileAsync(
       "yt-dlp",
@@ -132,6 +141,8 @@ export async function resolveYouTubeVideoSource(
       { maxBuffer: 10 * 1024 * 1024 },
     );
     const { published, author, title } = parseMetadataOutput(metadataResult.stdout);
+    const preferredBaseName = sanitizeMediaFileName(title || "") || "%(title)s";
+    const outputTemplate = join(options.outputDir, `${preferredBaseName}.%(ext)s`);
 
     let downloadStdout = "";
     let downloadStderr = "";

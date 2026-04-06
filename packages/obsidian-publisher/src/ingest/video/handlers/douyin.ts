@@ -2,7 +2,7 @@ import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
 import { loadChromeCookiesForDomains } from "../helpers/chrome-cookies.js";
 
@@ -55,7 +55,7 @@ type ResolveDouyinVideoSourceOptions = {
     cookieHeader?: string,
     loadChromeCookies?: typeof loadChromeCookiesForDomains,
   ) => Promise<ExtractedDouyinVideo>;
-  downloadVideo?: (mediaUrl: string, outputDir: string) => Promise<string>;
+  downloadVideo?: (mediaUrl: string, outputDir: string, preferredName?: string) => Promise<string>;
   hasAudioTrack?: (mediaPath: string) => Promise<boolean>;
 };
 
@@ -468,13 +468,48 @@ async function extractDouyinVideoDefault(
   });
 }
 
-async function downloadDouyinVideoDefault(mediaUrl: string, outputDir: string): Promise<string> {
+function sanitizeMediaFileName(input: string): string {
+  return input
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^\.+$/g, "")
+    .slice(0, 120)
+    .trim();
+}
+
+function inferDouyinMediaFileName(mediaUrl: string, preferredName?: string): string {
+  const preferred = sanitizeMediaFileName(preferredName || "");
+  if (preferred) {
+    return preferred;
+  }
+
+  try {
+    const pathname = new URL(mediaUrl).pathname;
+    const rawBaseName = basename(pathname, extname(pathname));
+    const normalized = sanitizeMediaFileName(rawBaseName);
+    if (normalized) {
+      return normalized;
+    }
+  } catch {
+    // Fall through to default filename.
+  }
+
+  return "douyin-video";
+}
+
+async function downloadDouyinVideoDefault(
+  mediaUrl: string,
+  outputDir: string,
+  preferredName?: string,
+): Promise<string> {
   const response = await fetch(mediaUrl);
   if (!response.ok) {
     throw new Error(`media download failed: status=${response.status}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
-  const targetPath = join(outputDir, "douyin-video.mp4");
+  const extension = extname(new URL(mediaUrl).pathname) || ".mp4";
+  const targetPath = join(outputDir, `${inferDouyinMediaFileName(mediaUrl, preferredName)}${extension}`);
   await writeFile(targetPath, bytes);
   return targetPath;
 }
@@ -504,7 +539,7 @@ export async function resolveDouyinVideoSource(
   let downloadedCount = 0;
   for (const candidate of candidates) {
     try {
-      const mediaPath = await downloadVideo(candidate, outputDir);
+      const mediaPath = await downloadVideo(candidate, outputDir, extracted.title);
       downloadedCount += 1;
       const hasAudio = await hasAudioTrack(mediaPath);
       if (hasAudio) {

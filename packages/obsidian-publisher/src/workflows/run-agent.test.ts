@@ -14,7 +14,8 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
     {
       loadEnv: () =>
         ({
-          obsidianFolder: 'Clippings/AI',
+          obsidianFolder: 'Clippings',
+          obsidianFolders: [],
           transcriptionProvider: 'whisper_cpp',
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
@@ -40,6 +41,7 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
             }
           }
         }) as never,
+      classifyFolder: async () => null,
       crawlWebArticleTool: {
         invoke: async () => {
           crawlCalled = true
@@ -48,15 +50,16 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
       },
       createSaveToObsidianTool: () =>
         ({
-          invoke: async (input: { title: string; content_markdown: string }) => {
+          invoke: async (input: { title: string; content_markdown: string; folder?: string }) => {
             saveCalled = true
             assert.equal(input.title, 'YouTube Demo')
             assert.equal(Object.prototype.hasOwnProperty.call(input, 'dynamic_folder'), false)
+            assert.equal(input.folder, undefined)
             assert.match(input.content_markdown, /hello transcript/)
             return {
               saved: true,
               vault: '知识库',
-              path: 'Clippings/AI/YouTube Demo.md',
+              path: 'Clippings/YouTube Demo.md',
               tags: ['video', 'transcript']
             }
           }
@@ -74,10 +77,10 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
   assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
   assert.match(result.reply, /视频转写已成功保存到 Obsidian/)
   assert.doesNotMatch(result.reply, /分类：/)
-  assert.match(result.reply, /知识库\/Clippings\/AI\/YouTube Demo\.md/)
+  assert.match(result.reply, /知识库\/Clippings\/YouTube Demo\.md/)
 })
 
-test('runAgent should use configured folder without dynamic classification', async () => {
+test('runAgent should rely on save_to_obsidian to choose configured folder', async () => {
   let saveCalled = false
 
   const result = await runAgent(
@@ -86,7 +89,17 @@ test('runAgent should use configured folder without dynamic classification', asy
     {
       loadEnv: () =>
         ({
-          obsidianFolder: 'Clippings/AI',
+          obsidianFolder: 'Clippings',
+          obsidianFolders: [
+            {
+              folder: 'Clippings/AI/ai-coding',
+              description: 'AI 编程相关'
+            },
+            {
+              folder: 'Clippings/Writing',
+              description: '写作与思考'
+            }
+          ],
           transcriptionProvider: 'whisper_cpp',
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
@@ -108,11 +121,11 @@ test('runAgent should use configured folder without dynamic classification', asy
         ({
           invoke: async (input: Record<string, unknown>) => {
             saveCalled = true
-            assert.equal(Object.prototype.hasOwnProperty.call(input, 'dynamic_folder'), false)
+            assert.equal(input.folder, undefined)
             return {
               saved: true,
               vault: '知识库',
-              path: 'Clippings/AI/AI Engineer.md',
+              path: 'Clippings/AI/ai-coding/AI Engineer.md',
             }
           }
         }) as never,
@@ -123,7 +136,61 @@ test('runAgent should use configured folder without dynamic classification', asy
   assert.equal(saveCalled, true)
   assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
   assert.doesNotMatch(result.reply, /分类：/)
-  assert.match(result.reply, /知识库\/Clippings\/AI\/AI Engineer\.md/)
+  assert.match(result.reply, /知识库\/Clippings\/AI\/ai-coding\/AI Engineer\.md/)
+})
+
+test('runAgent should rely on save_to_obsidian fallback to Clippings when classification is unsure', async () => {
+  let saveCalled = false
+
+  const result = await runAgent(
+    '帮我处理这个视频 https://www.youtube.com/watch?v=demo123',
+    undefined,
+    {
+      loadEnv: () =>
+        ({
+          obsidianFolder: 'Clippings',
+          obsidianFolders: [
+            {
+              folder: 'Clippings/AI/ai-coding',
+              description: 'AI 编程相关'
+            }
+          ],
+          transcriptionProvider: 'whisper_cpp',
+          whisperCppBin: 'whisper-cli',
+          whisperCppModelPath: '/models/base.bin',
+          whisperCppLanguage: undefined
+        }) as never,
+      createTranscribeVideoTool: () =>
+        ({
+          invoke: async () => ({
+            title: '判断朋友与伴侣的标准',
+            source_url: 'https://www.youtube.com/watch?v=demo123',
+            content_markdown: '# 判断朋友与伴侣的标准\n\n关于关系判断的内容。',
+            author: 'Creator',
+            published: '2026-04-06',
+            description: 'Relationship advice.',
+            tags: ['video', 'relationship']
+          })
+        }) as never,
+      createSaveToObsidianTool: () =>
+        ({
+          invoke: async (input: Record<string, unknown>) => {
+            saveCalled = true
+            assert.equal(input.folder, undefined)
+            return {
+              saved: true,
+              vault: '知识库',
+              path: 'Clippings/判断朋友与伴侣的标准.md',
+            }
+          }
+        }) as never,
+      persistSuccessHistory: () => {}
+    }
+  )
+
+  assert.equal(saveCalled, true)
+  assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
+  assert.match(result.reply, /知识库\/Clippings\/判断朋友与伴侣的标准\.md/)
 })
 
 test('runAgent should keep article URLs on crawl path', async () => {

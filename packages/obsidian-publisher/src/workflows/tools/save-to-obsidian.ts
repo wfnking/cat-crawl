@@ -1,15 +1,17 @@
 import { tool } from "@langchain/core/tools";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
 import { appendFile, access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import type { AppEnv } from "../../config/env.js";
+import { loadEnv, type AppEnv, type ObsidianFolderOption } from "../../config/env.js";
 import {
   generateTitleAndDescription,
   type TitleDescriptionResult,
 } from "../llm/generate-title-description.js";
+import { createModel } from "../llm/models/index.js";
 
 const execFileAsync = promisify(execFile);
 const logger = createLogger();
@@ -27,6 +29,7 @@ const inputSchema = z.object({
   source: z.string().min(1).optional().describe("来源名称（兼容字段，不用于 properties.source）"),
   tags: z.array(z.string().min(1)).optional().describe("标签数组"),
   vault: z.string().min(1).optional().describe("Obsidian vault 名称"),
+  folder: z.string().min(1).optional().describe("保存目录；不传时使用配置中的基础目录"),
   path: z
     .string()
     .min(1)
@@ -41,8 +44,35 @@ type TitleDescriptionGenerator = (
   contentMarkdown: string,
   published: string,
 ) => Promise<TitleDescriptionResult>;
+type ResolvedObsidianRouting = {
+  env: AppEnv;
+  baseFolder: string;
+  candidates: ObsidianFolderOption[];
+};
+type FolderClassificationInput = {
+  env: AppEnv;
+  title: string;
+  sourceUrl: string;
+  description?: string;
+  contentMarkdown: string;
+  baseFolder: string;
+  candidates: ObsidianFolderOption[];
+};
+type FolderClassificationDebugEntry = {
+  title: string;
+  sourceUrl: string;
+  description?: string;
+  baseFolder: string;
+  candidates: ObsidianFolderOption[];
+  contentPreview: string;
+  rawResponse?: string;
+  selectedFolder?: string | null;
+  error?: string;
+};
 type SaveToObsidianDeps = {
   generateTitleAndDescription?: TitleDescriptionGenerator;
+  loadCurrentEnv?: () => AppEnv;
+  classifyConfiguredFolder?: (input: FolderClassificationInput) => Promise<string | null>;
 };
 
 function formatLocalDate(date: Date): string {
@@ -122,6 +152,222 @@ function buildDefaultPath(title: string, folder: string): string {
   const folderSegments = normalizePathSegments(folder.split("/"));
   const basePath = folderSegments.length > 0 ? folderSegments.join("/") : "clippings";
   return `${basePath}/${date} ${safeTitle}.md`;
+}
+
+function resolveTargetFolder(folder: string | undefined, baseFolder: string): string {
+  const override = folder?.trim();
+  if (override) {
+    return override;
+  }
+  return baseFolder.trim() || "Clippings";
+}
+
+function buildFolderClassificationPreview(markdown: string): string {
+  return markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .slice(0, 1500);
+}
+
+function isDevelopmentMode(nodeEnv = process.env.NODE_ENV): boolean {
+  return nodeEnv === "development";
+}
+
+function buildFolderClassificationDebugLogPath(
+  now: Date,
+  rootDir = process.cwd(),
+): string {
+  const dateDir = formatLocalDate(now);
+  const timestamp = now.toISOString().replace(/[:]/g, "-");
+  return join(rootDir, "log", dateDir, `folder-classification-${timestamp}.log`);
+}
+
+function buildFolderClassificationDebugLog(entry: FolderClassificationDebugEntry): string {
+  return [
+    `title: ${entry.title}`,
+    `source_url: ${entry.sourceUrl}`,
+    `base_folder: ${entry.baseFolder}`,
+    `selected_folder: ${entry.selectedFolder ?? ""}`,
+    `error: ${entry.error ?? ""}`,
+    "",
+    "[description]",
+    entry.description || "",
+    "",
+    "[candidates]",
+    ...entry.candidates.map((item) => `${item.folder} :: ${item.description || "(无描述)"}`),
+    "",
+    "[content_preview_sent_to_llm]",
+    entry.contentPreview,
+    "",
+    "[raw_response]",
+    entry.rawResponse || "",
+    "",
+  ].join("\n");
+}
+
+async function writeFolderClassificationDebugLog(
+  entry: FolderClassificationDebugEntry,
+  now = new Date(),
+): Promise<void> {
+  if (!isDevelopmentMode()) {
+    return;
+  }
+
+  const logPath = buildFolderClassificationDebugLogPath(now);
+  await mkdir(dirname(logPath), { recursive: true });
+  await writeFile(logPath, buildFolderClassificationDebugLog(entry), "utf8");
+}
+
+function parseFolderClassifierOutput(
+  text: string,
+  allowedFolders: Set<string>,
+): string | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(normalized) as { folder?: unknown };
+    if (typeof parsed.folder === "string") {
+      const folder = parsed.folder.trim();
+      return folder && allowedFolders.has(folder) ? folder : null;
+    }
+  } catch {
+    // Fall through to plain-text matching.
+  }
+
+  return allowedFolders.has(normalized) ? normalized : null;
+}
+
+function resolveObsidianRouting(currentEnv: AppEnv | undefined, fallbackEnv: AppEnv): ResolvedObsidianRouting {
+  const effectiveEnv = currentEnv || fallbackEnv;
+  return {
+    env: effectiveEnv,
+    baseFolder: effectiveEnv.obsidianFolder?.trim() || fallbackEnv.obsidianFolder.trim() || "Clippings",
+    candidates: effectiveEnv.obsidianFolders ?? fallbackEnv.obsidianFolders ?? [],
+  };
+}
+
+async function classifyConfiguredFolder(input: FolderClassificationInput): Promise<string | null> {
+  if (input.candidates.length === 0) {
+    return null;
+  }
+
+  const classifyModel = createModel(input.env, {
+    task: "classify",
+    maxTokens: 200,
+    timeout: 20000,
+    temperature: 0,
+  });
+  const allowedFolders = new Set(input.candidates.map((item) => item.folder));
+  const candidateText = input.candidates
+    .map((item, index) => `${index + 1}. ${item.folder} :: ${item.description || "(无描述)"}`)
+    .join("\n");
+  const contentPreview = buildFolderClassificationPreview(input.contentMarkdown);
+
+  try {
+    const message = await classifyModel.invoke([
+      new SystemMessage(
+        [
+          "你是 Obsidian 目录分类器，只返回 JSON。",
+          "你的任务是从候选目录中选出最合适的一个保存目录。",
+          "只能返回候选列表中的 folder，禁止自造路径。",
+          '如果没把握，请返回 {"folder":""}。',
+          '输出格式：{"folder":"候选目录或空字符串"}',
+        ].join("\n"),
+      ),
+      new HumanMessage(
+        [
+          `Base Folder: ${input.baseFolder}`,
+          "",
+          "Candidates:",
+          candidateText,
+          "",
+          `Title: ${input.title}`,
+          `Source: ${input.sourceUrl}`,
+          input.description ? `Description: ${input.description}` : "",
+          "",
+          "Content Preview:",
+          contentPreview,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    ]);
+
+    const content = Array.isArray(message.content)
+      ? message.content
+          .map((part) =>
+            typeof part === "string"
+              ? part
+              : part && typeof part === "object" && "text" in part
+                ? String((part as { text: unknown }).text)
+                : "",
+          )
+          .join("")
+      : String(message.content ?? "");
+    const selectedFolder = parseFolderClassifierOutput(content, allowedFolders);
+    await writeFolderClassificationDebugLog({
+      title: input.title,
+      sourceUrl: input.sourceUrl,
+      description: input.description,
+      baseFolder: input.baseFolder,
+      candidates: input.candidates,
+      contentPreview,
+      rawResponse: content,
+      selectedFolder,
+    });
+    return selectedFolder;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await writeFolderClassificationDebugLog({
+      title: input.title,
+      sourceUrl: input.sourceUrl,
+      description: input.description,
+      baseFolder: input.baseFolder,
+      candidates: input.candidates,
+      contentPreview,
+      error: detail,
+    });
+    logger.warn(`[tool:save_to_obsidian] folder classify failed, fallback to base folder: ${detail}`);
+    return null;
+  }
+}
+
+async function determineTargetFolder(
+  input: {
+    folder?: string;
+    title: string;
+    source_url: string;
+    description?: string;
+    content_markdown: string;
+  },
+  routing: ResolvedObsidianRouting,
+  classifyFolder: (input: FolderClassificationInput) => Promise<string | null>,
+): Promise<string> {
+  const override = input.folder?.trim();
+  if (override) {
+    return override;
+  }
+  if (routing.candidates.length === 0) {
+    return routing.baseFolder;
+  }
+
+  const classifiedFolder = await classifyFolder({
+    env: routing.env,
+    title: input.title,
+    sourceUrl: input.source_url,
+    description: input.description,
+    contentMarkdown: input.content_markdown,
+    baseFolder: routing.baseFolder,
+    candidates: routing.candidates,
+  });
+
+  return resolveTargetFolder(classifiedFolder || undefined, routing.baseFolder);
 }
 
 function appendNumericSuffix(notePath: string, index: number): string {
@@ -498,6 +744,8 @@ function resolveVaultNotePath(vaultPath: string, notePath: string): string {
 }
 
 export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps = {}) {
+  const loadCurrentEnv = deps.loadCurrentEnv || loadEnv;
+  const classifyFolder = deps.classifyConfiguredFolder || classifyConfiguredFolder;
   const resolveTitleAndDescription =
     deps.generateTitleAndDescription ||
     (async (title: string, contentMarkdown: string, published: string) => {
@@ -528,7 +776,9 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
 
   return tool(
     async (input) => {
-      const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
+      const currentEnv = loadCurrentEnv();
+      const routing = resolveObsidianRouting(currentEnv, env);
+      const configuredVault = input.vault?.trim() || currentEnv.obsidianVault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
 
       // Use LLM to resolve title, description, and published
@@ -551,8 +801,18 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
         logger.warn(`[tool:save_to_obsidian] title_desc generation failed, using original: ${msg}`);
       }
 
-      const initialPath =
-        input.path || buildDefaultPath(resolvedTitle, env.obsidianFolder);
+      const targetFolder = await determineTargetFolder(
+        {
+          folder: input.folder,
+          title: resolvedTitle,
+          source_url: input.source_url,
+          description: resolvedDescription || undefined,
+          content_markdown: input.content_markdown,
+        },
+        routing,
+        classifyFolder,
+      );
+      const initialPath = input.path || buildDefaultPath(resolvedTitle, targetFolder);
       const content = buildNoteContent(input, tags, {
         title: resolvedTitle,
         description: resolvedDescription,
@@ -626,8 +886,14 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
 }
 
 export const __test__ = {
+  buildFolderClassificationDebugLog,
+  buildFolderClassificationDebugLogPath,
+  buildFolderClassificationPreview,
   buildNoteContent,
+  buildDefaultPath,
+  determineTargetFolder,
   inferTags,
+  isDevelopmentMode,
   normalizeObsidianTag,
   normalizeObsidianTags,
   formatObsidianCommandForLog,
@@ -635,6 +901,9 @@ export const __test__ = {
   normalizeDateString,
   parseVaultsVerbose,
   findVaultPathFromDesktopConfig,
+  parseFolderClassifierOutput,
+  resolveObsidianRouting,
+  resolveTargetFolder,
   resolveAvailableNotePath,
   resolveVaultNotePath,
   sanitizeVaultName,
