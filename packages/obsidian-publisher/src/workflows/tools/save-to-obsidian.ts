@@ -42,6 +42,7 @@ type SaveInput = z.infer<typeof inputSchema>;
 type TitleDescriptionGenerator = (
   title: string,
   contentMarkdown: string,
+  published: string,
 ) => Promise<TitleDescriptionResult>;
 type SaveToObsidianDeps = {
   generateTitleAndDescription?: TitleDescriptionGenerator;
@@ -203,15 +204,16 @@ function normalizeDateString(value: string): string {
 function buildNoteContent(
   input: SaveInput,
   tags: string[],
-  overrides: { title?: string; description?: string } = {},
+  overrides: { title?: string; description?: string; published?: string } = {},
 ): string {
   const effectiveTitle = overrides.title || input.title;
   const effectiveDescription = overrides.description || input.description || "";
   const safeTitle = normalizeSingleLineText(effectiveTitle);
   const safeAuthor = normalizeSingleLineText(input.author?.trim() || "Unknown");
   const created = formatLocalDate(new Date());
+  const effectivePublished = overrides.published || input.published?.trim() || created;
   const published = normalizeDateString(
-    normalizeSingleLineText(input.published?.trim() || created),
+    normalizeSingleLineText(effectivePublished),
   );
   const safeDescription = normalizeSingleLineText(effectiveDescription).slice(0, 200);
   const tagInline = tags.map((t) => quoteYamlValue(t)).join(", ");
@@ -516,7 +518,7 @@ function resolveVaultNotePath(vaultPath: string, notePath: string): string {
 export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps = {}) {
   const resolveTitleAndDescription =
     deps.generateTitleAndDescription ||
-    (async (title: string, contentMarkdown: string) => {
+    (async (title: string, contentMarkdown: string, published: string) => {
       const startedAt = Date.now();
       const timeoutMs = 60_000;
       const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
@@ -525,14 +527,14 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
         `[tool:save_to_obsidian] title_desc_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
       );
       try {
-        const result = await generateTitleAndDescription(title, contentMarkdown, {
+        const result = await generateTitleAndDescription(title, contentMarkdown, published, {
           env,
           provider,
           model,
           timeoutMs,
         });
         logger.info(
-          `[tool:save_to_obsidian] title_desc_done original_title="${title}" resolved_title="${result.title}" desc_chars=${result.description.length} elapsed_ms=${Date.now() - startedAt}`,
+          `[tool:save_to_obsidian] title_desc_done original_title="${title}" resolved_title="${result.title}" desc_chars=${result.description.length} published="${result.published}" elapsed_ms=${Date.now() - startedAt}`,
         );
         return result;
       } catch (error) {
@@ -548,13 +550,21 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       const tags = inferTags(input);
       const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
 
-      // Use LLM to resolve title and description
+      // Use LLM to resolve title, description, and published
       let resolvedTitle = input.title;
       let resolvedDescription = input.description || "";
+      let resolvedPublished = input.published || "";
       try {
-        const result = await resolveTitleAndDescription(input.title, input.content_markdown);
+        const result = await resolveTitleAndDescription(
+          input.title,
+          input.content_markdown,
+          input.published || "",
+        );
         resolvedTitle = result.title;
         resolvedDescription = result.description;
+        if (result.published) {
+          resolvedPublished = result.published;
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         logger.warn(`[tool:save_to_obsidian] title_desc generation failed, using original: ${msg}`);
@@ -565,6 +575,7 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       const content = buildNoteContent(input, tags, {
         title: resolvedTitle,
         description: resolvedDescription,
+        published: resolvedPublished,
       });
       logger.info(
         `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${initialPath} dynamic_folder=${dynamicFolder}`,

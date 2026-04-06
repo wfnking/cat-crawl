@@ -7,6 +7,7 @@ import { createModel } from "./models/index.js";
 export type TitleDescriptionResult = {
   title: string;
   description: string;
+  published: string;
 };
 
 type GenerateTitleDescriptionOptions = {
@@ -56,6 +57,7 @@ function parseJsonResult(text: string): TitleDescriptionResult | null {
       return {
         title: parsed.title.trim(),
         description: parsed.description.trim(),
+        published: typeof parsed.published === "string" ? parsed.published.trim() : "",
       };
     }
   } catch {
@@ -67,6 +69,7 @@ function parseJsonResult(text: string): TitleDescriptionResult | null {
 export async function generateTitleAndDescription(
   title: string,
   contentMarkdown: string,
+  published: string,
   options: GenerateTitleDescriptionOptions,
 ): Promise<TitleDescriptionResult> {
   const provider =
@@ -94,8 +97,8 @@ export async function generateTitleAndDescription(
     const response = await invoke([
       new SystemMessage(
         [
-          "You are an article metadata generator. Given a title and content, return JSON:",
-          '{"title":"...","description":"..."}',
+          "You are an article metadata generator. Given a title, published date, and content, return JSON:",
+          '{"title":"...","description":"...","published":"..."}',
           "",
           "Title rules:",
           "- If the original title already clearly describes the article, keep it unchanged",
@@ -107,10 +110,24 @@ export async function generateTitleAndDescription(
           "- IMPORTANT: Use the SAME language as the article content",
           "- Do not include URLs, timestamps, or metadata labels",
           "",
+          "Published rules:",
+          "- If the original published date is provided and valid, keep it unchanged",
+          "- If the original published date is empty or missing, try to extract a date from the content",
+          '- Format: YYYY-MM-DD (e.g. "2026-03-15")',
+          '- If no date can be found, return empty string ""',
+          "",
           "Return JSON only, no other text.",
         ].join("\n"),
       ),
-      new HumanMessage([`Original title: ${title}`, "", "Content:", truncatedContent].join("\n")),
+      new HumanMessage(
+        [
+          `Original title: ${title}`,
+          `Original published: ${published}`,
+          "",
+          "Content:",
+          truncatedContent,
+        ].join("\n"),
+      ),
     ]);
     const text = extractModelText(response.content);
     const result = parseJsonResult(text);
