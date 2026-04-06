@@ -185,3 +185,11 @@ export async function resolveXVideoSource(
     published: parsed.published,
   };
 }
+
+export const __test__ = {
+  parseFXTwitterResponse,
+  normalizeXSourceUrl,
+  buildFXTwitterApiUrl,
+  formatPublishedDate,
+  pickBestVideoUrl,
+};

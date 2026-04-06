@@ -85,9 +85,47 @@ test("resolveDouyinVideoSource should fail when all candidates have no audio tra
         }),
         downloadVideo: async () => "/tmp/cat-crawl-video/video-only.mp4",
         hasAudioTrack: async () => false,
+        waitBeforeRetry: async () => {},
       }),
     /all downloaded candidates have no audio track/i,
   );
+});
+
+test("resolveDouyinVideoSource should re-extract once after no-audio candidates", async () => {
+  let extractAttempt = 0;
+  const waited: number[] = [];
+
+  const result = await resolveDouyinVideoSource("https://v.douyin.com/ABCDE/", {
+    extractVideo: async () => {
+      extractAttempt += 1;
+      return extractAttempt === 1
+        ? {
+            pageUrl: "https://www.douyin.com/video/123456",
+            mediaUrl: "https://video-cdn.example.com/video-only.mp4",
+            mediaUrls: ["https://video-cdn.example.com/video-only.mp4"],
+            title: "Demo Douyin Video",
+          }
+        : {
+            pageUrl: "https://www.douyin.com/video/123456",
+            mediaUrl: "https://video-cdn.example.com/video-with-audio.mp4",
+            mediaUrls: ["https://video-cdn.example.com/video-with-audio.mp4"],
+            title: "Demo Douyin Video",
+          };
+    },
+    downloadVideo: async (mediaUrl) =>
+      mediaUrl.includes("with-audio")
+        ? "/tmp/cat-crawl-video/video-with-audio.mp4"
+        : "/tmp/cat-crawl-video/video-only.mp4",
+    hasAudioTrack: async (mediaPath) => mediaPath.includes("with-audio"),
+    noAudioRetryDelayMs: 1234,
+    waitBeforeRetry: async (timeoutMs) => {
+      waited.push(timeoutMs);
+    },
+  });
+
+  assert.equal(extractAttempt, 2);
+  assert.deepEqual(waited, [1234]);
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video-with-audio.mp4");
 });
 
 test("resolveDouyinVideoSource should fail when all candidates fail to download", async () => {

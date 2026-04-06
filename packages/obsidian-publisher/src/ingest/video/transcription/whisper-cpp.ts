@@ -77,3 +77,7 @@ export async function transcribeWithWhisperCpp(
     srt,
   };
 }
+
+export const __test__ = {
+  formatWhisperCommandForLog,
+};

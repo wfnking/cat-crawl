@@ -1,4 +1,4 @@
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { HumanMessage, SystemMessage, type BaseMessage } from "@langchain/core/messages";
 import type { AppEnv, ObsidianFolderOption } from "../../config/env.js";
 import { createModel } from "./models/index.js";
 
@@ -27,6 +27,59 @@ export type FolderClassificationInput = {
   contentPreview: string;
   candidates: ObsidianFolderOption[];
 };
+
+type GenerateFolderClassificationOptions = {
+  invokeModel?: (messages: BaseMessage[]) => Promise<FolderClassificationMessage>;
+};
+
+function extractModelText(content: unknown): string {
+  if (typeof content === "string") {
+    return content.trim();
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        if (part && typeof part === "object" && "text" in part) {
+          const text = (part as { text?: unknown }).text;
+          return typeof text === "string" ? text : "";
+        }
+        return "";
+      })
+      .join("")
+      .trim();
+  }
+  if (content && typeof content === "object" && "text" in content) {
+    const text = (content as { text?: unknown }).text;
+    if (typeof text === "string") {
+      return text.trim();
+    }
+  }
+  return String(content ?? "").trim();
+}
+
+function parseFolderClassification(text: string): FolderClassificationParsedResult {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+      if (typeof parsed.folder === "string" && parsed.folder.trim()) {
+        return { folder: parsed.folder.trim() };
+      }
+    }
+  } catch {
+    // fall through to plain text fallback
+  }
+
+  return { folder: trimmed };
+}
 
 export function buildSystemPrompt(): string {
   return [
@@ -67,32 +120,56 @@ export function buildUserPrompt(input: {
     .join("\n");
 }
 
+export function buildModelOptions(overrides: Partial<{
+  maxTokens: number;
+  timeout: number;
+  temperature: number;
+}> = {}): { maxTokens: number; timeout: number; temperature: number } {
+  return {
+    maxTokens: overrides.maxTokens ?? 200,
+    timeout: overrides.timeout ?? 20000,
+    temperature: overrides.temperature ?? 0,
+  };
+}
+
 export async function generateFolderClassification(
   input: FolderClassificationInput,
-): Promise<string> {
+  options: GenerateFolderClassificationOptions = {},
+): Promise<FolderClassificationResult> {
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt(input);
-
-  const modelOptions = {
-    maxTokens: 200,
-    timeout: 20000,
-    temperature: 0,
-  };
+  const modelOptions = buildModelOptions();
   const provider = input.env.aiClassifyProvider || input.env.aiProvider || input.env.agent;
-  const model = createModel(input.env, {
-    task: "classify",
-    provider,
-    maxTokens: modelOptions.maxTokens,
-    timeout: modelOptions.timeout,
-    temperature: modelOptions.temperature,
-  });
+  const invoke =
+    options.invokeModel ||
+    createModel(input.env, {
+      task: "classify",
+      provider,
+      maxTokens: modelOptions.maxTokens,
+      timeout: modelOptions.timeout,
+      temperature: modelOptions.temperature,
+    }).invoke;
 
-  const { content } = await model.invoke([
-    new SystemMessage(systemPrompt),
-    new HumanMessage(userPrompt),
-  ]);
+  const response = await invoke([new SystemMessage(systemPrompt), new HumanMessage(userPrompt)]);
+  const text = extractModelText(response.content);
+  const parsed = parseFolderClassification(text);
+  if (!parsed?.folder) {
+    throw new Error("invalid folder classification response");
+  }
 
-  console.log('content from folder', )
-
-  return content as string;
+  return {
+    folder: parsed.folder,
+    raw: response,
+    parsed,
+    systemPrompt,
+    userPrompt,
+  };
 }
+
+export const __test__ = {
+  buildSystemPrompt,
+  buildUserPrompt,
+  buildModelOptions,
+  extractModelText,
+  parseFolderClassification,
+};

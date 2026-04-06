@@ -1,6 +1,6 @@
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
@@ -57,6 +57,9 @@ type ResolveDouyinVideoSourceOptions = {
   ) => Promise<ExtractedDouyinVideo>;
   downloadVideo?: (mediaUrl: string, outputDir: string, preferredName?: string) => Promise<string>;
   hasAudioTrack?: (mediaPath: string) => Promise<boolean>;
+  noAudioRetryDelayMs?: number;
+  noAudioRetryAttempts?: number;
+  waitBeforeRetry?: (timeoutMs: number) => Promise<void>;
 };
 
 type ResolvedDouyinVideoSource = {
@@ -66,6 +69,12 @@ type ResolvedDouyinVideoSource = {
   title?: string;
   author?: string;
   published?: string;
+};
+
+type DownloadCandidateResult = {
+  selectedPath: string;
+  selectedCandidate: string;
+  downloadedCount: number;
 };
 
 type DouyinExtractAttemptOptions = {
@@ -514,32 +523,26 @@ async function downloadDouyinVideoDefault(
   return targetPath;
 }
 
-export async function resolveDouyinVideoSource(
-  sourceUrl: string,
-  options: ResolveDouyinVideoSourceOptions = {},
-): Promise<ResolvedDouyinVideoSource> {
-  const outputDir = options.outputDir || (await mkdtemp(join(tmpdir(), "cat-crawl/douyin")));
-  const extractVideo = options.extractVideo || extractDouyinVideoDefault;
-  const downloadVideo = options.downloadVideo || downloadDouyinVideoDefault;
+function waitBeforeRetryDefault(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, timeoutMs);
+  });
+}
 
-  logger.info(`[video-source:douyin] start source=${sourceUrl}`);
-  const extracted = await extractVideo(sourceUrl, options.cookieHeader, options.loadChromeCookies);
-  const candidates = collectMediaCandidates(extracted);
-  if (candidates.length === 0) {
-    throw new Error("Douyin video URL not found.");
-  }
-  logger.info(
-    `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
-  );
-
-  const hasAudioTrack =
-    options.hasAudioTrack || (!options.downloadVideo ? hasAudioTrackDefault : async () => true);
+async function downloadFirstCandidateWithAudio(
+  candidates: string[],
+  outputDir: string,
+  preferredName: string | undefined,
+  downloadVideo: (mediaUrl: string, outputDir: string, preferredName?: string) => Promise<string>,
+  hasAudioTrack: (mediaPath: string) => Promise<boolean>,
+): Promise<DownloadCandidateResult> {
   let selectedPath = "";
   let selectedCandidate = "";
   let downloadedCount = 0;
+
   for (const candidate of candidates) {
     try {
-      const mediaPath = await downloadVideo(candidate, outputDir, extracted.title);
+      const mediaPath = await downloadVideo(candidate, outputDir, preferredName);
       downloadedCount += 1;
       const hasAudio = await hasAudioTrack(mediaPath);
       if (hasAudio) {
@@ -553,21 +556,78 @@ export async function resolveDouyinVideoSource(
       logger.warn(`[video-source:douyin] candidate download failed url=${candidate} msg=${detail}`);
     }
   }
-  if (!selectedPath) {
-    if (downloadedCount === 0) {
-      throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
-    }
-    throw new Error(
-      "Douyin video URL resolved, but all downloaded candidates have no audio track. Please confirm the video has audible track in Chrome playback and try again.",
-    );
-  }
-  logger.info(`[video-source:douyin] selected media candidate=${selectedCandidate}`);
+
   return {
-    adapter: "douyin",
-    sourceUrl: extracted.pageUrl || sourceUrl,
-    mediaPath: selectedPath,
-    title: extracted.title?.trim() || undefined,
-    author: extracted.author?.trim() || undefined,
-    published: extracted.published?.trim() || undefined,
+    selectedPath,
+    selectedCandidate,
+    downloadedCount,
   };
 }
+
+export async function resolveDouyinVideoSource(
+  sourceUrl: string,
+  options: ResolveDouyinVideoSourceOptions = {},
+): Promise<ResolvedDouyinVideoSource> {
+  const tempRootDir = join(tmpdir(), "cat-crawl");
+  await mkdir(tempRootDir, { recursive: true });
+  const outputDir = options.outputDir || (await mkdtemp(join(tempRootDir, "douyin-")));
+  const extractVideo = options.extractVideo || extractDouyinVideoDefault;
+  const downloadVideo = options.downloadVideo || downloadDouyinVideoDefault;
+  const noAudioRetryDelayMs = options.noAudioRetryDelayMs ?? 5000;
+  const noAudioRetryAttempts = options.noAudioRetryAttempts ?? 1;
+  const waitBeforeRetry = options.waitBeforeRetry || waitBeforeRetryDefault;
+
+  logger.info(`[video-source:douyin] start source=${sourceUrl}`);
+  const hasAudioTrack =
+    options.hasAudioTrack || (!options.downloadVideo ? hasAudioTrackDefault : async () => true);
+
+  for (let attempt = 0; attempt <= noAudioRetryAttempts; attempt += 1) {
+    const extracted = await extractVideo(sourceUrl, options.cookieHeader, options.loadChromeCookies);
+    const candidates = collectMediaCandidates(extracted);
+    if (candidates.length === 0) {
+      throw new Error("Douyin video URL not found.");
+    }
+    logger.info(
+      `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
+    );
+
+    const downloadResult = await downloadFirstCandidateWithAudio(
+      candidates,
+      outputDir,
+      extracted.title,
+      downloadVideo,
+      hasAudioTrack,
+    );
+    if (downloadResult.selectedPath) {
+      logger.info(`[video-source:douyin] selected media candidate=${downloadResult.selectedCandidate}`);
+      return {
+        adapter: "douyin",
+        sourceUrl: extracted.pageUrl || sourceUrl,
+        mediaPath: downloadResult.selectedPath,
+        title: extracted.title?.trim() || undefined,
+        author: extracted.author?.trim() || undefined,
+        published: extracted.published?.trim() || undefined,
+      };
+    }
+    if (downloadResult.downloadedCount === 0) {
+      throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
+    }
+    if (attempt < noAudioRetryAttempts) {
+      logger.warn(
+        `[video-source:douyin] all downloaded candidates had no audio, wait ${noAudioRetryDelayMs}ms before re-extract retry=${attempt + 1}`,
+      );
+      await waitBeforeRetry(noAudioRetryDelayMs);
+    }
+  }
+
+  throw new Error(
+    "Douyin video URL resolved, but all downloaded candidates have no audio track. Please confirm the video has audible track in Chrome playback and try again.",
+  );
+}
+
+export const __test__ = {
+  extractDouyinVideoFromPage,
+  toDouyinCookies,
+  applyDouyinCookies,
+  collectMediaCandidates,
+};

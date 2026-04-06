@@ -385,3 +385,13 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
     },
   );
 }
+
+export const __test__ = {
+  normalizeVideoTitle,
+  shouldTranslateToChinese,
+  pickGeminiSummarizeModel,
+  pickTranscriptSourceMaterial,
+  buildTranscriptSystemPrompt,
+  splitTranscriptIntoParagraphs,
+  appendFullTranscript,
+};

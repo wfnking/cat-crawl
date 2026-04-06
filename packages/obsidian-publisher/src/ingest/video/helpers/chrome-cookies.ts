@@ -221,3 +221,8 @@ export function loadChromeCookiesForDomains(
     rmSync(join(copiedDbPath, ".."), { recursive: true, force: true });
   }
 }
+
+export const __test__ = {
+  getChromeEncryptionKey,
+  decryptChromeCookieValue,
+};

@@ -182,7 +182,7 @@ async function classifyConfiguredFolder(input: FolderClassificationInput): Promi
       contentPreview,
       candidates: input.candidates,
     });
-    return result;
+    return result.folder || null;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     logger.warn(`[tool:save_to_obsidian] folder classify failed, fallback to base folder: ${detail}`);
@@ -705,3 +705,17 @@ export function createSaveToObsidianTool(env: AppEnv) {
   );
 }
 
+export const __test__ = {
+  buildNoteContent,
+  normalizeDateString,
+  formatObsidianCommandForLog,
+  hasObsidianOutputError,
+  parseVaultsVerbose,
+  findVaultPathFromDesktopConfig,
+  resolveVaultNotePath,
+  resolveAvailableNotePath,
+  resolveTargetFolder,
+  resolveObsidianRouting,
+  normalizeObsidianTag,
+  inferTags,
+};

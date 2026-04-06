@@ -117,3 +117,7 @@ export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableM
 export function createAgentModel(env: AppEnv, options: ModelOptions = {}): InvokableModel {
   return createModel(env, options);
 }
+
+export const __test__ = {
+  resolveModelProvider,
+};
