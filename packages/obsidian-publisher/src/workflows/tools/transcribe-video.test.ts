@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import test from 'node:test'
 import { __test__, createTranscribeVideoTool } from './transcribe-video.js'
 
@@ -278,6 +279,70 @@ test('transcribe video tool should use unified temp directories under /tmp/cat-c
   assert.equal(receivedYoutubeOutputDir, '/tmp/cat-crawl/youtube')
   assert.equal(receivedAudioOutputDir, '/tmp/cat-crawl/audio')
   assert.equal(receivedWhisperOutputDir, '/tmp/cat-crawl/whisper')
+})
+
+test('transcribe video tool should keep temp cache directories instead of deleting them', async () => {
+  const originalRmSync = fs.rmSync
+  const originalMkdirSync = fs.mkdirSync
+  const mkdirCalls: string[] = []
+  let rmCalls = 0
+
+  fs.rmSync = (() => {
+    rmCalls += 1
+  }) as typeof fs.rmSync
+  fs.mkdirSync = ((path: fs.PathLike) => {
+    mkdirCalls.push(String(path))
+    return path as fs.MakeDirectoryReturnType
+  }) as typeof fs.mkdirSync
+
+  try {
+    const tool = createTranscribeVideoTool(
+      {
+        transcriptionProvider: 'whisper_cpp',
+        whisperCppBin: 'whisper-cli',
+        whisperCppModelPath: '/models/base.bin',
+        whisperCppLanguage: undefined,
+        geminiApiKey: 'gemini-demo-key',
+        geminiModel: 'gemini-2.5-pro',
+        obsidianFolder: 'Clippings',
+        obsidianDynamicFolders: []
+      } as never,
+      {
+        selectVideoHandler: () => ({ name: 'youtube' }),
+        resolveYouTubeVideoSource: async () => ({
+          adapter: 'youtube',
+          sourceUrl: 'https://www.youtube.com/watch?v=abc123',
+          mediaPath: '/tmp/cat-crawl/youtube/audio.webm',
+          title: 'Demo Title'
+        }),
+        extractAudioFromVideo: async () => '/tmp/cat-crawl/audio/audio.mp3',
+        transcribeAudio: async () => ({
+          providerUsed: 'whisper_cpp',
+          text: 'hello transcript',
+          srt: undefined,
+          fallbackUsed: false
+        }),
+        buildTranscriptMarkdown: async () => ({
+          markdown: '## Summary\n\nhello transcript'
+        })
+      }
+    )
+
+    await tool.invoke({
+      source: 'https://www.youtube.com/watch?v=abc123'
+    })
+  } finally {
+    fs.rmSync = originalRmSync
+    fs.mkdirSync = originalMkdirSync
+  }
+
+  assert.equal(rmCalls, 0)
+  assert.deepEqual(mkdirCalls, [
+    '/tmp/cat-crawl/youtube',
+    '/tmp/cat-crawl/douyin',
+    '/tmp/cat-crawl/audio',
+    '/tmp/cat-crawl/whisper'
+  ])
 })
 
 test('normalizeVideoTitle should strip hashtags and source suffix into tags', () => {

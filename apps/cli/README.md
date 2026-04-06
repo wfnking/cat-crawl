@@ -87,8 +87,12 @@ Recommended nested format:
   },
   "obsidian": {
     "vault": "知识库",
-    "folder": "Clippings",
-    "dynamicFolders": ["AI", "OPC", "English"]
+    "folders": [
+      {
+        "folder": "Clippings/AI",
+        "description": ""
+      }
+    ]
   }
 }
 ```

@@ -94,7 +94,7 @@ export function describeDynamicFolder(name: string): string {
 }
 
 export async function resolveDynamicFolderOptions(env: AppEnv): Promise<string[]> {
-  const configured = normalizeFolders(env.obsidianDynamicFolders);
+  const configured = normalizeFolders([env.obsidianFolder]);
   if (configured.length > 0) {
     return configured;
   }

@@ -85,30 +85,32 @@ function isExecutionContextDestroyedError(error: unknown): boolean {
 
 async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinVideo> {
   return page.evaluate(() => {
-    const toAbsolute = (value: string): string => {
-      if (!value) {
-        return "";
-      }
-      if (value.startsWith("//")) {
-        return `${window.location.protocol}${value}`;
-      }
-      return value;
-    };
-    const ogVideo = toAbsolute(
-      document.querySelector('meta[property="og:video"]')?.getAttribute("content")?.trim() || "",
-    );
-    const videoSource = toAbsolute(document.querySelector("video")?.getAttribute("src")?.trim() || "");
-    const currentVideoSource = toAbsolute(
-      (document.querySelector("video") as HTMLVideoElement | null)?.currentSrc?.trim() || "",
-    );
+    const protocol = window.location.protocol;
+    const ogVideoRaw =
+      document.querySelector('meta[property="og:video"]')?.getAttribute("content")?.trim() || "";
+    const ogVideo = !ogVideoRaw ? "" : ogVideoRaw.startsWith("//") ? `${protocol}${ogVideoRaw}` : ogVideoRaw;
+    const videoSourceRaw = document.querySelector("video")?.getAttribute("src")?.trim() || "";
+    const videoSource = !videoSourceRaw
+      ? ""
+      : videoSourceRaw.startsWith("//")
+        ? `${protocol}${videoSourceRaw}`
+        : videoSourceRaw;
+    const currentVideoSourceRaw =
+      (document.querySelector("video") as HTMLVideoElement | null)?.currentSrc?.trim() || "";
+    const currentVideoSource = !currentVideoSourceRaw
+      ? ""
+      : currentVideoSourceRaw.startsWith("//")
+        ? `${protocol}${currentVideoSourceRaw}`
+        : currentVideoSourceRaw;
     const sourceUrls = Array.from(document.querySelectorAll("video source"))
-      .map((node) => toAbsolute(node.getAttribute("src")?.trim() || ""))
+      .map((node) => node.getAttribute("src")?.trim() || "")
+      .map((value) => (!value ? "" : value.startsWith("//") ? `${protocol}${value}` : value))
       .filter(Boolean);
     const resourceUrls = performance
       .getEntriesByType("resource")
       .map((entry) => entry.name?.trim() || "")
       .filter((value) => /\.(mp4|m3u8|m4a|mp3|aac|webm)(\?|$)/i.test(value))
-      .map((value) => toAbsolute(value));
+      .map((value) => (!value ? "" : value.startsWith("//") ? `${protocol}${value}` : value));
     const title =
       document.querySelector('meta[property="og:title"]')?.getAttribute("content")?.trim() ||
       document.title ||

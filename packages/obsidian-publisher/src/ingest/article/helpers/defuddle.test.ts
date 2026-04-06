@@ -20,17 +20,7 @@ test("extractWithDefuddle returns a normalized ingest result", async () => {
     author: "Alice",
     published: "2026-04-01",
     source_url: "https://example.com/post",
-    content_markdown: [
-      "# Example Post",
-      "",
-      "- Source: https://example.com/post",
-      "- Author: Alice",
-      "- Published: 2026-04-01",
-      "",
-      "This is the first paragraph.",
-      "",
-      "This is the second paragraph.",
-    ].join("\n"),
+    content_markdown: ["This is the first paragraph.", "", "This is the second paragraph."].join("\n"),
   });
 });
 

@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { XHandler } from "./x.js";
+import { XHandler, __test__ } from "./x.js";
+
+test("waitForRenderedMain should wait for main node and non-empty content", async () => {
+  const steps: string[] = [];
+  const page = {
+    waitForSelector: async (selector: string) => {
+      steps.push(`selector:${selector}`);
+    },
+    waitForTimeout: async (ms: number) => {
+      steps.push(`timeout:${ms}`);
+    },
+  };
+
+  await __test__.waitForRenderedMain(page as never);
+
+  assert.deepEqual(steps, [
+    "selector:main",
+    'selector:main article[data-testid="tweet"]',
+    "timeout:1000",
+  ]);
+});
 
 test("XHandler should pass Chrome cookies into rendered crawl", async () => {
   let renderedCookies: Array<{ domain: string; name: string }> = [];
@@ -84,6 +104,45 @@ test("XHandler should use defuddle output from rendered html", async () => {
   assert.equal(result.source_url, "https://x.com/yaroslavvb/status/2039043379825360988");
   assert.match(result.content_markdown, /Body from defuddle/);
   assert.match(result.content_markdown, /Reply from defuddle/);
+});
+
+test("XHandler should pass rendered main content into defuddle when available", async () => {
+  let extractedHtml = "";
+  const handler = new XHandler({
+    fetchRenderedHtml: async () =>
+      [
+        "<html>",
+        "<head><title>Thread by @yaroslavvb</title></head>",
+        "<body>",
+        "<header>site chrome</header>",
+        '<main><article data-testid="tweet">tweet body</article></main>',
+        "<footer>footer chrome</footer>",
+        "</body>",
+        "</html>",
+      ].join(""),
+    extractWithDefuddle: async (html, url) => {
+      extractedHtml = html;
+      return {
+        title: "Thread by @yaroslavvb",
+        author: "@yaroslavvb",
+        published: "2026-04-06",
+        source_url: url,
+        content_markdown: "Body from defuddle.",
+      };
+    },
+  });
+
+  await handler.handle(new URL("https://x.com/yaroslavvb/status/2039043379825360988"), {
+    env: {} as never,
+    crawlWithBrowserAdapter: async () => {
+      throw new Error("browser fallback should not run");
+    },
+  });
+
+  assert.match(extractedHtml, /<main><article data-testid="tweet">tweet body<\/article><\/main>/);
+  assert.match(extractedHtml, /<title>Thread by @yaroslavvb<\/title>/);
+  assert.doesNotMatch(extractedHtml, /site chrome/);
+  assert.doesNotMatch(extractedHtml, /footer chrome/);
 });
 
 test("XHandler should fallback to generic browser adapter when defuddle returns null", async () => {

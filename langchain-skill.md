@@ -45,7 +45,7 @@ created: "<ISO_DATETIME>"
 - `author?: string`
 - `source?: string`
 - `tags?: string[]`
-- `dynamic_folder?: string`（由 agent 按文章内容从全局配置中选择一个）
+- 目录由配置中的 `obsidian.folders[0].folder` 决定
 - `vault?: string`（可选，vault 名称 / vault id / 绝对路径）
 - `path?: string`（通常不传，使用默认路径规则）
 - `mode?: "create" | "append"`
@@ -54,7 +54,7 @@ created: "<ISO_DATETIME>"
 
 - `{folder}/{dynamicFolder}/YYYY-MM-DD {title}.md`
 - `folder` 来自 `OBSIDIAN_FOLDER`（默认 `clippings`）
-- `dynamicFolder` 由 `dynamic_folder` 推导；若为空则直接落到 `folder` 根目录
+- 默认保存路径为 `{folder}/YYYY-MM-DD {title}.md`
 - 全局候选项来自 `OBSIDIAN_DYNAMIC_FOLDERS`（用 `,` 分隔）
 
 ## 保存约定
@@ -67,4 +67,4 @@ created: "<ISO_DATETIME>"
 
 - `WECHAT_SAVE_DIR` 不再需要。
 - `tags/source/author` 缺失时由工具自动推导并回填到 frontmatter。
-- `dynamic_folder` 由 agent 根据文章内容从全局候选里选一个；不匹配时传空字符串 `""`。
+- 不再做自动目录分类；如需切换目录，直接修改配置中的 `obsidian.folders`。

@@ -55,17 +55,7 @@ export function toMarkdown(result: {
   sourceUrl: string;
   contentBody: string;
 }): string {
-  return [
-    `# ${result.title}`,
-    "",
-    `- Source: ${result.sourceUrl}`,
-    `- Author: ${result.author ?? "Unknown"}`,
-    `- Published: ${result.published ?? "Unknown"}`,
-    "",
-    result.contentBody,
-  ]
-    .join("\n")
-    .trim();
+  return result.contentBody.trim();
 }
 
 export function stripLeadingSourceLine(markdown: string): string {

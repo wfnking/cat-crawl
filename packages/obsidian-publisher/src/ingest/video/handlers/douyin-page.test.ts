@@ -81,6 +81,30 @@ test("extractDouyinVideoFromPage should keep polling until media url appears", a
   assert.equal(result.mediaUrl, "https://video.example.com/demo.mp4");
 });
 
+test("extractDouyinVideoFromPage should pass browser-safe evaluate callback", async () => {
+  let evaluateSource = "";
+  const page = {
+    waitForTimeout: async () => {},
+    waitForLoadState: async () => {},
+    evaluate: async (fn: () => unknown) => {
+      evaluateSource = String(fn);
+      return {
+        pageUrl: "https://www.douyin.com/video/123456",
+        mediaUrl: "https://video.example.com/demo.mp4",
+        title: "Demo",
+      };
+    },
+  };
+
+  await __test__.extractDouyinVideoFromPage(page as never, {
+    attempts: 1,
+    intervalMs: 0,
+  });
+
+  assert.ok(evaluateSource.length > 0);
+  assert.equal(evaluateSource.includes("__name("), false);
+});
+
 test("toDouyinCookies should parse cookie header into douyin and iesdouyin domains", () => {
   const cookies = __test__.toDouyinCookies("ttwid=abc; passport_csrf_token=def");
 

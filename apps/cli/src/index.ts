@@ -31,6 +31,7 @@ import {
   type PairingApproveCommand,
   type SetGetCommand,
 } from "./obsidian-command.js";
+import { formatConfigValue, getConfigValueByPath } from "./config-path.js";
 
 const logger = createLogger();
 const require = createRequire(import.meta.url);
@@ -404,6 +405,9 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
     if (typeof provider === "string" && provider.trim()) {
       current = provider.trim();
     }
+  }
+  if (current === undefined && key.includes(".")) {
+    current = formatConfigValue(getConfigValueByPath(store.readRaw(), key));
   }
   const output = current ?? value;
   if (output === undefined) {

@@ -291,11 +291,10 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
       const tempDirs = [YOUTUBE_TEMP_DIR, DOUYIN_TEMP_DIR, AUDIO_TEMP_DIR, WHISPER_TEMP_DIR];
       for (const dir of tempDirs) {
         try {
-          fs.rmSync(dir, { recursive: true, force: true });
           fs.mkdirSync(dir, { recursive: true });
         } catch (error) {
           logger.warn(
-            `[tool:transcribe_video] failed to clean temp dir dir=${dir} msg=${(error as Error).message}`,
+            `[tool:transcribe_video] failed to ensure temp dir dir=${dir} msg=${(error as Error).message}`,
           );
         }
       }

@@ -24,7 +24,7 @@
   - 来源：YouTube、抖音、本地视频文件
   - ASR：`whisper.cpp`（当前仅支持本地 whisper.cpp）
   - 输出：章节化 Markdown（可带时间点链接）
-- 保存到 Obsidian（支持动态目录策略）
+- 保存到 Obsidian（目录由配置固定指定）
 - 成功记录写入本地数据库：`~/.cat-crawl/history.db`
 - 渠道接入：CLI、Feishu、Telegram（Polling）、Discord
 - Agent Provider：`openai` / `gemini` / `vertex`
@@ -121,8 +121,12 @@ cat-crawl obsidian pairing approve telegram <code>
   },
   "obsidian": {
     "vault": "知识库",
-    "folder": "Clippings",
-    "dynamicFolders": ["AI", "OPC", "English"]
+    "folders": [
+      {
+        "folder": "Clippings/AI",
+        "description": ""
+      }
+    ]
   }
 }
 ```

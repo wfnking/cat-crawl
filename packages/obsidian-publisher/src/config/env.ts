@@ -36,7 +36,6 @@ export type AppEnv = {
   discordBotToken?: string
   obsidianVault?: string
   obsidianFolder: string
-  obsidianDynamicFolders: string[]
   maxToolSteps: number
 }
 
@@ -111,7 +110,6 @@ function readFromStructuredConfig(name: string): string | undefined {
     WHISPER_CPP_MODEL_PATH: ['transcription', 'whisperCpp', 'modelPath'],
     WHISPER_CPP_LANGUAGE: ['transcription', 'whisperCpp', 'language'],
     OBSIDIAN_VAULT: ['obsidian', 'vault'],
-    OBSIDIAN_FOLDER: ['obsidian', 'folder'],
     TELEGRAM_BOT_TOKEN: ['channels', 'telegram', 'botToken'],
     TELEGRAM_DM_POLICY: ['channels', 'telegram', 'dmPolicy'],
     TELEGRAM_TYPING_MODE: ['channels', 'telegram', 'typingMode'],
@@ -136,17 +134,31 @@ function readFromStructuredConfig(name: string): string | undefined {
   }
 
   if (name === 'OBSIDIAN_DYNAMIC_FOLDERS') {
-    const value = readFromPath(raw, ['obsidian', 'dynamicFolders'])
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
+    const value = readFromPath(raw, ['obsidian', 'folders'])
     if (Array.isArray(value)) {
       return value
-        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .map((item) => {
+          const folder = asObject(item)?.folder
+          return typeof folder === 'string' ? folder.trim() : ''
+        })
         .filter(Boolean)
         .join(',')
     }
     return undefined
+  }
+
+  if (name === 'OBSIDIAN_FOLDER') {
+    const folders = readFromPath(raw, ['obsidian', 'folders'])
+    if (Array.isArray(folders)) {
+      for (const item of folders) {
+        const folder = asObject(item)?.folder
+        if (typeof folder === 'string' && folder.trim()) {
+          return folder.trim()
+        }
+      }
+    }
+    const legacyValue = readFromPath(raw, ['obsidian', 'folder'])
+    return typeof legacyValue === 'string' && legacyValue.trim() ? legacyValue.trim() : undefined
   }
 
   if (name === 'GEMINI_API_KEY' || name === 'GEMINI_MODEL') {
@@ -277,17 +289,6 @@ function getNumber(name: string, defaultValue: number): number {
   return n
 }
 
-function getList(name: string): string[] {
-  const raw = readRaw(name)
-  if (!raw) {
-    return []
-  }
-  return raw
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
 function getBoolean(name: string, defaultValue: boolean): boolean {
   const raw = readRaw(name)
   if (!raw) {
@@ -416,7 +417,6 @@ export function loadEnv(): AppEnv {
     discordBotToken: readRaw('DISCORD_BOT_TOKEN') || undefined,
     obsidianVault: readRaw('OBSIDIAN_VAULT') || undefined,
     obsidianFolder: readRaw('OBSIDIAN_FOLDER') || 'Clippings',
-    obsidianDynamicFolders: getList('OBSIDIAN_DYNAMIC_FOLDERS'),
     maxToolSteps: getNumber('MAX_TOOL_STEPS', 4)
   }
 }

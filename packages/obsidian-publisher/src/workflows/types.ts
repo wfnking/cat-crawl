@@ -78,7 +78,6 @@ export type AgentGraphState = {
   existingRecord: ExistingSavedRecord | null;
   contentType: AgentGraphContentType | null;
   ingestResult: IngestContentResult | null;
-  dynamicFolder: string;
   saveResult: SaveToolResult | null;
   reply: string;
   replySubject: string | null;

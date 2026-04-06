@@ -4,10 +4,6 @@ import { createLogger } from "@cat-crawl/core";
 import { createModel } from "./llm/models/index.js";
 import type { IngestContentResult } from "../ingest/types.js";
 import {
-  describeDynamicFolder,
-  resolveDynamicFolderOptions,
-} from "../ingest/folder-options.js";
-import {
   createQuerySuccessHistoryTool,
   type QuerySuccessHistoryResult,
 } from "../ingest/history/query-success-history.js";
@@ -16,7 +12,6 @@ import { appendConversationRound, getRecentConversationMessages } from "./llm/me
 import {
   parseHistoryIntentFromModelOutput,
   parseHistoryIntentFromText,
-  pickPolicyFolder,
   shouldForceRecrawlFromText,
 } from "./policies.js";
 import type {
@@ -39,7 +34,6 @@ const AgentGraphStateAnnotation = Annotation.Root({
   existingRecord: Annotation<AgentGraphState["existingRecord"]>(),
   contentType: Annotation<AgentGraphState["contentType"]>(),
   ingestResult: Annotation<AgentGraphState["ingestResult"]>(),
-  dynamicFolder: Annotation<AgentGraphState["dynamicFolder"]>(),
   saveResult: Annotation<AgentGraphState["saveResult"]>(),
   reply: Annotation<AgentGraphState["reply"]>(),
   replySubject: Annotation<AgentGraphState["replySubject"]>(),
@@ -60,7 +54,6 @@ function createEmptyAgentState(userInput: string): AgentGraphState {
     existingRecord: null,
     contentType: null,
     ingestResult: null,
-    dynamicFolder: "",
     saveResult: null,
     reply: "",
     replySubject: null,
@@ -86,7 +79,7 @@ function buildCapabilityReply(): string {
     "我当前可以做这些事：",
     "1. 接收文章链接（已支持微信公众号、虎嗅，以及大部分普通网页文章页）。",
     "2. 抓取正文并转换为 Markdown（尽量保留结构与图片）。",
-    "3. 根据文章内容选择一个动态目录（或留空）。",
+    "3. 保存到配置里的 Obsidian 目录。",
     "4. 保存到你的 Obsidian Vault。",
     "5. 查询历史成功记录（全部 / 今天 / 按标签）。",
     "",
@@ -126,6 +119,16 @@ function formatHistoryReply(result: QuerySuccessHistoryResult): string {
   });
 
   return [header, "", ...lines].join("\n\n");
+}
+
+function buildContentPreview(markdown: string): string {
+  const lines = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("- Source:") && !line.startsWith("- Author:"));
+  const merged = lines.join(" ").replace(/\s+/g, " ").trim();
+  return merged.slice(0, 1800);
 }
 
 
@@ -228,84 +231,11 @@ async function chatForNonWechatInput(userInput: string, runtime: AgentRuntime): 
   }
 }
 
-function buildClassificationSummary(markdown: string): string {
-  const lines = markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("- Source:") && !line.startsWith("- Author:"));
-  const merged = lines.join(" ").replace(/\s+/g, " ").trim();
-  return merged.slice(0, 1800);
-}
-
-function buildClassifierPrompt(options: string[]): string {
-  const optionText =
-    options.length > 0
-      ? options.map((item) => `- ${item}: ${describeDynamicFolder(item)}`).join("\n")
-      : "- (no options configured)";
-
-  return [
-    "You are a strict classifier.",
-    "Pick exactly one dynamic_folder from the allowed list based on article content.",
-    "If nothing fits, return empty string.",
-    'Output JSON only: {"dynamic_folder":"..."}',
-    "Allowed options:",
-    optionText,
-  ].join("\n");
-}
-
-function pickDynamicFolder(modelOutput: string, options: string[]): string {
-  const trimmed = modelOutput.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as { dynamic_folder?: unknown };
-    if (typeof parsed.dynamic_folder === "string") {
-      const picked = parsed.dynamic_folder.trim();
-      if (!picked) {
-        return "";
-      }
-      return options.includes(picked) ? picked : "";
-    }
-  } catch {
-    // fall through to fuzzy matching
-  }
-
-  if (trimmed === '""' || trimmed === "''" || trimmed.toLowerCase() === "null") {
-    return "";
-  }
-
-  for (const option of options) {
-    if (trimmed === option || trimmed.includes(option)) {
-      return option;
-    }
-  }
-
-  return "";
-}
-
-function canUseClassificationModel(runtime: AgentRuntime): boolean {
-  const provider = runtime.env.aiClassifyProvider || runtime.env.aiProvider || runtime.env.agent;
-  if (provider === "openai") {
-    return Boolean(runtime.env.openaiApiKey?.trim());
-  }
-  if (provider === "gemini") {
-    return Boolean(runtime.env.geminiApiKey?.trim());
-  }
-  return provider === "vertex";
-}
-
 function formatSuccessReply(subject: string, saveResult: SaveToolResult): string {
   const vault = saveResult.vault ?? "";
   const path = saveResult.path ?? "";
   const fullPath = vault && path ? `${vault}/${path}` : path || "(unknown path)";
-  const folder = saveResult.dynamic_folder?.trim() || "";
   const lines = [`${subject}已成功保存到 Obsidian！`];
-  if (folder) {
-    lines.push(`分类：\`${folder}\``);
-  }
   lines.push(`保存路径：\`${fullPath}\``);
   return lines.join("\n\n");
 }
@@ -319,65 +249,6 @@ function isSupportedVideoUrl(url: string): boolean {
     return selectVideoHandler(url).name !== "file";
   } catch {
     return false;
-  }
-}
-
-async function classifyDynamicFolder(
-  crawlResult: IngestContentResult,
-  runtime: AgentRuntime,
-): Promise<string> {
-  const summary = buildClassificationSummary(crawlResult.content_markdown);
-  const dynamicFolderOptions = await resolveDynamicFolderOptions(runtime.env);
-  const policyOptions = dynamicFolderOptions.length > 0 ? dynamicFolderOptions : ["OPC"];
-  const policyFolder = pickPolicyFolder({
-    title: crawlResult.title,
-    summary,
-    options: policyOptions,
-  });
-
-  if (policyFolder) {
-    logger.info(`[agent] dynamic_folder policy selected=${policyFolder}`);
-    return policyFolder;
-  }
-
-  if (dynamicFolderOptions.length === 0) {
-    logger.info("[agent] dynamic folder options empty, skip classification");
-    return "";
-  }
-
-  if (!canUseClassificationModel(runtime)) {
-    logger.info("[agent] classification model unavailable (missing auth), skip model classify");
-    return "";
-  }
-
-  logger.info("[agent] preparing summarized context for dynamic folder classification");
-  try {
-    const classifierModel = createModel(runtime.env, {
-      task: "classify",
-      maxTokens: 500,
-      timeout: 30000,
-    });
-    const classifyStart = Date.now();
-    logger.info("[agent] invoking model for dynamic_folder classification");
-    const classifyMessage = await classifierModel.invoke([
-      new SystemMessage(buildClassifierPrompt(dynamicFolderOptions)),
-      new HumanMessage(
-        [`Title: ${crawlResult.title}`, "", `Summary: ${summary}`, "", "Return JSON only."].join(
-          "\n",
-        ),
-      ),
-    ]);
-    const classifyCostMs = Date.now() - classifyStart;
-    logger.info(`[agent] classification model done in ${classifyCostMs}ms`);
-
-    const modelOutput = normalizeModelText(classifyMessage.content);
-    const dynamicFolder = pickDynamicFolder(modelOutput, dynamicFolderOptions);
-    logger.info(`[agent] dynamic_folder selected=${dynamicFolder || "(empty)"}`);
-    return dynamicFolder;
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.warn(`[agent] dynamic_folder classify failed, fallback base folder msg=${msg}`);
-    return "";
   }
 }
 
@@ -501,7 +372,7 @@ function createCrawlArticleNode(runtime: AgentRuntime) {
     logger.info("[agent] invoking tool=crawl_web_article");
 
     const ingestResult = await runtime.deps.articleTool.invoke({ url: state.url });
-    const crawlSummary = buildClassificationSummary(ingestResult.content_markdown).slice(0, 120);
+    const crawlSummary = buildContentPreview(ingestResult.content_markdown).slice(0, 120);
 
     logger.info("[agent] tool success: crawl_web_article");
     await emitStatus(runtime, {
@@ -553,20 +424,7 @@ function createClassifyFolderNode(runtime: AgentRuntime) {
     if (!state.ingestResult) {
       return {};
     }
-
-    await emitStatus(runtime, {
-      stage: "classify_start",
-      message: "正在根据内容选择目录分类...",
-    });
-
-    const dynamicFolder = await classifyDynamicFolder(state.ingestResult, runtime);
-
-    await emitStatus(runtime, {
-      stage: "classify_done",
-      message: `目录分类完成：${dynamicFolder || "(未命中，保存到基础目录)"}`,
-    });
-
-    return { dynamicFolder };
+    return {};
   };
 }
 
@@ -579,9 +437,11 @@ function createSaveNoteNode(runtime: AgentRuntime) {
           content_markdown: state.ingestResult.content_markdown,
           author: state.ingestResult.author ?? undefined,
           published: state.ingestResult.published ?? undefined,
-          description: state.ingestResult.description ?? undefined,
+          description:
+            state.contentType === "video" ? state.ingestResult.description ?? undefined : undefined,
+          description_source:
+            state.contentType === "article" ? state.ingestResult.content_markdown : undefined,
           tags: state.contentType === "video" ? state.ingestResult.tags : undefined,
-          dynamic_folder: state.dynamicFolder || state.ingestResult.dynamic_folder,
           source: state.contentType === "video" ? "Video" : "WeChat",
         }
       : null;

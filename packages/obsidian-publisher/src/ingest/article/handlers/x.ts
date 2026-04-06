@@ -1,15 +1,43 @@
 import { chromium } from "playwright";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { extractWithDefuddle } from "../helpers/defuddle.js";
 import { BaseArticleHandler, type CrawlContext, type IngestContentResult } from "../types.js";
 import { loadChromeCookiesForDomains, type ChromeCookie } from "../../video/helpers/chrome-cookies.js";
 
 type BrowserCookie = ChromeCookie;
+const DEBUG_X_MAIN_PATH = resolve(process.cwd(), "debug-x-main.html");
 
 type XHandlerDeps = {
   fetchRenderedHtml?: (url: string, cookies: BrowserCookie[]) => Promise<string>;
   extractWithDefuddle?: typeof extractWithDefuddle;
   loadChromeCookies?: (domains: string[]) => BrowserCookie[];
 };
+
+type XPageLike = {
+  waitForSelector: (
+    selector: string,
+    options?: { state?: "attached" | "visible"; timeout?: number },
+  ) => Promise<unknown>;
+  waitForTimeout: (ms: number) => Promise<void>;
+};
+
+function extractRenderedMainHtml(html: string): string | null {
+  return html.match(/<main\b[^>]*>[\s\S]*<\/main>/i)?.[0] || null;
+}
+
+function sliceRenderedHtmlForDefuddle(html: string): string {
+  const mainHtml = extractRenderedMainHtml(html);
+  if (!mainHtml) {
+    return html;
+  }
+
+  const docTypeMatch = html.match(/<!doctype[^>]*>/i);
+  const headMatch = html.match(/<head\b[^>]*>[\s\S]*<\/head>/i);
+  const docType = docTypeMatch?.[0] || "<!DOCTYPE html>";
+  const head = headMatch?.[0] || "<head></head>";
+  return `${docType}<html>${head}<body>${mainHtml}</body></html>`;
+}
 
 function isMissingPlaywrightBrowserError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -29,6 +57,15 @@ function normalizeXSourceUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+async function waitForRenderedMain(page: XPageLike): Promise<void> {
+  await page.waitForSelector("main", { state: "attached", timeout: 15000 });
+  await page.waitForSelector('main article[data-testid="tweet"]', {
+    state: "attached",
+    timeout: 15000,
+  });
+  await page.waitForTimeout(1000);
 }
 
 async function fetchRenderedHtmlDefault(url: string, cookies: BrowserCookie[]): Promise<string> {
@@ -76,7 +113,7 @@ async function fetchRenderedHtmlDefault(url: string, cookies: BrowserCookie[]): 
   const page = await context.newPage();
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(5000);
+    await waitForRenderedMain(page);
     return await page.content();
   } finally {
     await page.close().catch(() => {});
@@ -84,6 +121,12 @@ async function fetchRenderedHtmlDefault(url: string, cookies: BrowserCookie[]): 
     await browser.close().catch(() => {});
   }
 }
+
+export const __test__ = {
+  extractRenderedMainHtml,
+  waitForRenderedMain,
+  sliceRenderedHtmlForDefuddle,
+};
 
 export class XHandler extends BaseArticleHandler {
   readonly name = "x";
@@ -105,7 +148,18 @@ export class XHandler extends BaseArticleHandler {
 
     try {
       const html = await renderHtml(requestedUrl, cookies);
-      const extracted = await parseWithDefuddle(html, requestedUrl);
+      try {
+        const mainHtml = extractRenderedMainHtml(html);
+        await writeFile(DEBUG_X_MAIN_PATH, mainHtml || "<!-- main not found -->", "utf8");
+        context.logger?.info?.(`[tool:crawl_web_article] debug_x_main_path=${DEBUG_X_MAIN_PATH}`);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        context.logger?.warn?.(`[tool:crawl_web_article] failed writing x main debug msg=${detail}`);
+      }
+      const extracted = await parseWithDefuddle(
+        sliceRenderedHtmlForDefuddle(html),
+        requestedUrl,
+      );
       if (!extracted) {
         throw new Error("x defuddle parse failed");
       }

@@ -23,18 +23,15 @@ const inputSchema = z.object({
   author: z.string().min(1).optional().describe("作者"),
   published: z.string().min(1).optional().describe("文章发布日期，优先 YYYY-MM-DD"),
   description: z.string().min(1).optional().describe("摘要描述，未传时自动从正文提取"),
+  description_source: z.string().min(1).optional().describe("用于生成摘要的源文本"),
   source: z.string().min(1).optional().describe("来源名称（兼容字段，不用于 properties.source）"),
   tags: z.array(z.string().min(1)).optional().describe("标签数组"),
-  dynamic_folder: z
-    .string()
-    .optional()
-    .describe("动态目录（从全局配置中选择一个）；不传或空字符串时仅使用基础目录"),
   vault: z.string().min(1).optional().describe("Obsidian vault 名称"),
   path: z
     .string()
     .min(1)
     .optional()
-    .describe("笔记相对路径；不传时自动生成为 {folder}/{dynamicFolder}/YYYY-MM-DD {title}.md"),
+    .describe("笔记相对路径；不传时自动生成为 {folder}/YYYY-MM-DD {title}.md"),
   mode: z.enum(["create", "append"]).default("create"),
 });
 
@@ -119,26 +116,11 @@ function normalizePathSegments(segments: string[]): string[] {
   return segments.map((item) => sanitizeFileName(item)).filter(Boolean);
 }
 
-function resolveDynamicFolder(input: SaveInput, allowedFolders: string[]): string {
-  const selected = input.dynamic_folder?.trim() ?? "";
-  if (!selected) {
-    return "";
-  }
-  if (allowedFolders.length > 0 && !allowedFolders.includes(selected)) {
-    throw new Error(
-      `Invalid dynamic_folder: "${selected}". Allowed values: ${allowedFolders.join(", ")}. Or pass empty string.`,
-    );
-  }
-  return selected;
-}
-
-function buildDefaultPath(title: string, folder: string, dynamicFolder: string): string {
+function buildDefaultPath(title: string, folder: string): string {
   const date = formatLocalDate(new Date());
   const safeTitle = sanitizeFileName(title) || "untitled";
   const folderSegments = normalizePathSegments(folder.split("/"));
-  const dynamicSegments = dynamicFolder ? normalizePathSegments(dynamicFolder.split("/")) : [];
-  const allSegments = [...folderSegments, ...dynamicSegments];
-  const basePath = allSegments.length > 0 ? allSegments.join("/") : "clippings";
+  const basePath = folderSegments.length > 0 ? folderSegments.join("/") : "clippings";
   return `${basePath}/${date} ${safeTitle}.md`;
 }
 
@@ -548,7 +530,6 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
     async (input) => {
       const configuredVault = input.vault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
-      const dynamicFolder = resolveDynamicFolder(input, env.obsidianDynamicFolders);
 
       // Use LLM to resolve title, description, and published
       let resolvedTitle = input.title;
@@ -571,14 +552,14 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
       }
 
       const initialPath =
-        input.path || buildDefaultPath(resolvedTitle, env.obsidianFolder, dynamicFolder);
+        input.path || buildDefaultPath(resolvedTitle, env.obsidianFolder);
       const content = buildNoteContent(input, tags, {
         title: resolvedTitle,
         description: resolvedDescription,
         published: resolvedPublished,
       });
       logger.info(
-        `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${initialPath} dynamic_folder=${dynamicFolder}`,
+        `[tool:save_to_obsidian] start mode=${input.mode} vault=${configuredVault || "<active>"} path=${initialPath}`,
       );
       logger.info(`[tool:save_to_obsidian] content_length=${content.length}`);
       const startedAt = Date.now();
@@ -633,7 +614,6 @@ export function createSaveToObsidianTool(env: AppEnv, deps: SaveToObsidianDeps =
         vault: effectiveVault || undefined,
         path,
         tags,
-        dynamic_folder: dynamicFolder,
         mode: input.mode,
       };
     },

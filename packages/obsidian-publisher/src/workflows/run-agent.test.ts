@@ -14,7 +14,7 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
     {
       loadEnv: () =>
         ({
-          obsidianDynamicFolders: [],
+          obsidianFolder: 'Clippings/AI',
           transcriptionProvider: 'whisper_cpp',
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
@@ -30,7 +30,6 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
             return {
               title: 'YouTube Demo',
               source_url: 'https://www.youtube.com/watch?v=demo123',
-              dynamic_folder: 'AI',
               tags: ['video', 'transcript'],
               description: 'A short summary of the transcript.',
               content_markdown: '# YouTube Demo\n\nhello transcript',
@@ -49,16 +48,15 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
       },
       createSaveToObsidianTool: () =>
         ({
-          invoke: async (input: { title: string; dynamic_folder?: string; content_markdown: string }) => {
+          invoke: async (input: { title: string; content_markdown: string }) => {
             saveCalled = true
             assert.equal(input.title, 'YouTube Demo')
-            assert.equal(input.dynamic_folder, 'AI')
+            assert.equal(Object.prototype.hasOwnProperty.call(input, 'dynamic_folder'), false)
             assert.match(input.content_markdown, /hello transcript/)
             return {
               saved: true,
               vault: '知识库',
-              path: 'Clippings/YouTube Demo.md',
-              dynamic_folder: 'AI',
+              path: 'Clippings/AI/YouTube Demo.md',
               tags: ['video', 'transcript']
             }
           }
@@ -75,11 +73,11 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
   assert.equal(persisted, true)
   assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
   assert.match(result.reply, /视频转写已成功保存到 Obsidian/)
-  assert.match(result.reply, /分类：`AI`/)
-  assert.match(result.reply, /知识库\/Clippings\/YouTube Demo\.md/)
+  assert.doesNotMatch(result.reply, /分类：/)
+  assert.match(result.reply, /知识库\/Clippings\/AI\/YouTube Demo\.md/)
 })
 
-test('runAgent should classify video content before save', async () => {
+test('runAgent should use configured folder without dynamic classification', async () => {
   let saveCalled = false
 
   const result = await runAgent(
@@ -88,7 +86,7 @@ test('runAgent should classify video content before save', async () => {
     {
       loadEnv: () =>
         ({
-          obsidianDynamicFolders: ['AI', 'English'],
+          obsidianFolder: 'Clippings/AI',
           transcriptionProvider: 'whisper_cpp',
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
@@ -108,14 +106,13 @@ test('runAgent should classify video content before save', async () => {
         }) as never,
       createSaveToObsidianTool: () =>
         ({
-          invoke: async (input: { dynamic_folder?: string }) => {
+          invoke: async (input: Record<string, unknown>) => {
             saveCalled = true
-            assert.equal(input.dynamic_folder, 'AI')
+            assert.equal(Object.prototype.hasOwnProperty.call(input, 'dynamic_folder'), false)
             return {
               saved: true,
               vault: '知识库',
               path: 'Clippings/AI/AI Engineer.md',
-              dynamic_folder: 'AI'
             }
           }
         }) as never,
@@ -125,7 +122,8 @@ test('runAgent should classify video content before save', async () => {
 
   assert.equal(saveCalled, true)
   assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
-  assert.match(result.reply, /分类：`AI`/)
+  assert.doesNotMatch(result.reply, /分类：/)
+  assert.match(result.reply, /知识库\/Clippings\/AI\/AI Engineer\.md/)
 })
 
 test('runAgent should keep article URLs on crawl path', async () => {
@@ -136,7 +134,7 @@ test('runAgent should keep article URLs on crawl path', async () => {
   const result = await runAgent('看看这个 https://example.com/post', undefined, {
     loadEnv: () =>
       ({
-        obsidianDynamicFolders: []
+        obsidianFolder: 'Clippings'
       }) as never,
     createTranscribeVideoTool: () =>
       ({
@@ -187,7 +185,7 @@ test('runAgent should pass article description_source instead of eager descripti
   await runAgent('看看这个 https://x.com/yaroslavvb/status/1', undefined, {
     loadEnv: () =>
       ({
-        obsidianDynamicFolders: []
+        obsidianFolder: 'Clippings'
       }) as never,
     crawlWebArticleTool: {
       invoke: async () => ({
@@ -224,7 +222,7 @@ test('runAgent should skip crawl when existing record is found by default', asyn
   const result = await runAgent('看看这个 https://example.com/post', undefined, {
     loadEnv: () =>
       ({
-        obsidianDynamicFolders: []
+        obsidianFolder: 'Clippings'
       }) as never,
     findExistingSavedRecordByUrl: async () => ({
       createdAt: '2026-03-22T00:00:00.000Z',
@@ -253,7 +251,7 @@ test('runAgent should force recrawl when user explicitly asks for it', async () 
   const result = await runAgent('重新爬这个 https://example.com/post', undefined, {
     loadEnv: () =>
       ({
-        obsidianDynamicFolders: []
+        obsidianFolder: 'Clippings'
       }) as never,
     findExistingSavedRecordByUrl: async () => ({
       createdAt: '2026-03-22T00:00:00.000Z',
