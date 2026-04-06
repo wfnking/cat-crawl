@@ -1,12 +1,9 @@
 import { chromium } from "playwright";
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { extractWithDefuddle } from "../helpers/defuddle.js";
 import { BaseArticleHandler, type CrawlContext, type IngestContentResult } from "../types.js";
 import { loadChromeCookiesForDomains, type ChromeCookie } from "../../video/helpers/chrome-cookies.js";
 
 type BrowserCookie = ChromeCookie;
-const DEBUG_X_MAIN_PATH = resolve(process.cwd(), "debug-x-main.html");
 
 type XHandlerDeps = {
   fetchRenderedHtml?: (url: string, cookies: BrowserCookie[]) => Promise<string>;
@@ -121,13 +118,6 @@ async function fetchRenderedHtmlDefault(url: string, cookies: BrowserCookie[]): 
     await browser.close().catch(() => {});
   }
 }
-
-export const __test__ = {
-  extractRenderedMainHtml,
-  waitForRenderedMain,
-  sliceRenderedHtmlForDefuddle,
-};
-
 export class XHandler extends BaseArticleHandler {
   readonly name = "x";
 
@@ -148,14 +138,6 @@ export class XHandler extends BaseArticleHandler {
 
     try {
       const html = await renderHtml(requestedUrl, cookies);
-      try {
-        const mainHtml = extractRenderedMainHtml(html);
-        await writeFile(DEBUG_X_MAIN_PATH, mainHtml || "<!-- main not found -->", "utf8");
-        context.logger?.info?.(`[tool:crawl_web_article] debug_x_main_path=${DEBUG_X_MAIN_PATH}`);
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        context.logger?.warn?.(`[tool:crawl_web_article] failed writing x main debug msg=${detail}`);
-      }
       const extracted = await parseWithDefuddle(
         sliceRenderedHtmlForDefuddle(html),
         requestedUrl,

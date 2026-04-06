@@ -133,14 +133,3 @@ export const crawlWebArticleTool = tool(
     schema: inputSchema,
   },
 );
-
-export const __test__ = {
-  isRegistryManagedAdapter,
-  pickArticleAdapter,
-  resolveArticleImageSrc,
-  normalizePublishedDateWithFallback,
-  formatUnixSecondsDate,
-  createBrowserScrapeFunction,
-  resolveSourceUrl,
-  resolveInputArticleUrl,
-};

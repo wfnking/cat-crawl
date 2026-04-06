@@ -518,7 +518,7 @@ export async function resolveDouyinVideoSource(
   sourceUrl: string,
   options: ResolveDouyinVideoSourceOptions = {},
 ): Promise<ResolvedDouyinVideoSource> {
-  const outputDir = options.outputDir || (await mkdtemp(join(tmpdir(), "cat-crawl-douyin-")));
+  const outputDir = options.outputDir || (await mkdtemp(join(tmpdir(), "cat-crawl/douyin")));
   const extractVideo = options.extractVideo || extractDouyinVideoDefault;
   const downloadVideo = options.downloadVideo || downloadDouyinVideoDefault;
 
@@ -571,12 +571,3 @@ export async function resolveDouyinVideoSource(
     published: extracted.published?.trim() || undefined,
   };
 }
-
-export const __test__ = {
-  applyDouyinCookies,
-  clickDouyinPlayerCenter,
-  extractDouyinVideoFromPage,
-  isExecutionContextDestroyedError,
-  toDouyinCookies,
-  tryEnableDouyinAudio,
-};

@@ -42,7 +42,7 @@ function createWhisperRunner(options: TranscribeAudioOptions): (audioPath: strin
       bin: options.whisperCpp.bin,
       modelPath: options.whisperCpp.modelPath,
       language: options.whisperCpp.language,
-      outputDir: options.whisperCpp.outputDir || "/tmp/cat-crawl-whisper",
+      outputDir: options.whisperCpp.outputDir || "/tmp/cat-crawl/whisper",
     });
   });
 }

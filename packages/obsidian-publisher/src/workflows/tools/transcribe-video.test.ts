@@ -48,6 +48,51 @@ test('transcribe video tool should transcribe local file without saving', async 
   assert.match(result.content_markdown, /hello transcript/)
 })
 
+test('transcribe video tool should default whisper language to Chinese', async () => {
+  let receivedWhisperLanguage: string | undefined
+
+  const tool = createTranscribeVideoTool(
+    {
+      transcriptionProvider: 'whisper_cpp',
+      whisperCppBin: 'whisper-cli',
+      whisperCppModelPath: '/models/base.bin',
+      whisperCppLanguage: undefined,
+      geminiApiKey: 'gemini-demo-key',
+      geminiModel: 'gemini-2.5-pro',
+      obsidianFolder: 'Clippings',
+      obsidianDynamicFolders: []
+    } as never,
+    {
+      selectVideoHandler: () => ({ name: 'file' }),
+      resolveFileVideoSource: async (source) => ({
+        adapter: 'file',
+        sourceUrl: source,
+        mediaPath: source
+      }),
+      extractAudioFromVideo: async () => '/tmp/audio.mp3',
+      transcribeAudio: async (_audioPath, options) => {
+        receivedWhisperLanguage = options.whisperCpp.language
+        return {
+          providerUsed: 'whisper_cpp',
+          text: 'hello transcript',
+          srt: undefined,
+          fallbackUsed: false
+        }
+      },
+      buildTranscriptMarkdown: async () => ({
+        markdown: '## Local Video\n\nhello transcript'
+      })
+    }
+  )
+
+  await tool.invoke({
+    source: '/tmp/input.mp4',
+    title: 'Local Video'
+  })
+
+  assert.equal(receivedWhisperLanguage, 'zh')
+})
+
 test('transcribe video tool should return description and tags without folder classification', async () => {
   const tool = createTranscribeVideoTool(
     {

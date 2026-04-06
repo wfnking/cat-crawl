@@ -331,7 +331,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         whisperCpp: {
           bin: env.whisperCppBin,
           modelPath: env.whisperCppModelPath,
-          language: input.language || env.whisperCppLanguage,
+          language: input.language || env.whisperCppLanguage || "zh",
           outputDir: WHISPER_TEMP_DIR,
         },
       });
@@ -385,15 +385,3 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
     },
   );
 }
-
-export const __test__ = {
-  buildTranscriptMarkdownWithModel,
-  shouldTranslateToChinese,
-  pickGeminiSummarizeModel,
-  pickTranscriptSourceMaterial,
-  splitTranscriptIntoParagraphs,
-  appendFullTranscript,
-  buildTranscriptSystemPrompt,
-  extractHashtags,
-  normalizeVideoTitle,
-};
