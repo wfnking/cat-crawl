@@ -2,7 +2,6 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { createLogger } from "@cat-crawl/core";
 import { createModel } from "./llm/models/index.js";
-import type { IngestContentResult } from "../ingest/types.js";
 import {
   createQuerySuccessHistoryTool,
   type QuerySuccessHistoryResult,

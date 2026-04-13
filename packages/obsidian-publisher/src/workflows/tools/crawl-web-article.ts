@@ -2,15 +2,6 @@ import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
 import { z } from "zod";
 import { loadEnv } from "../../config/env.js";
-import { createBrowserScrapeFunction } from "../../ingest/article/helpers/browser.js";
-import {
-  formatUnixSecondsDate,
-  normalizePublishedDateWithFallback,
-} from "../../ingest/article/helpers/dates.js";
-import {
-  resolveArticleImageSrc,
-  resolveSourceUrl,
-} from "../../ingest/article/helpers/urls.js";
 import { articleHandlers, fallbackArticleHandler } from "../../ingest/article/handlers/index.js";
 import { selectArticleHandler } from "../../ingest/article/registry.js";
 import { crawlBrowserAdapterArticle } from "../../ingest/article/helpers/browser-crawl.js";
@@ -95,7 +86,6 @@ function isRegistryManagedAdapter(adapter: ArticleAdapterName): boolean {
   return (
     adapter === "google_search" ||
     adapter === "wechat" ||
-    adapter === "huxiu" ||
     adapter === "x" ||
     adapter === "reddit" ||
     adapter === "chatgpt" ||

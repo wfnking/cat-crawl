@@ -165,6 +165,19 @@ function resolveObsidianRouting(currentEnv: AppEnv | undefined, fallbackEnv: App
   };
 }
 
+function resolveConfiguredCandidateFolder(
+  folder: string | undefined,
+  candidates: ObsidianFolderOption[],
+): string | null {
+  const normalizedFolder = folder?.trim();
+  if (!normalizedFolder) {
+    return null;
+  }
+
+  const match = candidates.find((candidate) => candidate.folder.trim() === normalizedFolder);
+  return match?.folder ?? null;
+}
+
 async function classifyConfiguredFolder(input: FolderClassificationInput): Promise<string | null> {
   if (input.candidates.length === 0) {
     return null;
@@ -182,7 +195,13 @@ async function classifyConfiguredFolder(input: FolderClassificationInput): Promi
       contentPreview,
       candidates: input.candidates,
     });
-    return result.folder || null;
+    const selectedFolder = resolveConfiguredCandidateFolder(result.folder, input.candidates);
+    if (!selectedFolder && result.folder?.trim()) {
+      logger.warn(
+        `[tool:save_to_obsidian] folder classify returned non-candidate folder="${result.folder.trim()}", fallback to base folder`,
+      );
+    }
+    return selectedFolder;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     logger.warn(`[tool:save_to_obsidian] folder classify failed, fallback to base folder: ${detail}`);
@@ -716,6 +735,7 @@ export const __test__ = {
   resolveAvailableNotePath,
   resolveTargetFolder,
   resolveObsidianRouting,
+  resolveConfiguredCandidateFolder,
   normalizeObsidianTag,
   inferTags,
 };

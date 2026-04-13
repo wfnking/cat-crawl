@@ -209,6 +209,31 @@ test("resolveObsidianRouting should prefer current config loaded at save time", 
   );
 });
 
+test("resolveConfiguredCandidateFolder should accept exact configured folder matches only", () => {
+  assert.equal(
+    __test__.resolveConfiguredCandidateFolder("Clippings/Self-help", [
+      { folder: "Clippings/Self-help", description: "个人成长" },
+      { folder: "Clippings/Writing", description: "写作与思考" },
+    ]),
+    "Clippings/Self-help",
+  );
+});
+
+test("resolveConfiguredCandidateFolder should reject near matches outside configured candidates", () => {
+  assert.equal(
+    __test__.resolveConfiguredCandidateFolder("Clippings/Self", [
+      { folder: "Clippings/Self-help", description: "个人成长" },
+    ]),
+    null,
+  );
+  assert.equal(
+    __test__.resolveConfiguredCandidateFolder("Clippings/Self-help -", [
+      { folder: "Clippings/Self-help", description: "个人成长" },
+    ]),
+    null,
+  );
+});
+
 test("normalizeObsidianTag should convert unsupported tag characters", () => {
   assert.equal(__test__.normalizeObsidianTag("Google Stitch"), "Google-Stitch");
   assert.equal(__test__.normalizeObsidianTag("#AI News"), "AI-News");
