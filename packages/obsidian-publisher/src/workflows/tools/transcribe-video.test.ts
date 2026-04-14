@@ -435,6 +435,17 @@ test('pickGeminiSummarizeModel should route translation to pro preview', () => {
   assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, false), 'gemini-2.5-pro')
 })
 
+test('pickSummarizeModel should use openai-compatible model for deepseek provider', () => {
+  assert.equal(
+    __test__.pickSummarizeModel(
+      { geminiModel: 'gemini-2.5-pro', openaiModel: 'deepseek-chat' } as any,
+      'deepseek',
+      false
+    ),
+    'deepseek-chat'
+  )
+})
+
 test('pickTranscriptSourceMaterial should prefer plain transcript over verbose srt', () => {
   assert.equal(
     __test__.pickTranscriptSourceMaterial({

@@ -86,6 +86,17 @@ function pickGeminiSummarizeModel(env: AppEnv, translateToChinese: boolean): str
   return env.geminiModel || "gemini-2.5-pro";
 }
 
+function pickSummarizeModel(
+  env: AppEnv,
+  provider: AppEnv["aiProvider"],
+  translateToChinese: boolean,
+): string {
+  if (provider === "gemini" || provider === "vertex") {
+    return pickGeminiSummarizeModel(env, translateToChinese);
+  }
+  return env.openaiModel || "gpt-4o-mini";
+}
+
 function pickTranscriptSourceMaterial(input: {
   transcriptText: string;
   transcriptSrt?: string;
@@ -206,10 +217,7 @@ export async function buildTranscriptMarkdownWithModel(
   const sourceMaterial = pickTranscriptSourceMaterial(input);
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
   const configuredProvider = env.aiSummarizeProvider || env.aiProvider || env.agent;
-  const summarizeModel =
-    configuredProvider === "openai"
-      ? env.openaiModel
-      : pickGeminiSummarizeModel(env, translateToChinese);
+  const summarizeModel = pickSummarizeModel(env, configuredProvider, translateToChinese);
   const summarizeMaxTokens = Math.max(
     8000,
     Math.min(64000, Math.ceil(sourceMaterial.length / 5)),
@@ -390,6 +398,7 @@ export const __test__ = {
   normalizeVideoTitle,
   shouldTranslateToChinese,
   pickGeminiSummarizeModel,
+  pickSummarizeModel,
   pickTranscriptSourceMaterial,
   buildTranscriptSystemPrompt,
   splitTranscriptIntoParagraphs,
