@@ -1,6 +1,6 @@
 {
   "name": "cat-crawl-workspace",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Crawl WeChat articles and save them to Obsidian with multi-channel bot interfaces.",
   "private": true,
   "type": "module",
