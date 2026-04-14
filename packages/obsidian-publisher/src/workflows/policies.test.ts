@@ -35,6 +35,7 @@ test("detect explicit recrawl request", () => {
   assert.equal(shouldForceRecrawlFromText("重新爬这个链接 https://example.com/a"), true);
   assert.equal(shouldForceRecrawlFromText("这个之前爬过也没关系，强制重抓"), true);
   assert.equal(shouldForceRecrawlFromText("忽略历史记录，重新处理一下"), true);
+  assert.equal(shouldForceRecrawlFromText("继续抓取"), true);
 });
 
 test("non recrawl text should not force recrawl", () => {

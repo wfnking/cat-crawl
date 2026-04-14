@@ -5,7 +5,9 @@ import type { HistoryChannel } from "../ingest/history/history-store.js";
 import type { ExistingSavedRecord, findExistingSavedRecordByUrl } from "../ingest/history/existing-save-check.js";
 import type { HistoryIntent } from "./policies.js";
 import type { QuerySuccessHistoryResult } from "../ingest/history/query-success-history.js";
+import type { ResolvedVideoSource } from "../ingest/video/types.js";
 import type { crawlWebArticleTool } from "./tools/crawl-web-article.js";
+import type { createResolveVideoSourceTool } from "./tools/resolve-video-source.js";
 import type { createSaveToObsidianTool } from "./tools/save-to-obsidian.js";
 import type { createTranscribeVideoTool } from "./tools/transcribe-video.js";
 import type { getHistoryStore } from "../ingest/history/history-store.js";
@@ -58,6 +60,7 @@ export type AgentDeps = {
   loadEnv?: typeof loadEnv;
   findExistingSavedRecordByUrl?: typeof findExistingSavedRecordByUrl;
   crawlWebArticleTool?: Pick<typeof crawlWebArticleTool, "invoke">;
+  createResolveVideoSourceTool?: typeof createResolveVideoSourceTool;
   createSaveToObsidianTool?: typeof createSaveToObsidianTool;
   createTranscribeVideoTool?: typeof createTranscribeVideoTool;
   persistSuccessHistory?: PersistSuccessHistory;
@@ -77,6 +80,7 @@ export type AgentGraphState = {
   historyResult: QuerySuccessHistoryResult | null;
   existingRecord: ExistingSavedRecord | null;
   contentType: AgentGraphContentType | null;
+  resolvedVideoSource: ResolvedVideoSource | null;
   ingestResult: IngestContentResult | null;
   saveResult: SaveToolResult | null;
   reply: string;
@@ -93,6 +97,7 @@ export type AgentRuntime = {
 export type ResolvedAgentDeps = {
   existingChecker: (url: string) => Promise<ExistingSavedRecord | null>;
   articleTool: Pick<typeof crawlWebArticleTool, "invoke">;
+  buildResolveVideoTool: typeof createResolveVideoSourceTool;
   buildSaveTool: typeof createSaveToObsidianTool;
   buildTranscribeTool: typeof createTranscribeVideoTool;
   persistHistory: PersistSuccessHistory;

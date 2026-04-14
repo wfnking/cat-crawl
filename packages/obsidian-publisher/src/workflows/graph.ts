@@ -9,7 +9,6 @@ import {
 import { selectVideoHandler } from "../ingest/video/registry.js";
 import { appendConversationRound, getRecentConversationMessages } from "./llm/memory/chat-memory.js";
 import {
-  parseHistoryIntentFromModelOutput,
   parseHistoryIntentFromText,
   shouldForceRecrawlFromText,
 } from "./policies.js";
@@ -32,6 +31,7 @@ const AgentGraphStateAnnotation = Annotation.Root({
   historyResult: Annotation<AgentGraphState["historyResult"]>(),
   existingRecord: Annotation<AgentGraphState["existingRecord"]>(),
   contentType: Annotation<AgentGraphState["contentType"]>(),
+  resolvedVideoSource: Annotation<AgentGraphState["resolvedVideoSource"]>(),
   ingestResult: Annotation<AgentGraphState["ingestResult"]>(),
   saveResult: Annotation<AgentGraphState["saveResult"]>(),
   reply: Annotation<AgentGraphState["reply"]>(),
@@ -52,6 +52,7 @@ function createEmptyAgentState(userInput: string): AgentGraphState {
     historyResult: null,
     existingRecord: null,
     contentType: null,
+    resolvedVideoSource: null,
     ingestResult: null,
     saveResult: null,
     reply: "",
@@ -152,40 +153,6 @@ export function normalizeModelText(content: unknown): string {
   return String(content ?? "").trim();
 }
 
-async function detectHistoryIntent(userInput: string, runtime: AgentRuntime) {
-  const fallback = parseHistoryIntentFromText(userInput);
-  const classifyModel = createModel(runtime.env, {
-    task: "classify",
-    maxTokens: 120,
-    timeout: 15000,
-    temperature: 0,
-  });
-
-  try {
-    const message = await classifyModel.invoke([
-      new SystemMessage(
-        [
-          "你是意图分类器，只返回 JSON。",
-          "识别用户是否在查询历史成功记录。",
-          '{"should_query":boolean,"scope":"all|today","tag":"可选标签"}',
-          "如果不是历史查询，should_query=false，scope=all。",
-        ].join("\n"),
-      ),
-      new HumanMessage(userInput),
-    ]);
-
-    const parsed = parseHistoryIntentFromModelOutput(normalizeModelText(message.content));
-    if (parsed) {
-      return parsed;
-    }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    logger.warn(`[agent] history intent classify failed, fallback regex: ${detail}`);
-  }
-
-  return fallback;
-}
-
 async function chatForNonWechatInput(userInput: string, runtime: AgentRuntime): Promise<string> {
   if (shouldReturnCapabilityReply(userInput)) {
     return buildCapabilityReply();
@@ -219,9 +186,7 @@ async function chatForNonWechatInput(userInput: string, runtime: AgentRuntime): 
       new HumanMessage(userInput),
     ]);
     const reply = normalizeModelText(message.content);
-    const finalReply = reply || buildCapabilityReply();
-    appendConversationRound(runtime.options?.context, userInput, finalReply);
-    return finalReply;
+    return reply || buildCapabilityReply();
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     logger.error(`[agent] non-wechat chat fallback failed: ${detail}`);
@@ -239,7 +204,7 @@ function formatSuccessReply(subject: string, saveResult: SaveToolResult): string
 }
 
 function formatExistingRecordReply(record: { title: string; vault: string; path: string }): string {
-  return `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${record.title}\n保存路径：\`${record.vault}/${record.path}\``;
+  return `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${record.title}\n保存路径：\`${record.vault}/${record.path}\`\n\n如果你确认还要重新抓取，直接回复“继续抓取”就行。`;
 }
 
 function isSupportedVideoUrl(url: string): boolean {
@@ -259,6 +224,18 @@ function extractArticleUrl(text: string): string | null {
   return matches?.[0] ?? null;
 }
 
+function findLatestUrlFromMemory(
+  messages: ReturnType<typeof getRecentConversationMessages>,
+): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const url = extractArticleUrl(messages[index]?.content ?? "");
+    if (url) {
+      return url;
+    }
+  }
+  return null;
+}
+
 function createParseInputNode(runtime: AgentRuntime) {
   return async (state: AgentGraphStateShape): Promise<Partial<AgentGraphStateShape>> => {
     await emitStatus(runtime, {
@@ -267,13 +244,24 @@ function createParseInputNode(runtime: AgentRuntime) {
     });
 
     const url = extractArticleUrl(state.userInput);
+    const memoryMessages = getRecentConversationMessages(runtime.options?.context);
+    const recentUrl = url ? null : findLatestUrlFromMemory(memoryMessages);
     if (!url) {
       await emitStatus(runtime, {
         stage: "small_chat",
         message: "检测到非文章链接，先尝试历史查询意图，否则进入简短对话模式。",
       });
 
-      const historyIntent = await detectHistoryIntent(state.userInput, runtime);
+      if (recentUrl && shouldForceRecrawlFromText(state.userInput)) {
+        logger.info(`[agent] reuse recent source from memory: ${recentUrl}`);
+        return {
+          mode: "content_request",
+          url: recentUrl,
+          forceRecrawl: true,
+        };
+      }
+
+      const historyIntent = parseHistoryIntentFromText(state.userInput);
       if (historyIntent.shouldQuery) {
         return {
           mode: "history_query",
@@ -281,15 +269,15 @@ function createParseInputNode(runtime: AgentRuntime) {
         };
       }
 
-      if (!shouldReturnCapabilityReply(state.userInput)) {
+      if (shouldReturnCapabilityReply(state.userInput)) {
         return {
           mode: "small_chat",
+          reply: buildCapabilityReply(),
         };
       }
 
       return {
         mode: "small_chat",
-        reply: buildCapabilityReply(),
       };
     }
 
@@ -325,16 +313,18 @@ function createQueryHistoryNode(runtime: AgentRuntime) {
 
 function createCheckExistingSaveNode(runtime: AgentRuntime) {
   return async (state: AgentGraphStateShape): Promise<Partial<AgentGraphStateShape>> => {
-    if (!state.url || state.forceRecrawl) {
-      if (state.forceRecrawl && state.url) {
-        logger.info(`[agent] force recrawl requested for url: ${state.url}`);
+    const sourceUrl =
+      state.resolvedVideoSource?.sourceUrl?.trim() || state.ingestResult?.source_url?.trim();
+    if (!sourceUrl || state.forceRecrawl) {
+      if (state.forceRecrawl && sourceUrl) {
+        logger.info(`[agent] force recrawl requested for url: ${sourceUrl}`);
       }
       return { existingRecord: null };
     }
 
-    const existingRecord = await runtime.deps.existingChecker(state.url);
+    const existingRecord = await runtime.deps.existingChecker(sourceUrl);
     if (existingRecord) {
-      logger.info(`[agent] found existing record for url: ${state.url}`);
+      logger.info(`[agent] found existing record for url: ${sourceUrl}`);
       await emitStatus(runtime, {
         stage: "save_done",
         message: `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${existingRecord.title}\n保存路径：${existingRecord.vault}/${existingRecord.path}`,
@@ -354,6 +344,32 @@ async function routeContentNode(
 
   return {
     contentType: isSupportedVideoUrl(state.url) ? "video" : "article",
+  };
+}
+
+function createResolveVideoSourceNode(runtime: AgentRuntime) {
+  return async (state: AgentGraphStateShape): Promise<Partial<AgentGraphStateShape>> => {
+    if (!state.url) {
+      return {};
+    }
+
+    await emitStatus(runtime, {
+      stage: "crawl_start",
+      message: `开始解析视频来源：${state.url}`,
+    });
+    logger.info("[agent] invoking tool=resolve_video_source");
+
+    const resolveVideoTool = runtime.deps.buildResolveVideoTool(runtime.env);
+    const resolvedVideoSource = await resolveVideoTool.invoke({
+      source: state.url,
+    });
+
+    logger.info("[agent] tool success: resolve_video_source");
+    return {
+      resolvedVideoSource,
+      usedTools: [...state.usedTools, "resolve_video_source"],
+      replySubject: "视频转写",
+    };
   };
 }
 
@@ -394,19 +410,25 @@ function createCrawlArticleNode(runtime: AgentRuntime) {
 
 function createTranscribeVideoNode(runtime: AgentRuntime) {
   return async (state: AgentGraphStateShape): Promise<Partial<AgentGraphStateShape>> => {
-    if (!state.url) {
+    if (!state.url || !state.resolvedVideoSource) {
       return {};
     }
 
     await emitStatus(runtime, {
       stage: "crawl_start",
-      message: `开始提取视频并转写：${state.url}`,
+      message: `开始转写视频：${state.resolvedVideoSource.sourceUrl}`,
     });
     logger.info("[agent] invoking tool=transcribe_video");
 
     const transcribeTool = runtime.deps.buildTranscribeTool(runtime.env);
     const ingestResult = await transcribeTool.invoke({
       source: state.url,
+      resolved_adapter: state.resolvedVideoSource.adapter,
+      resolved_source_url: state.resolvedVideoSource.sourceUrl,
+      resolved_media_path: state.resolvedVideoSource.mediaPath,
+      resolved_title: state.resolvedVideoSource.title,
+      resolved_author: state.resolvedVideoSource.author,
+      resolved_published: state.resolvedVideoSource.published,
     });
 
     return {
@@ -505,10 +527,11 @@ export function createAgentGraph(runtime: AgentRuntime) {
   return new StateGraph(AgentGraphStateAnnotation)
     .addNode("parse_input", createParseInputNode(runtime))
     .addNode("query_history", createQueryHistoryNode(runtime))
-    .addNode("check_existing_save", createCheckExistingSaveNode(runtime))
     .addNode("route_content", routeContentNode)
+    .addNode("resolve_video_source", createResolveVideoSourceNode(runtime))
     .addNode("crawl_article", createCrawlArticleNode(runtime))
     .addNode("transcribe_video", createTranscribeVideoNode(runtime))
+    .addNode("check_existing_save", createCheckExistingSaveNode(runtime))
     .addNode("save_note", createSaveNoteNode(runtime))
     .addNode("build_reply", createBuildReplyNode(runtime))
     .addEdge(START, "parse_input")
@@ -519,17 +542,21 @@ export function createAgentGraph(runtime: AgentRuntime) {
       if (state.mode === "small_chat") {
         return "build_reply";
       }
-      return "check_existing_save";
+      return "route_content";
     })
     .addEdge("query_history", "build_reply")
-    .addConditionalEdges("check_existing_save", (state) => {
-      return state.existingRecord ? "build_reply" : "route_content";
-    })
     .addConditionalEdges("route_content", (state) => {
-      return state.contentType === "video" ? "transcribe_video" : "crawl_article";
+      return state.contentType === "video" ? "resolve_video_source" : "crawl_article";
+    })
+    .addEdge("resolve_video_source", "check_existing_save")
+    .addEdge("crawl_article", "check_existing_save")
+    .addConditionalEdges("check_existing_save", (state) => {
+      if (state.existingRecord) {
+        return "build_reply";
+      }
+      return state.contentType === "video" ? "transcribe_video" : "save_note";
     })
     .addEdge("transcribe_video", "save_note")
-    .addEdge("crawl_article", "save_note")
     .addEdge("save_note", "build_reply")
     .addEdge("build_reply", END)
     .compile();
@@ -537,5 +564,9 @@ export function createAgentGraph(runtime: AgentRuntime) {
 
 export async function runAgentGraph(userInput: string, runtime: AgentRuntime) {
   const graph = createAgentGraph(runtime);
-  return graph.invoke(createEmptyAgentState(userInput));
+  const finalState = await graph.invoke(createEmptyAgentState(userInput));
+  if (finalState.reply?.trim()) {
+    appendConversationRound(runtime.options?.context, userInput, finalState.reply);
+  }
+  return finalState;
 }

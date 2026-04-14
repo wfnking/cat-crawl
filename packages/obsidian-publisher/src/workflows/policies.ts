@@ -55,40 +55,13 @@ export function parseHistoryIntentFromText(input: string): HistoryIntent {
   };
 }
 
-export function parseHistoryIntentFromModelOutput(modelOutput: string): HistoryIntent | null {
-  const trimmed = modelOutput.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as {
-      should_query?: unknown;
-      scope?: unknown;
-      tag?: unknown;
-    };
-
-    const shouldQuery = Boolean(parsed.should_query);
-    const scope: QueryScope = parsed.scope === "today" ? "today" : "all";
-    const tag = typeof parsed.tag === "string" ? parsed.tag.trim() : "";
-
-    return {
-      shouldQuery,
-      scope,
-      tag: tag || undefined,
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function shouldForceRecrawlFromText(input: string): boolean {
   const text = input.trim().toLowerCase();
   if (!text) {
     return false;
   }
 
-  return /(重新爬|重爬|重抓|重新抓取|重新处理|强制重爬|强制重抓|忽略历史|忽略重复|即使爬过|重新来一次|force recrawl|re-crawl|recrawl|reprocess)/i.test(
+  return /(继续抓取|继续处理|继续重抓|重新爬|重爬|重抓|重新抓取|重新处理|强制重爬|强制重抓|忽略历史|忽略重复|即使爬过|重新来一次|force recrawl|re-crawl|recrawl|reprocess)/i.test(
     text,
   );
 }

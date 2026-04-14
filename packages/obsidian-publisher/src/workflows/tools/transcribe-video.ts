@@ -12,12 +12,19 @@ import { resolveDouyinVideoSource } from "../../ingest/video/handlers/douyin.js"
 import { resolveFileVideoSource } from "../../ingest/video/handlers/file.js";
 import { selectVideoHandler } from "../../ingest/video/registry.js";
 import { resolveYouTubeVideoSource } from "../../ingest/video/handlers/youtube.js";
+import type { ResolvedVideoSource } from "../../ingest/video/types.js";
 
 const inputSchema = z.object({
   source: z.string().min(1).describe("视频 URL 或本地文件路径"),
   provider: z.literal("whisper_cpp").optional(),
   language: z.string().min(1).optional(),
   title: z.string().min(1).optional(),
+  resolved_adapter: z.enum(["file", "youtube", "douyin"]).optional(),
+  resolved_source_url: z.string().min(1).optional(),
+  resolved_media_path: z.string().min(1).optional(),
+  resolved_title: z.string().min(1).optional(),
+  resolved_published: z.string().min(1).optional(),
+  resolved_author: z.string().min(1).optional(),
 });
 
 type TranscribeVideoInput = z.infer<typeof inputSchema>;
@@ -42,6 +49,31 @@ const YOUTUBE_TEMP_DIR = join(TEMP_ROOT_DIR, "youtube");
 const DOUYIN_TEMP_DIR = join(TEMP_ROOT_DIR, "douyin");
 const AUDIO_TEMP_DIR = join(TEMP_ROOT_DIR, "audio");
 const WHISPER_TEMP_DIR = join(TEMP_ROOT_DIR, "whisper");
+
+function hasPreResolvedSource(
+  input: TranscribeVideoInput,
+): input is TranscribeVideoInput & {
+  resolved_adapter: ResolvedVideoSource["adapter"];
+  resolved_source_url: string;
+  resolved_media_path: string;
+} {
+  return Boolean(input.resolved_adapter && input.resolved_source_url && input.resolved_media_path);
+}
+
+function toResolvedVideoSource(input: TranscribeVideoInput): ResolvedVideoSource {
+  if (!hasPreResolvedSource(input)) {
+    throw new Error("Resolved video source is incomplete.");
+  }
+
+  return {
+    adapter: input.resolved_adapter,
+    sourceUrl: input.resolved_source_url,
+    mediaPath: input.resolved_media_path,
+    title: input.resolved_title,
+    published: input.resolved_published,
+    author: input.resolved_author,
+  };
+}
 
 function extractHashtags(text: string): string[] {
   return Array.from(text.matchAll(/#([^\s#]+)/g))
@@ -95,6 +127,10 @@ function pickSummarizeModel(
     return pickGeminiSummarizeModel(env, translateToChinese);
   }
   return env.openaiModel || "gpt-4o-mini";
+}
+
+function pickSummarizeMaxTokens(sourceMaterial: string): number {
+  return Math.max(24000, Math.min(64000, Math.ceil(sourceMaterial.length / 5)));
 }
 
 function pickTranscriptSourceMaterial(input: {
@@ -191,7 +227,7 @@ function buildTranscriptSystemPrompt(input: {
     "第二行必须是：[Tags] 3-5个相关标签，用逗号分隔，标签应该反映视频的主题和关键概念。",
     `第三行必须是：- Source: ${input.sourceUrl}`,
     "按主题分章节，章节标题格式：## 标题，标题尽量简短，不要占用过多输出长度。",
-    "章节标题和第一段之间必须有一个空行。",
+    "章节标题和第一段之间必须有一个空行；禁止输出“## 标题”后立刻紧跟正文。",
     "章节必须按内容大意和主题转折拆分，不要按固定时长或固定字数机械切分。",
     ...translationInstruction,
     "整体文风参考微信公众号文章：结构清晰、节奏舒适、适合手机阅读。",
@@ -218,10 +254,7 @@ export async function buildTranscriptMarkdownWithModel(
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
   const configuredProvider = env.aiSummarizeProvider || env.aiProvider || env.agent;
   const summarizeModel = pickSummarizeModel(env, configuredProvider, translateToChinese);
-  const summarizeMaxTokens = Math.max(
-    8000,
-    Math.min(64000, Math.ceil(sourceMaterial.length / 5)),
-  );
+  const summarizeMaxTokens = pickSummarizeMaxTokens(sourceMaterial);
   const summarizeTimeoutMs = Math.max(
     60000,
     Math.min(300000, Math.ceil(sourceMaterial.length / 40) * 1000),
@@ -282,11 +315,42 @@ export async function buildTranscriptMarkdownWithModel(
   }
 }
 
-export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps = {}) {
+export async function resolveVideoSource(
+  env: AppEnv,
+  source: string,
+  deps: Pick<
+    TranscribeVideoDeps,
+    "selectVideoHandler" | "resolveFileVideoSource" | "resolveYouTubeVideoSource" | "resolveDouyinVideoSource"
+  > = {},
+): Promise<ResolvedVideoSource> {
   const selectHandler = deps.selectVideoHandler || selectVideoHandler;
   const resolveFile = deps.resolveFileVideoSource || resolveFileVideoSource;
   const resolveYoutube = deps.resolveYouTubeVideoSource || resolveYouTubeVideoSource;
   const resolveDouyin = deps.resolveDouyinVideoSource || resolveDouyinVideoSource;
+
+  const handler = selectHandler(source);
+  logger.info(`[tool:resolve_video_source] start source=${source}`);
+  logger.info(`[tool:resolve_video_source] handler=${handler.name}`);
+
+  const resolved =
+    handler.name === "file"
+      ? await resolveFile(source)
+      : handler.name === "youtube"
+        ? await resolveYoutube(source, {
+            outputDir: YOUTUBE_TEMP_DIR,
+          })
+        : await resolveDouyin(source, {
+            outputDir: DOUYIN_TEMP_DIR,
+            cookieHeader: env.douyinCookie,
+          });
+
+  logger.info(
+    `[tool:resolve_video_source] resolved source_url=${resolved.sourceUrl} media_path=${resolved.mediaPath}`,
+  );
+  return resolved;
+}
+
+export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps = {}) {
   const extractAudio = deps.extractAudioFromVideo || extractAudioFromVideo;
   const transcribe = deps.transcribeAudio || transcribeAudio;
   const buildTranscriptMarkdown =
@@ -307,20 +371,10 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         }
       }
 
-      const handler = selectHandler(input.source);
       logger.info(`[tool:transcribe_video] start source=${input.source}`);
-      logger.info(`[tool:transcribe_video] handler=${handler.name}`);
-      const resolved =
-        handler.name === "file"
-          ? await resolveFile(input.source)
-          : handler.name === "youtube"
-            ? await resolveYoutube(input.source, {
-                outputDir: YOUTUBE_TEMP_DIR,
-              })
-            : await resolveDouyin(input.source, {
-                outputDir: DOUYIN_TEMP_DIR,
-                cookieHeader: env.douyinCookie,
-              });
+      const resolved = hasPreResolvedSource(input)
+        ? toResolvedVideoSource(input)
+        : await resolveVideoSource(env, input.source, deps);
       logger.info(
         `[tool:transcribe_video] resolved source_url=${resolved.sourceUrl} media_path=${resolved.mediaPath}`,
       );
@@ -408,6 +462,7 @@ export const __test__ = {
   shouldTranslateToChinese,
   pickGeminiSummarizeModel,
   pickSummarizeModel,
+  pickSummarizeMaxTokens,
   pickTranscriptSourceMaterial,
   buildTranscriptSystemPrompt,
   splitTranscriptIntoParagraphs,

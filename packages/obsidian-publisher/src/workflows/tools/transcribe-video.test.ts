@@ -508,6 +508,11 @@ test('pickSummarizeModel should use openai-compatible model for deepseek provide
   )
 })
 
+test('pickSummarizeMaxTokens should use a larger floor for long transcript summaries', () => {
+  assert.equal(__test__.pickSummarizeMaxTokens('x'), 24000)
+  assert.equal(__test__.pickSummarizeMaxTokens('x'.repeat(120000)), 24000)
+})
+
 test('pickTranscriptSourceMaterial should prefer plain transcript over verbose srt', () => {
   assert.equal(
     __test__.pickTranscriptSourceMaterial({
@@ -537,4 +542,14 @@ test('buildTranscriptSystemPrompt should request Chinese translation for non-Chi
 
   assert.match(prompt, /每章先写原始语言内容（保真整理，轻微断句即可），紧接着写对应的中文翻译内容/)
   assert.match(prompt, /若内容过长，优先确保原文完整输出；译文可以按段落精炼翻译/)
+})
+
+test('buildTranscriptSystemPrompt should forbid placing body text right after a heading', () => {
+  const prompt = __test__.buildTranscriptSystemPrompt({
+    sourceUrl: 'https://example.com/video',
+    translateToChinese: false
+  })
+
+  assert.match(prompt, /章节标题和第一段之间必须有一个空行/)
+  assert.match(prompt, /禁止输出.*立刻紧跟正文/)
 })

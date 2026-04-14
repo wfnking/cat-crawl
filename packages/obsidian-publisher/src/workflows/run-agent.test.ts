@@ -3,6 +3,7 @@ import test from 'node:test'
 import { runAgent } from './run-agent.js'
 
 test('runAgent should route supported video URLs to transcribe_video', async () => {
+  let resolveCalled = false
   let transcribeCalled = false
   let crawlCalled = false
   let saveCalled = false
@@ -23,11 +24,25 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
           geminiApiKey: 'gemini-demo-key',
           geminiModel: 'gemini-2.5-pro'
         }) as never,
-      createTranscribeVideoTool: () =>
+      createResolveVideoSourceTool: () =>
         ({
           invoke: async (input: { source: string }) => {
+            resolveCalled = true
+            assert.equal(input.source, 'https://www.youtube.com/watch?v=demo123')
+            return {
+              adapter: 'youtube',
+              sourceUrl: 'https://www.youtube.com/watch?v=demo123',
+              mediaPath: '/tmp/cat-crawl/youtube/demo123.webm',
+            }
+          }
+        }) as never,
+      createTranscribeVideoTool: () =>
+        ({
+          invoke: async (input: Record<string, string>) => {
             transcribeCalled = true
             assert.equal(input.source, 'https://www.youtube.com/watch?v=demo123')
+            assert.equal(input.resolved_source_url, 'https://www.youtube.com/watch?v=demo123')
+            assert.equal(input.resolved_media_path, '/tmp/cat-crawl/youtube/demo123.webm')
             return {
               title: 'YouTube Demo',
               source_url: 'https://www.youtube.com/watch?v=demo123',
@@ -70,17 +85,19 @@ test('runAgent should route supported video URLs to transcribe_video', async () 
     }
   )
 
+  assert.equal(resolveCalled, true)
   assert.equal(transcribeCalled, true)
   assert.equal(crawlCalled, false)
   assert.equal(saveCalled, true)
   assert.equal(persisted, true)
-  assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
+  assert.deepEqual(result.usedTools, ['resolve_video_source', 'transcribe_video', 'save_to_obsidian'])
   assert.match(result.reply, /视频转写已成功保存到 Obsidian/)
   assert.doesNotMatch(result.reply, /分类：/)
   assert.match(result.reply, /知识库\/Clippings\/YouTube Demo\.md/)
 })
 
 test('runAgent should rely on save_to_obsidian to choose configured folder', async () => {
+  let resolveCalled = false
   let saveCalled = false
 
   const result = await runAgent(
@@ -104,6 +121,17 @@ test('runAgent should rely on save_to_obsidian to choose configured folder', asy
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
           whisperCppLanguage: undefined
+        }) as never,
+      createResolveVideoSourceTool: () =>
+        ({
+          invoke: async () => {
+            resolveCalled = true
+            return {
+              adapter: 'youtube',
+              sourceUrl: 'https://www.youtube.com/watch?v=demo123',
+              mediaPath: '/tmp/cat-crawl/youtube/demo123.webm',
+            }
+          }
         }) as never,
       createTranscribeVideoTool: () =>
         ({
@@ -133,13 +161,15 @@ test('runAgent should rely on save_to_obsidian to choose configured folder', asy
     }
   )
 
+  assert.equal(resolveCalled, true)
   assert.equal(saveCalled, true)
-  assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
+  assert.deepEqual(result.usedTools, ['resolve_video_source', 'transcribe_video', 'save_to_obsidian'])
   assert.doesNotMatch(result.reply, /分类：/)
   assert.match(result.reply, /知识库\/Clippings\/AI\/ai-coding\/AI Engineer\.md/)
 })
 
 test('runAgent should rely on save_to_obsidian fallback to Clippings when classification is unsure', async () => {
+  let resolveCalled = false
   let saveCalled = false
 
   const result = await runAgent(
@@ -159,6 +189,17 @@ test('runAgent should rely on save_to_obsidian fallback to Clippings when classi
           whisperCppBin: 'whisper-cli',
           whisperCppModelPath: '/models/base.bin',
           whisperCppLanguage: undefined
+        }) as never,
+      createResolveVideoSourceTool: () =>
+        ({
+          invoke: async () => {
+            resolveCalled = true
+            return {
+              adapter: 'youtube',
+              sourceUrl: 'https://www.youtube.com/watch?v=demo123',
+              mediaPath: '/tmp/cat-crawl/youtube/demo123.webm',
+            }
+          }
         }) as never,
       createTranscribeVideoTool: () =>
         ({
@@ -188,8 +229,9 @@ test('runAgent should rely on save_to_obsidian fallback to Clippings when classi
     }
   )
 
+  assert.equal(resolveCalled, true)
   assert.equal(saveCalled, true)
-  assert.deepEqual(result.usedTools, ['transcribe_video', 'save_to_obsidian'])
+  assert.deepEqual(result.usedTools, ['resolve_video_source', 'transcribe_video', 'save_to_obsidian'])
   assert.match(result.reply, /知识库\/Clippings\/判断朋友与伴侣的标准\.md/)
 })
 
@@ -283,8 +325,9 @@ test('runAgent should pass article description_source instead of eager descripti
   assert.equal(saveCalled, true)
 })
 
-test('runAgent should skip crawl when existing record is found by default', async () => {
+test('runAgent should skip save when existing record is found after crawl by default', async () => {
   let crawlCalled = false
+  let saveCalled = false
 
   const result = await runAgent('看看这个 https://example.com/post', undefined, {
     loadEnv: () =>
@@ -301,13 +344,27 @@ test('runAgent should skip crawl when existing record is found by default', asyn
     crawlWebArticleTool: {
       invoke: async () => {
         crawlCalled = true
-        throw new Error('crawl should not be called when duplicate is skipped')
+        return {
+          title: 'Fetched Article',
+          author: 'Author',
+          published: '2026-03-22',
+          source_url: 'https://example.com/post',
+          content_markdown: '# Fetched\n\nBody'
+        }
       }
-    }
+    },
+    createSaveToObsidianTool: () =>
+      ({
+        invoke: async () => {
+          saveCalled = true
+          throw new Error('save should not be called when duplicate is skipped')
+        }
+      }) as never
   } as never)
 
-  assert.equal(crawlCalled, false)
-  assert.deepEqual(result.usedTools, [])
+  assert.equal(crawlCalled, true)
+  assert.equal(saveCalled, false)
+  assert.deepEqual(result.usedTools, ['crawl_web_article'])
   assert.match(result.reply, /之前已经帮您处理并保存过/)
 })
 
@@ -357,4 +414,147 @@ test('runAgent should force recrawl when user explicitly asks for it', async () 
   assert.equal(saveCalled, true)
   assert.deepEqual(result.usedTools, ['crawl_web_article', 'save_to_obsidian'])
   assert.match(result.reply, /文章已成功保存到 Obsidian/)
+})
+
+test('runAgent should reuse the latest source from memory for explicit follow-up recrawl text', async () => {
+  const context = {
+    channel: 'feishu',
+    senderId: 'followup-user',
+    roomId: 'followup-room',
+  }
+  let crawlCalled = false
+  let saveCalled = false
+
+  const firstResult = await runAgent('看看这个 https://example.com/post', { context }, {
+    loadEnv: () =>
+      ({
+        obsidianFolder: 'Clippings'
+      }) as never,
+    findExistingSavedRecordByUrl: async () => ({
+      createdAt: '2026-03-22T00:00:00.000Z',
+      title: 'Existing Article',
+      vault: '知识库',
+      path: 'Clippings/Existing Article.md',
+      sourceUrl: 'https://example.com/post'
+    }),
+    crawlWebArticleTool: {
+      invoke: async () => {
+        return {
+          title: 'Fetched Article',
+          author: 'Author',
+          published: '2026-03-22',
+          source_url: 'https://example.com/post',
+          content_markdown: '# Fetched\n\nBody'
+        }
+      }
+    }
+  } as never)
+
+  assert.match(firstResult.reply, /继续抓取/)
+
+  const secondResult = await runAgent('继续抓取', { context }, {
+    loadEnv: () =>
+      ({
+        obsidianFolder: 'Clippings'
+      }) as never,
+    findExistingSavedRecordByUrl: async () => ({
+      createdAt: '2026-03-22T00:00:00.000Z',
+      title: 'Existing Article',
+      vault: '知识库',
+      path: 'Clippings/Existing Article.md',
+      sourceUrl: 'https://example.com/post'
+    }),
+    crawlWebArticleTool: {
+      invoke: async (input: { url: string }) => {
+        crawlCalled = true
+        assert.equal(input.url, 'https://example.com/post')
+        return {
+          title: 'Refetched Article',
+          author: 'Author',
+          published: '2026-03-22',
+          source_url: 'https://example.com/post',
+          content_markdown: '# Refetched\n\nBody'
+        }
+      }
+    },
+    createSaveToObsidianTool: () =>
+      ({
+        invoke: async () => {
+          saveCalled = true
+          return {
+            saved: true,
+            vault: '知识库',
+            path: 'Clippings/Refetched Article.md'
+          }
+        }
+      }) as never,
+    persistSuccessHistory: () => {}
+  } as never)
+
+  assert.equal(crawlCalled, true)
+  assert.equal(saveCalled, true)
+  assert.deepEqual(secondResult.usedTools, ['crawl_web_article', 'save_to_obsidian'])
+  assert.match(secondResult.reply, /文章已成功保存到 Obsidian/)
+})
+
+test('runAgent should use resolved source url for duplicate detection before save', async () => {
+  let resolveCalled = false
+  let transcribeCalled = false
+  let saveCalled = false
+
+  const result = await runAgent(
+    '帮我处理这个视频 https://youtube.com/shorts/9dQ_ZIIGGzY?si=zBs_Y1xoF18NwDkh',
+    undefined,
+    {
+      loadEnv: () =>
+        ({
+          obsidianFolder: 'Clippings',
+          transcriptionProvider: 'whisper_cpp',
+          whisperCppBin: 'whisper-cli',
+          whisperCppModelPath: '/models/base.bin'
+        }) as never,
+      createResolveVideoSourceTool: () =>
+        ({
+          invoke: async (input: { source: string }) => {
+            resolveCalled = true
+            assert.equal(input.source, 'https://youtube.com/shorts/9dQ_ZIIGGzY?si=zBs_Y1xoF18NwDkh')
+            return {
+              adapter: 'youtube',
+              sourceUrl: 'https://www.youtube.com/watch?v=9dQ_ZIIGGzY',
+              mediaPath: '/tmp/cat-crawl/youtube/demo.webm',
+            }
+          }
+        }) as never,
+      createTranscribeVideoTool: () =>
+        ({
+          invoke: async () => {
+            transcribeCalled = true
+            throw new Error('transcribe should not be called when resolved source already exists')
+          }
+        }) as never,
+      findExistingSavedRecordByUrl: async (sourceUrl: string) => {
+        assert.equal(sourceUrl, 'https://www.youtube.com/watch?v=9dQ_ZIIGGzY')
+        return {
+          createdAt: '2026-03-22T00:00:00.000Z',
+          title: 'Existing Video',
+          vault: '知识库',
+          path: 'Clippings/Existing Video.md',
+          sourceUrl
+        }
+      },
+      createSaveToObsidianTool: () =>
+        ({
+          invoke: async () => {
+            saveCalled = true
+            throw new Error('save should not be called when resolved source already exists')
+          }
+        }) as never
+    } as never,
+  )
+
+  assert.equal(resolveCalled, true)
+  assert.equal(transcribeCalled, false)
+  assert.equal(saveCalled, false)
+  assert.deepEqual(result.usedTools, ['resolve_video_source'])
+  assert.match(result.reply, /之前已经帮您处理并保存过/)
 })
