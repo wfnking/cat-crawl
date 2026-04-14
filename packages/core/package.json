@@ -1,6 +1,6 @@
 {
   "name": "@cat-crawl/core",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "type": "module",
   "main": "../../../dist/packages/core/src/index.js"

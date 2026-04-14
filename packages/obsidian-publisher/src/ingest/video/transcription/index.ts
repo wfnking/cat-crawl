@@ -8,6 +8,13 @@ type WhisperCppConfig = {
   modelPath?: string;
   language?: string;
   outputDir?: string;
+  ssh?: {
+    host: string;
+    user?: string;
+    port?: number;
+    audioDir?: string;
+    outputDir?: string;
+  };
 };
 
 type ProviderResult = {
@@ -43,6 +50,7 @@ function createWhisperRunner(options: TranscribeAudioOptions): (audioPath: strin
       modelPath: options.whisperCpp.modelPath,
       language: options.whisperCpp.language,
       outputDir: options.whisperCpp.outputDir || "/tmp/cat-crawl/whisper",
+      ssh: options.whisperCpp.ssh,
     });
   });
 }

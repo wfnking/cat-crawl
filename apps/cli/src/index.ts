@@ -548,6 +548,9 @@ async function startChannels(modes: ChannelModes): Promise<void> {
   }
 
   await Promise.all(starts);
+  
+  // Keep the process alive indefinitely Since feishu and discord don't block the main event loop
+  await new Promise(() => {});
 }
 
 async function runCliMode(input: string): Promise<void> {

@@ -17,6 +17,10 @@ function isConfiguredVaultAbsolute(path: string): boolean {
 }
 
 export function getObsidianVaultStartupWarning(env: StartupEnv): string | null {
+  return null;
+}
+
+export function getObsidianVaultStartupError(env: StartupEnv): string | null {
   const configured = normalizeConfiguredVaultPath(env.obsidianVault);
 
   if (!configured) {
@@ -25,16 +29,6 @@ export function getObsidianVaultStartupWarning(env: StartupEnv): string | null {
       "建议设置 `obsidian.vault` 为绝对路径，避免运行时再去猜测 Vault 地址。",
       '可执行：`cat-crawl obsidian config set vault "vault的绝对地址"`',
     ].join(" ");
-  }
-
-  return null;
-}
-
-export function getObsidianVaultStartupError(env: StartupEnv): string | null {
-  const configured = normalizeConfiguredVaultPath(env.obsidianVault);
-
-  if (!configured) {
-    return null;
   }
 
   if (!isConfiguredVaultAbsolute(configured)) {

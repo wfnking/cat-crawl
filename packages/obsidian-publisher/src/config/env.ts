@@ -22,6 +22,11 @@ export type AppEnv = {
   whisperCppBin: string
   whisperCppModelPath?: string
   whisperCppLanguage?: string
+  whisperCppSshHost?: string
+  whisperCppSshUser?: string
+  whisperCppSshPort?: number
+  whisperCppSshAudioDir?: string
+  whisperCppSshOutputDir?: string
   geminiApiKey?: string
   googleApiKey?: string
   vertexApiKey?: string
@@ -172,6 +177,10 @@ function readFromStructuredConfig(name: string): string | undefined {
     WHISPER_CPP_BIN: ['transcription', 'whisperCpp', 'bin'],
     WHISPER_CPP_MODEL_PATH: ['transcription', 'whisperCpp', 'modelPath'],
     WHISPER_CPP_LANGUAGE: ['transcription', 'whisperCpp', 'language'],
+    WHISPER_CPP_SSH_HOST: ['transcription', 'whisperCpp', 'ssh', 'host'],
+    WHISPER_CPP_SSH_USER: ['transcription', 'whisperCpp', 'ssh', 'user'],
+    WHISPER_CPP_SSH_AUDIO_DIR: ['transcription', 'whisperCpp', 'ssh', 'audioDir'],
+    WHISPER_CPP_SSH_OUTPUT_DIR: ['transcription', 'whisperCpp', 'ssh', 'outputDir'],
     OBSIDIAN_VAULT: ['obsidian', 'vault'],
     TELEGRAM_BOT_TOKEN: ['channels', 'telegram', 'botToken'],
     TELEGRAM_DM_POLICY: ['channels', 'telegram', 'dmPolicy'],
@@ -187,7 +196,8 @@ function readFromStructuredConfig(name: string): string | undefined {
     FEISHU_ENABLED: ['channels', 'feishu', 'accounts', 'main', 'enabled']
   }
   const numberMappings: Record<string, string[]> = {
-    TELEGRAM_TYPING_INTERVAL_SECONDS: ['channels', 'telegram', 'typingIntervalSeconds']
+    TELEGRAM_TYPING_INTERVAL_SECONDS: ['channels', 'telegram', 'typingIntervalSeconds'],
+    WHISPER_CPP_SSH_PORT: ['transcription', 'whisperCpp', 'ssh', 'port']
   }
 
   const path = mappings[name]
@@ -334,6 +344,18 @@ function getNumber(name: string, defaultValue: number): number {
   return n
 }
 
+function getOptionalNumber(name: string): number | undefined {
+  const raw = readRaw(name)
+  if (!raw) {
+    return undefined
+  }
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid numeric env var ${name}: ${raw}`)
+  }
+  return n
+}
+
 function getBoolean(name: string, defaultValue: boolean): boolean {
   const raw = readRaw(name)
   if (!raw) {
@@ -441,6 +463,11 @@ export function loadEnv(): AppEnv {
     whisperCppBin: readRaw('WHISPER_CPP_BIN') || 'whisper-cli',
     whisperCppModelPath: readRaw('WHISPER_CPP_MODEL_PATH') || undefined,
     whisperCppLanguage: readRaw('WHISPER_CPP_LANGUAGE') || undefined,
+    whisperCppSshHost: readRaw('WHISPER_CPP_SSH_HOST') || undefined,
+    whisperCppSshUser: readRaw('WHISPER_CPP_SSH_USER') || undefined,
+    whisperCppSshPort: getOptionalNumber('WHISPER_CPP_SSH_PORT'),
+    whisperCppSshAudioDir: readRaw('WHISPER_CPP_SSH_AUDIO_DIR') || undefined,
+    whisperCppSshOutputDir: readRaw('WHISPER_CPP_SSH_OUTPUT_DIR') || undefined,
     geminiApiKey: geminiAuth.value || undefined,
     googleApiKey: configuredGoogleApiKey,
     vertexApiKey: configuredVertexApiKey,

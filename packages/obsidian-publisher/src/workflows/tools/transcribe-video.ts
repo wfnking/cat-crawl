@@ -341,6 +341,15 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           modelPath: env.whisperCppModelPath,
           language: input.language || env.whisperCppLanguage || "zh",
           outputDir: WHISPER_TEMP_DIR,
+          ssh: env.whisperCppSshHost
+            ? {
+                host: env.whisperCppSshHost,
+                user: env.whisperCppSshUser,
+                port: env.whisperCppSshPort,
+                audioDir: env.whisperCppSshAudioDir,
+                outputDir: env.whisperCppSshOutputDir,
+              }
+            : undefined,
         },
       });
       logger.info(

@@ -62,7 +62,14 @@ test('loadEnv should read transcription config from structured config', () => {
       whisperCpp: {
         bin: '/opt/homebrew/bin/whisper-cli',
         modelPath: '/models/ggml-large-v3.bin',
-        language: 'en'
+        language: 'en',
+        ssh: {
+          host: '192.168.10.16',
+          user: 'alfwong',
+          port: 22,
+          audioDir: '/tmp/cat-crawl/audio',
+          outputDir: '/tmp/cat-crawl/whisper'
+        }
       },
       gemini: {
         apiKey: 'gemini-demo-key',
@@ -85,6 +92,11 @@ test('loadEnv should read transcription config from structured config', () => {
     assert.equal(env.whisperCppBin, '/opt/homebrew/bin/whisper-cli')
     assert.equal(env.whisperCppModelPath, '/models/ggml-large-v3.bin')
     assert.equal(env.whisperCppLanguage, 'en')
+    assert.equal(env.whisperCppSshHost, '192.168.10.16')
+    assert.equal(env.whisperCppSshUser, 'alfwong')
+    assert.equal(env.whisperCppSshPort, 22)
+    assert.equal(env.whisperCppSshAudioDir, '/tmp/cat-crawl/audio')
+    assert.equal(env.whisperCppSshOutputDir, '/tmp/cat-crawl/whisper')
     assert.equal(env.geminiApiKey, 'agent-gemini-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
     assert.equal(env.geminiModel, 'gemini-2.5-pro')
@@ -271,7 +283,10 @@ test('loadEnv should read camelCase flat config keys for whisper cpp', () => {
     geminiApiKey: 'gemini-demo-key',
     transcriptionProvider: 'whisper_cpp',
     whisperCppBin: '/opt/homebrew/bin/whisper-cli',
-    whisperCppModelPath: '/models/camel.bin'
+    whisperCppModelPath: '/models/camel.bin',
+    whisperCppSshHost: '192.168.10.16',
+    whisperCppSshUser: 'alfwong',
+    whisperCppSshPort: '22'
   })
 
   setLocalConfigStoreForTest(store)
@@ -280,6 +295,9 @@ test('loadEnv should read camelCase flat config keys for whisper cpp', () => {
     assert.equal(env.transcriptionProvider, 'whisper_cpp')
     assert.equal(env.whisperCppBin, '/opt/homebrew/bin/whisper-cli')
     assert.equal(env.whisperCppModelPath, '/models/camel.bin')
+    assert.equal(env.whisperCppSshHost, '192.168.10.16')
+    assert.equal(env.whisperCppSshUser, 'alfwong')
+    assert.equal(env.whisperCppSshPort, 22)
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()

@@ -93,6 +93,68 @@ test('transcribe video tool should default whisper language to Chinese', async (
   assert.equal(receivedWhisperLanguage, 'zh')
 })
 
+test('transcribe video tool should pass whisper ssh config to transcription', async () => {
+  let receivedWhisperSsh: {
+    host: string
+    user?: string
+    port?: number
+    audioDir?: string
+    outputDir?: string
+  } | undefined
+
+  const tool = createTranscribeVideoTool(
+    {
+      transcriptionProvider: 'whisper_cpp',
+      whisperCppBin: 'whisper-cli',
+      whisperCppModelPath: '/models/base.bin',
+      whisperCppLanguage: undefined,
+      whisperCppSshHost: '192.168.10.16',
+      whisperCppSshUser: 'alfwong',
+      whisperCppSshPort: 22,
+      whisperCppSshAudioDir: '/tmp/cat-crawl/audio',
+      whisperCppSshOutputDir: '/tmp/cat-crawl/whisper',
+      geminiApiKey: 'gemini-demo-key',
+      geminiModel: 'gemini-2.5-pro',
+      obsidianFolder: 'Clippings',
+      obsidianDynamicFolders: []
+    } as never,
+    {
+      selectVideoHandler: () => ({ name: 'file' }),
+      resolveFileVideoSource: async (source) => ({
+        adapter: 'file',
+        sourceUrl: source,
+        mediaPath: source
+      }),
+      extractAudioFromVideo: async () => '/tmp/audio.mp3',
+      transcribeAudio: async (_audioPath, options) => {
+        receivedWhisperSsh = options.whisperCpp.ssh
+        return {
+          providerUsed: 'whisper_cpp',
+          text: 'hello transcript',
+          srt: undefined,
+          fallbackUsed: false
+        }
+      },
+      buildTranscriptMarkdown: async () => ({
+        markdown: '## Local Video\n\nhello transcript'
+      })
+    }
+  )
+
+  await tool.invoke({
+    source: '/tmp/input.mp4',
+    title: 'Local Video'
+  })
+
+  assert.deepEqual(receivedWhisperSsh, {
+    host: '192.168.10.16',
+    user: 'alfwong',
+    port: 22,
+    audioDir: '/tmp/cat-crawl/audio',
+    outputDir: '/tmp/cat-crawl/whisper'
+  })
+})
+
 test('transcribe video tool should return description and tags without folder classification', async () => {
   const tool = createTranscribeVideoTool(
     {
