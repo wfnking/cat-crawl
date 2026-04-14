@@ -13,7 +13,7 @@ For personal knowledge-base workflows, it feels like a specialized, lower-token 
 - Web article clipping: WeChat, X / Twitter, generic article pages
 - Video transcription: YouTube, Douyin, local video files
 - Channels: CLI, Feishu, Telegram, Discord
-- AI providers: OpenAI, Gemini, Vertex (ADC/OAuth)
+- AI providers: OpenAI-compatible providers (OpenAI, DeepSeek, OpenRouter, Groq, Moonshot, SiliconFlow, Together), Gemini, Vertex (ADC/OAuth)
 
 ## What It Does
 
@@ -49,9 +49,16 @@ cat-crawl obsidian start --all-channels
 cat-crawl obsidian run "https://mp.weixin.qq.com/s/xxxx"
 cat-crawl obsidian run "https://www.youtube.com/watch?v=xxxx"
 
-# Configure channel / agent
+# Configure vault / channel / agent
+cat-crawl obsidian config set vault "vault的绝对地址"
 cat-crawl obsidian config set channel telegram
 cat-crawl obsidian config set agent openai
+cat-crawl obsidian config set agent deepseek
+cat-crawl obsidian config set agent openrouter
+cat-crawl obsidian config set agent groq
+cat-crawl obsidian config set agent moonshot
+cat-crawl obsidian config set agent siliconflow
+cat-crawl obsidian config set agent together
 cat-crawl obsidian config set agent gemini
 cat-crawl obsidian config set agent vertex
 
@@ -72,10 +79,11 @@ Recommended nested format:
 ```json
 {
   "agent": {
-    "provider": "gemini",
-    "gemini": {
-      "apiKey": "<GEMINI_API_KEY>",
-      "model": "gemini-3.1-flash-lite-preview"
+    "provider": "deepseek",
+    "deepseek": {
+      "apiKey": "<DEEPSEEK_API_KEY>",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "model": "deepseek-chat"
     }
   },
   "transcription": {
@@ -99,6 +107,20 @@ Recommended nested format:
 ```
 
 `obsidian.folder` is the base save directory. `obsidian.folders` provides candidate subfolders for model-based classification, and uncertain cases fall back to the base folder.
+
+For OpenAI-compatible providers, configure `agent.provider` plus the matching nested object with `apiKey`, `baseUrl`, and `model`.
+
+Example providers supported by the CLI:
+
+- `openai`
+- `deepseek`
+- `openrouter`
+- `groq`
+- `moonshot`
+- `siliconflow`
+- `together`
+- `gemini`
+- `vertex`
 
 `vertex` uses Vertex AI's ADC/OAuth flow. Configure the agent through the CLI or `~/.cat-crawl/config.json`.
 

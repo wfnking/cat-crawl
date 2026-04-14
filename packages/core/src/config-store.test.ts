@@ -47,6 +47,8 @@ test("parseChannelConfig should validate supported values", () => {
 
 test("parseAgentConfig should validate supported values", () => {
   assert.equal(parseAgentConfig("openai"), "openai");
+  assert.equal(parseAgentConfig(" deepseek "), "deepseek");
+  assert.equal(parseAgentConfig("openrouter"), "openrouter");
   assert.equal(parseAgentConfig(" gemini "), "gemini");
   assert.equal(parseAgentConfig("unknown"), null);
 });

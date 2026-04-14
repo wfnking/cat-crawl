@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
-import { promisify } from "node:util";
+import { join } from "node:path";
 import { createLogger } from "@cat-crawl/core";
 import type { AppEnv } from "../config/env.js";
-
-const execFileAsync = promisify(execFile);
+import { resolveVaultPath } from "../obsidian/vault-path.js";
 const logger = createLogger();
 
 type CacheRecord = {
@@ -19,63 +16,6 @@ let cache: CacheRecord | null = null;
 
 function normalizeFolders(folders: string[]): string[] {
   return Array.from(new Set(folders.map((f) => f.trim()).filter(Boolean)));
-}
-
-function parseVaultsVerbose(output: string): Array<{ name: string; path: string }> {
-  return output
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.split("\t"))
-    .filter((parts) => parts.length >= 2)
-    .map((parts) => ({
-      name: parts[0]?.trim() || "",
-      path: parts.slice(1).join("\t").trim(),
-    }))
-    .filter((item) => item.name && item.path);
-}
-
-function parseObsidianPlainOutput(stdout: string, stderr: string): string {
-  const combined = [stdout, stderr].filter(Boolean).join("\n").trim();
-  if (!combined) {
-    return "";
-  }
-  const lines = combined
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines[lines.length - 1] || "";
-}
-
-async function resolveVaultPath(vaultName?: string): Promise<string | undefined> {
-  if (vaultName && isAbsolute(vaultName)) {
-    return vaultName;
-  }
-
-  if (vaultName) {
-    try {
-      const { stdout, stderr } = await execFileAsync("obsidian", ["vaults", "verbose"], {
-        maxBuffer: 2 * 1024 * 1024,
-      });
-      const entries = parseVaultsVerbose([stdout, stderr].filter(Boolean).join("\n"));
-      return entries.find((item) => item.name === vaultName)?.path;
-    } catch {
-      return undefined;
-    }
-  }
-
-  try {
-    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=path"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const out = parseObsidianPlainOutput(stdout, stderr);
-    if (!out || out.toLowerCase().startsWith("error:")) {
-      return undefined;
-    }
-    return out;
-  } catch {
-    return undefined;
-  }
 }
 
 export function describeDynamicFolder(name: string): string {

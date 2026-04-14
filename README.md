@@ -76,6 +76,8 @@ npm link
 cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]
 cat-crawl obsidian run "<任意文本/URL>"
 
+cat-crawl obsidian config set vault "vault的绝对地址"
+
 cat-crawl obsidian config set channel <feishu|telegram|discord|all>
 cat-crawl obsidian config get channel [fallback]
 

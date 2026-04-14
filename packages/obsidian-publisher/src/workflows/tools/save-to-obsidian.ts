@@ -1,11 +1,15 @@
 import { tool } from "@langchain/core/tools";
 import { createLogger } from "@cat-crawl/core";
-import { execFile } from "node:child_process";
-import { appendFile, access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
-import { promisify } from "node:util";
+import { access, appendFile, mkdir, writeFile } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { z } from "zod";
 import { loadEnv, type AppEnv, type ObsidianFolderOption } from "../../config/env.js";
+import {
+  findVaultPathFromDesktopConfig,
+  normalizeConfiguredVaultPath,
+  resolveActiveVaultName,
+  resolveVaultPath,
+} from "../../obsidian/vault-path.js";
 import {
   generateTitleAndDescription,
   type TitleDescriptionResult,
@@ -14,7 +18,6 @@ import {
   generateFolderClassification,
 } from "../llm/generate-folder-classification.js";
 
-const execFileAsync = promisify(execFile);
 const logger = createLogger();
 const PROJECT_TAG = "cat-crawl";
 
@@ -28,7 +31,7 @@ const inputSchema = z.object({
   description_source: z.string().min(1).optional().describe("用于生成摘要的源文本"),
   source: z.string().min(1).optional().describe("来源名称（兼容字段，不用于 properties.source）"),
   tags: z.array(z.string().min(1)).optional().describe("标签数组"),
-  vault: z.string().min(1).optional().describe("Obsidian vault 名称"),
+  vault: z.string().min(1).optional().describe("Obsidian vault 绝对路径或名称"),
   folder: z.string().min(1).optional().describe("保存目录；不传时使用配置中的基础目录"),
   path: z
     .string()
@@ -301,21 +304,6 @@ function buildNoteContent(
   return `${frontmatter.join("\n")}${input.content_markdown.trim()}`.trim();
 }
 
-function parseObsidianPlainOutput(stdout: string, stderr: string): string {
-  const combined = [stdout, stderr].filter(Boolean).join("\n").trim();
-  if (!combined) {
-    return "";
-  }
-  const lines = combined
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) {
-    return "";
-  }
-  return lines[lines.length - 1] || "";
-}
-
 function formatObsidianCommandForLog(args: string[]): string {
   const rendered = args.map((arg) => {
     if (!arg.startsWith("content=")) {
@@ -325,246 +313,6 @@ function formatObsidianCommandForLog(args: string[]): string {
     return `content=<${content.length} chars>`;
   });
   return `obsidian ${rendered.join(" ")}`.trim();
-}
-
-function parseObsidianKeyValueOutput(stdout: string, stderr: string): Record<string, string> {
-  const combined = [stdout, stderr].filter(Boolean).join("\n").trim();
-  if (!combined) {
-    return {};
-  }
-  const result: Record<string, string> = {};
-  const lines = combined.split(/\r?\n/g);
-  for (const line of lines) {
-    const parts = line.split("\t");
-    if (parts.length >= 2) {
-      const key = parts[0]?.trim();
-      const value = parts.slice(1).join("\t").trim();
-      if (key && value) {
-        result[key] = value;
-      }
-    }
-  }
-  return result;
-}
-
-function sanitizeVaultName(raw: string): string | undefined {
-  const value = raw.trim();
-  if (!value) {
-    return undefined;
-  }
-  const lower = value.toLowerCase();
-  if (lower.startsWith("error:")) {
-    return undefined;
-  }
-  if (lower.includes("vault not found")) {
-    return undefined;
-  }
-  if (lower.includes("no vault")) {
-    return undefined;
-  }
-  if (lower === "not found") {
-    return undefined;
-  }
-  return value;
-}
-
-function parseVaultsVerbose(output: string): Array<{ name: string; path: string }> {
-  return output
-    .split(/\r?\n/g)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.split("\t"))
-    .filter((parts) => parts.length >= 2)
-    .map((parts) => ({
-      name: parts[0]?.trim() || "",
-      path: parts.slice(1).join("\t").trim(),
-    }))
-    .filter((entry) => entry.name && entry.path);
-}
-
-function findVaultPathFromDesktopConfig(
-  configText: string,
-  vaultName?: string,
-): string | undefined {
-  if (!configText.trim()) {
-    return undefined;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(configText);
-  } catch {
-    return undefined;
-  }
-
-  const vaults = (parsed as { vaults?: Record<string, { path?: string; open?: boolean }> }).vaults;
-  const entries = Object.values(vaults || {})
-    .map((entry) => ({
-      path: entry?.path?.trim() || "",
-      open: Boolean(entry?.open),
-    }))
-    .filter((entry) => entry.path);
-  if (entries.length === 0) {
-    return undefined;
-  }
-
-  if (vaultName?.trim()) {
-    const matched = entries.find((entry) => basename(entry.path) === vaultName.trim());
-    return matched?.path;
-  }
-
-  return entries.find((entry) => entry.open)?.path || entries[0]?.path;
-}
-
-async function resolveVaultPathFromDesktopConfig(vaultName?: string): Promise<string | undefined> {
-  const configPath = join(
-    process.env.HOME || "",
-    "Library",
-    "Application Support",
-    "obsidian",
-    "obsidian.json",
-  );
-  try {
-    const configText = await readFile(configPath, "utf8");
-    return findVaultPathFromDesktopConfig(configText, vaultName);
-  } catch {
-    return undefined;
-  }
-}
-
-async function resolveVaultPathFromICloud(vaultName?: string): Promise<string | undefined> {
-  const name = vaultName?.trim();
-  if (!name) {
-    return undefined;
-  }
-  const candidate = join(
-    process.env.HOME || "",
-    "Library",
-    "Mobile Documents",
-    "iCloud~md~obsidian",
-    "Documents",
-    name,
-  );
-  try {
-    await access(candidate);
-    return candidate;
-  } catch {
-    return undefined;
-  }
-}
-
-function hasObsidianOutputError(output: string): boolean {
-  const lower = output.toLowerCase();
-  if (!lower) {
-    return false;
-  }
-  return (
-    lower.includes("vault not found") || lower.includes("no vault") || lower.includes("error:")
-  );
-}
-
-async function resolveActiveVaultName(): Promise<string | undefined> {
-  try {
-    const { stdout, stderr } = await execFileAsync("obsidian", ["vault"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const kv = parseObsidianKeyValueOutput(stdout, stderr);
-    if (kv.name) {
-      return sanitizeVaultName(kv.name);
-    }
-  } catch {
-    // fallback below
-  }
-
-  try {
-    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=name"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const output = sanitizeVaultName(parseObsidianPlainOutput(stdout, stderr));
-    if (output) {
-      return output;
-    }
-  } catch {
-    // fallback below
-  }
-
-  try {
-    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=path"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const output = parseObsidianPlainOutput(stdout, stderr).trim();
-    if (!output || output.toLowerCase().startsWith("error:")) {
-      return undefined;
-    }
-    if (output.includes("vault not found")) {
-      return undefined;
-    }
-    const name = basename(output);
-    const normalized = sanitizeVaultName(name);
-    if (!normalized) {
-      return undefined;
-    }
-    return normalized;
-  } catch {
-    const fallbackPath = await resolveVaultPathFromDesktopConfig();
-    return fallbackPath ? sanitizeVaultName(basename(fallbackPath)) : undefined;
-  }
-}
-
-async function resolveVaultPath(vaultName?: string): Promise<string | undefined> {
-  if (vaultName && isAbsolute(vaultName)) {
-    return vaultName;
-  }
-
-  if (vaultName) {
-    try {
-      const { stdout, stderr } = await execFileAsync("obsidian", ["vaults", "verbose"], {
-        maxBuffer: 2 * 1024 * 1024,
-      });
-      const combined = [stdout, stderr].filter(Boolean).join("\n");
-      const entries = parseVaultsVerbose(combined);
-      const matched = entries.find((entry) => entry.name === vaultName);
-      if (matched) {
-        return matched.path;
-      }
-    } catch {
-      const fallbackPath = await resolveVaultPathFromDesktopConfig(vaultName);
-      if (fallbackPath) {
-        return fallbackPath;
-      }
-      return resolveVaultPathFromICloud(vaultName);
-    }
-    const fallbackPath = await resolveVaultPathFromDesktopConfig(vaultName);
-    if (fallbackPath) {
-      return fallbackPath;
-    }
-    return resolveVaultPathFromICloud(vaultName);
-  }
-
-  try {
-    const { stdout, stderr } = await execFileAsync("obsidian", ["vault"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const kv = parseObsidianKeyValueOutput(stdout, stderr);
-    if (kv.path) {
-      return kv.path;
-    }
-  } catch {
-    // fallback below
-  }
-
-  try {
-    const { stdout, stderr } = await execFileAsync("obsidian", ["vault", "info=path"], {
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    const output = parseObsidianPlainOutput(stdout, stderr).trim();
-    if (!output || hasObsidianOutputError(output)) {
-      return undefined;
-    }
-    return output;
-  } catch {
-    return resolveVaultPathFromDesktopConfig();
-  }
 }
 
 function resolveVaultNotePath(vaultPath: string, notePath: string): string {
@@ -589,7 +337,8 @@ export function createSaveToObsidianTool(env: AppEnv) {
       const startedAt = Date.now();
       const timeoutMs = 60_000;
       const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
-      const model = provider === "openai" ? env.openaiModel : env.geminiModel;
+      const model =
+        provider === "gemini" || provider === "vertex" ? env.geminiModel : env.openaiModel;
       logger.info(
         `[tool:save_to_obsidian] title_desc_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
       );
@@ -666,7 +415,7 @@ export function createSaveToObsidianTool(env: AppEnv) {
       let vaultPath = "";
       try {
         logger.info(
-          `[tool:save_to_obsidian] command=obsidian ${configuredVault ? "vaults verbose" : "vault info=path"}`,
+          `[tool:save_to_obsidian] resolve_vault_path configured=${normalizeConfiguredVaultPath(configuredVault) || "<active>"}`,
         );
         vaultPath = (await resolveVaultPath(configuredVault)) || "";
       } catch (error) {
@@ -728,9 +477,8 @@ export const __test__ = {
   buildNoteContent,
   normalizeDateString,
   formatObsidianCommandForLog,
-  hasObsidianOutputError,
-  parseVaultsVerbose,
   findVaultPathFromDesktopConfig,
+  normalizeConfiguredVaultPath,
   resolveVaultNotePath,
   resolveAvailableNotePath,
   resolveTargetFolder,

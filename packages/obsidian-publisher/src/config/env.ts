@@ -1,4 +1,8 @@
-import { getLocalConfigStore } from '@cat-crawl/core'
+import {
+  OPENAI_COMPATIBLE_AGENT_VALUES,
+  getLocalConfigStore,
+  type AgentConfigValue
+} from '@cat-crawl/core'
 
 export type ObsidianFolderOption = {
   folder: string
@@ -6,11 +10,11 @@ export type ObsidianFolderOption = {
 }
 
 export type AppEnv = {
-  agent: 'openai' | 'gemini' | 'vertex'
-  aiProvider: 'openai' | 'gemini' | 'vertex'
-  aiChatProvider?: 'openai' | 'gemini' | 'vertex'
-  aiClassifyProvider?: 'openai' | 'gemini' | 'vertex'
-  aiSummarizeProvider?: 'openai' | 'gemini' | 'vertex'
+  agent: AgentConfigValue
+  aiProvider: AgentConfigValue
+  aiChatProvider?: AgentConfigValue
+  aiClassifyProvider?: AgentConfigValue
+  aiSummarizeProvider?: AgentConfigValue
   openaiApiKey?: string
   openaiBaseUrl: string
   openaiModel: string
@@ -74,6 +78,35 @@ function readStringFromPaths(root: Record<string, unknown>, paths: string[][]): 
   return undefined
 }
 
+function getStructuredAgentProvider(raw: Record<string, unknown>): AgentConfigValue | undefined {
+  const provider = readStringFromPaths(raw, [
+    ['ai', 'provider'],
+    ['agent', 'provider']
+  ])?.toLowerCase()
+  if (!provider) {
+    return undefined
+  }
+  if ((['gemini', 'vertex', ...OPENAI_COMPATIBLE_AGENT_VALUES] as string[]).includes(provider)) {
+    return provider as AgentConfigValue
+  }
+  return undefined
+}
+
+function getOpenAiCompatibleProviderPaths(
+  raw: Record<string, unknown>,
+  field: 'apiKey' | 'baseUrl' | 'model'
+): string[][] {
+  const provider = getStructuredAgentProvider(raw)
+  const compatibleProviders =
+    provider && (OPENAI_COMPATIBLE_AGENT_VALUES as readonly string[]).includes(provider)
+    ? [provider]
+    : OPENAI_COMPATIBLE_AGENT_VALUES
+  return compatibleProviders.flatMap((item) => [
+    ['ai', item, field],
+    ['agent', item, field]
+  ])
+}
+
 function readStructuredObsidianFolders(): ObsidianFolderOption[] {
   const raw = getLocalConfigStore().readRaw()
   const value = readFromPath(raw, ['obsidian', 'folders'])
@@ -114,18 +147,21 @@ function readFromStructuredConfig(name: string): string | undefined {
   }
   if (name === 'OPENAI_API_KEY') {
     return readStringFromPaths(raw, [
+      ...getOpenAiCompatibleProviderPaths(raw, 'apiKey'),
       ['ai', 'openai', 'apiKey'],
       ['agent', 'openai', 'apiKey']
     ])
   }
   if (name === 'OPENAI_BASE_URL') {
     return readStringFromPaths(raw, [
+      ...getOpenAiCompatibleProviderPaths(raw, 'baseUrl'),
       ['ai', 'openai', 'baseUrl'],
       ['agent', 'openai', 'baseUrl']
     ])
   }
   if (name === 'OPENAI_MODEL') {
     return readStringFromPaths(raw, [
+      ...getOpenAiCompatibleProviderPaths(raw, 'model'),
       ['ai', 'openai', 'model'],
       ['agent', 'openai', 'model']
     ])
@@ -333,14 +369,14 @@ function getTranscriptionProvider(
 
 function getAiProvider(
   name: 'AI_PROVIDER' | 'AI_CHAT_PROVIDER' | 'AI_CLASSIFY_PROVIDER' | 'AI_SUMMARIZE_PROVIDER',
-  defaultValue?: 'openai' | 'gemini' | 'vertex'
-): 'openai' | 'gemini' | 'vertex' | undefined {
+  defaultValue?: AgentConfigValue
+): AgentConfigValue | undefined {
   const raw = readRaw(name)?.toLowerCase()
   if (!raw) {
     return defaultValue
   }
-  if (raw === 'openai' || raw === 'gemini' || raw === 'vertex') {
-    return raw
+  if ((['gemini', 'vertex', ...OPENAI_COMPATIBLE_AGENT_VALUES] as string[]).includes(raw)) {
+    return raw as AgentConfigValue
   }
   throw new Error(`Invalid ${name}: ${raw}`)
 }
@@ -371,8 +407,8 @@ export function loadEnv(): AppEnv {
       ? 'gemini'
       : legacyAgent === 'vertex'
         ? 'vertex'
-        : legacyAgent === 'openai'
-          ? 'openai'
+        : (OPENAI_COMPATIBLE_AGENT_VALUES as readonly string[]).includes(legacyAgent || '')
+          ? (legacyAgent as AgentConfigValue)
           : 'openai')
   const aiChatProvider = getAiProvider('AI_CHAT_PROVIDER')
   const aiClassifyProvider = getAiProvider('AI_CLASSIFY_PROVIDER')
@@ -383,11 +419,12 @@ export function loadEnv(): AppEnv {
   const configuredVertexApiKey = readRaw('GOOGLE_VERTEX_API_KEY') || undefined
   const geminiAuth = readFirstRawWithSource(['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_VERTEX_API_KEY'])
   const vertexAuth = readFirstRawWithSource(['GOOGLE_VERTEX_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'])
-  const needOpenAiApiKey =
-    aiProvider === 'openai' ||
-    aiChatProvider === 'openai' ||
-    aiClassifyProvider === 'openai' ||
-    aiSummarizeProvider === 'openai'
+  const needOpenAiApiKey = [
+    aiProvider,
+    aiChatProvider,
+    aiClassifyProvider,
+    aiSummarizeProvider
+  ].some((provider) => provider && (OPENAI_COMPATIBLE_AGENT_VALUES as readonly string[]).includes(provider))
   return {
     agent: aiProvider,
     aiProvider,

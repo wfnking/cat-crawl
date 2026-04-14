@@ -17,7 +17,21 @@ export type LocalConfigStore = {
 type LocalConfig = Record<string, unknown>;
 
 export type ChannelConfigValue = "feishu" | "telegram" | "discord" | "all";
-export type AgentConfigValue = "openai" | "gemini" | "vertex";
+export const OPENAI_COMPATIBLE_AGENT_VALUES = [
+  "openai",
+  "deepseek",
+  "openrouter",
+  "groq",
+  "moonshot",
+  "siliconflow",
+  "together",
+] as const;
+export const AGENT_CONFIG_VALUES = [
+  ...OPENAI_COMPATIBLE_AGENT_VALUES,
+  "gemini",
+  "vertex",
+] as const;
+export type AgentConfigValue = (typeof AGENT_CONFIG_VALUES)[number];
 
 export function createLocalConfigStore(options?: { homeDir?: string }): LocalConfigStore {
   const homeDir = options?.homeDir || homedir();
@@ -128,8 +142,8 @@ export function parseAgentConfig(input: string | undefined): AgentConfigValue | 
   if (!value) {
     return null;
   }
-  if (value === "openai" || value === "gemini" || value === "vertex") {
-    return value;
+  if ((AGENT_CONFIG_VALUES as readonly string[]).includes(value)) {
+    return value as AgentConfigValue;
   }
   return null;
 }

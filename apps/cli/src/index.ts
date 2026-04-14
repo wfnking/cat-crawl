@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { asObject, createLogger, ensureObject } from "@cat-crawl/core";
+import { OPENAI_COMPATIBLE_AGENT_VALUES, asObject, createLogger, ensureObject } from "@cat-crawl/core";
 import {
   approveTelegramPairingCode,
   buildAgentSetupConfig,
@@ -32,6 +32,10 @@ import {
   type SetGetCommand,
 } from "./obsidian-command.js";
 import { formatConfigValue, getConfigValueByPath } from "./config-path.js";
+import {
+  getObsidianVaultStartupError,
+  getObsidianVaultStartupWarning,
+} from "./startup-checks.js";
 
 const logger = createLogger();
 const require = createRequire(import.meta.url);
@@ -184,15 +188,15 @@ function persistStructuredAgentConfig(
 
   const agentConfig = ensureObject(raw, "agent");
   agentConfig.provider = agent;
-  delete agentConfig.openai;
-  delete agentConfig.gemini;
-  delete agentConfig.vertex;
+  for (const provider of [...OPENAI_COMPATIBLE_AGENT_VALUES, "gemini", "vertex"]) {
+    delete agentConfig[provider];
+  }
 
-  if (agent === "openai") {
-    const openai = ensureObject(agentConfig, "openai");
-    openai.apiKey = values.OPENAI_API_KEY || "";
-    openai.baseUrl = values.OPENAI_BASE_URL || "https://api.openai.com/v1";
-    openai.model = values.OPENAI_MODEL || "gpt-4o-mini";
+  if ((OPENAI_COMPATIBLE_AGENT_VALUES as readonly string[]).includes(agent)) {
+    const openaiLike = ensureObject(agentConfig, agent);
+    openaiLike.apiKey = values.OPENAI_API_KEY || "";
+    openaiLike.baseUrl = values.OPENAI_BASE_URL || "https://api.openai.com/v1";
+    openaiLike.model = values.OPENAI_MODEL || "gpt-4o-mini";
   } else if (agent === "gemini") {
     const gemini = ensureObject(agentConfig, "gemini");
     gemini.apiKey = values.GEMINI_API_KEY || "";
@@ -244,7 +248,7 @@ function printUsage(): void {
       '2) cat-crawl obsidian run "你的消息内容或文章链接"',
       "3) cat-crawl obsidian config set channel telegram",
       "4) cat-crawl obsidian config get channel [fallback]",
-      "5) cat-crawl obsidian config set agent openai|gemini|vertex",
+      "5) cat-crawl obsidian config set agent openai|deepseek|openrouter|groq|moonshot|siliconflow|together|gemini|vertex",
       "6) cat-crawl obsidian config get agent [fallback]",
       "7) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),
@@ -384,12 +388,23 @@ async function handleSetGetCommand(command: SetGetCommand): Promise<void> {
     if (key === "agent") {
       const agent = parseAgentConfig(value);
       if (!agent) {
-        throw new Error("agent 当前只支持 openai / gemini / vertex");
+        throw new Error(
+          "agent 当前只支持 openai / deepseek / openrouter / groq / moonshot / siliconflow / together / gemini / vertex",
+        );
       }
       const values = await promptAgentSetup(agent);
       persistStructuredAgentConfig(agent, values);
       logger.log(`agent=${agent}`);
       logger.log("已完成 Agent 交互配置，配置已写入 ~/.cat-crawl/config.json");
+      return;
+    }
+
+    if (key === "vault") {
+      const raw = store.readRaw();
+      const obsidian = ensureObject(raw, "obsidian");
+      obsidian.vault = value;
+      store.writeRaw(raw);
+      logger.log(`obsidian.vault=${value}`);
       return;
     }
 
@@ -460,6 +475,14 @@ function resolveModes(explicit: ChannelModes): ChannelModes {
 
 async function startChannels(modes: ChannelModes): Promise<void> {
   const env = loadEnv();
+  const vaultError = getObsidianVaultStartupError(env);
+  if (vaultError) {
+    throw new Error(vaultError);
+  }
+  const vaultWarning = getObsidianVaultStartupWarning(env);
+  if (vaultWarning) {
+    logger.warn(vaultWarning);
+  }
   const starts: Array<Promise<void>> = [];
   const requestedCount =
     (modes.feishu ? 1 : 0) + (modes.telegram ? 1 : 0) + (modes.discord ? 1 : 0);

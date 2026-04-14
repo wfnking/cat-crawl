@@ -157,6 +157,34 @@ test('loadEnv should support ai namespace with task-level provider overrides', (
   }
 })
 
+test('loadEnv should read openai-compatible provider config from structured agent namespace', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'deepseek',
+      deepseek: {
+        apiKey: 'deepseek-demo-key',
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-chat'
+      }
+    }
+  })
+
+  setLocalConfigStoreForTest(store)
+  try {
+    const env = loadEnv()
+    assert.equal(env.agent, 'deepseek')
+    assert.equal(env.aiProvider, 'deepseek')
+    assert.equal(env.openaiApiKey, 'deepseek-demo-key')
+    assert.equal(env.openaiBaseUrl, 'https://api.deepseek.com/v1')
+    assert.equal(env.openaiModel, 'deepseek-chat')
+  } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
+
 test('loadEnv should fallback to GOOGLE_VERTEX_API_KEY when GEMINI_API_KEY is missing', () => {
   const { homeDir, cleanup } = createTempHome()
   const store = createLocalConfigStore({ homeDir })

@@ -101,30 +101,6 @@ test("formatObsidianCommandForLog should avoid printing full content payload", (
   );
 });
 
-test("hasObsidianOutputError should detect vault missing output", () => {
-  assert.equal(__test__.hasObsidianOutputError("Vault not found."), true);
-  assert.equal(__test__.hasObsidianOutputError("ERROR: something wrong"), true);
-  assert.equal(__test__.hasObsidianOutputError(""), false);
-});
-
-test("parseVaultsVerbose should parse tsv vault listings", () => {
-  assert.deepEqual(
-    __test__.parseVaultsVerbose(
-      "知识库\t/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库\nWork\t/tmp/work\n",
-    ),
-    [
-      {
-        name: "知识库",
-        path: "/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库",
-      },
-      {
-        name: "Work",
-        path: "/tmp/work",
-      },
-    ],
-  );
-});
-
 test("findVaultPathFromDesktopConfig should resolve configured vault by local obsidian config", () => {
   const configText = JSON.stringify({
     vaults: {
@@ -145,6 +121,19 @@ test("findVaultPathFromDesktopConfig should resolve configured vault by local ob
   assert.equal(
     __test__.findVaultPathFromDesktopConfig(configText, "知识库"),
     "/Users/alfwong/Library/Mobile Documents/iCloud~md~obsidian/Documents/知识库",
+  );
+});
+
+test("normalizeConfiguredVaultPath should strip PowerShell filesystem prefix", () => {
+  assert.equal(
+    __test__.normalizeConfiguredVaultPath(
+      "Microsoft.PowerShell.Core\\FileSystem::\\\\Mac\\Obsidian",
+    ),
+    "\\\\Mac\\Obsidian",
+  );
+  assert.equal(
+    __test__.normalizeConfiguredVaultPath("C:\\Users\\alfwong\\Obsidian"),
+    "C:\\Users\\alfwong\\Obsidian",
   );
 });
 

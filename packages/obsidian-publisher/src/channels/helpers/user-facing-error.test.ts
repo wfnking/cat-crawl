@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { toUserFacingErrorMessage } from "./user-facing-error.js";
 
-test("toUserFacingErrorMessage should return Obsidian install guide for CLI not found", () => {
-  const message = toUserFacingErrorMessage(new Error("obsidian cli not found"));
-  assert.match(message, /未检测到 Obsidian CLI/);
-  assert.match(message, /obsidian/);
+test("toUserFacingErrorMessage should return Obsidian vault config guide when vault is missing", () => {
+  const message = toUserFacingErrorMessage(new Error("Obsidian active vault not found."));
+  assert.match(message, /未找到可写入的 Obsidian Vault/);
+  assert.match(message, /obsidian\.vault/);
 });
 
 test("toUserFacingErrorMessage should include final error detail for normal failures", () => {

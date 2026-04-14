@@ -78,7 +78,10 @@ export async function generateTitleAndDescription(
     options.env.aiProvider ||
     options.env.agent;
   const model =
-    options.model || (provider === "openai" ? options.env.openaiModel : options.env.geminiModel);
+    options.model ||
+    (provider === "gemini" || provider === "vertex"
+      ? options.env.geminiModel
+      : options.env.openaiModel);
   const timeoutMs = options.timeoutMs ?? 20000;
   const invoke =
     options.invokeModel ||

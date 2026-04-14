@@ -1,11 +1,12 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { createLogger } from "@cat-crawl/core";
+import type { AgentConfigValue } from "@cat-crawl/core";
 import type { AppEnv } from "../../../config/env.js";
 import { createOpenAIModel } from "./openai.js";
 import { createGeminiModel } from "./gemini-chat.js";
 import { createVertexModel } from "./vertex-chat.js";
 
-export type AgentProvider = "openai" | "gemini" | "vertex";
+export type AgentProvider = AgentConfigValue;
 export type ModelTask = "chat" | "classify" | "summarize";
 
 type ModelOptions = {
@@ -103,7 +104,7 @@ export function createModel(env: AppEnv, options: ModelOptions = {}): InvokableM
     );
   } else {
     logger.info(
-      `[model] task=${options.task || "default"} provider=openai model=${options.model || env.openaiModel}`,
+      `[model] task=${options.task || "default"} provider=${provider} base_url=${env.openaiBaseUrl} model=${options.model || env.openaiModel}`,
     );
   }
   const model = createProviderModel(provider, env, options);
