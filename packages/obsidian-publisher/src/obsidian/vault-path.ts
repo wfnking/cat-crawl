@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 
 function sanitizeVaultName(value: string): string {
@@ -77,33 +77,6 @@ async function readDesktopConfigText(): Promise<string | undefined> {
   return undefined;
 }
 
-async function resolveVaultPathFromICloud(vaultName?: string): Promise<string | undefined> {
-  if (process.platform !== "darwin") {
-    return undefined;
-  }
-
-  const name = vaultName?.trim();
-  if (!name) {
-    return undefined;
-  }
-
-  const candidate = join(
-    process.env.HOME || "",
-    "Library",
-    "Mobile Documents",
-    "iCloud~md~obsidian",
-    "Documents",
-    name,
-  );
-
-  try {
-    await access(candidate);
-    return candidate;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function resolveVaultPath(configuredVault?: string): Promise<string | undefined> {
   const normalized = normalizeConfiguredVaultPath(configuredVault);
   if (normalized && isAbsolute(normalized)) {
@@ -118,16 +91,10 @@ export async function resolveVaultPath(configuredVault?: string): Promise<string
     }
   }
 
-  return resolveVaultPathFromICloud(normalized);
+  return undefined;
 }
 
 export async function resolveActiveVaultName(): Promise<string | undefined> {
   const vaultPath = await resolveVaultPath();
   return vaultPath ? sanitizeVaultName(basename(vaultPath)) : undefined;
 }
-
-export const __test__ = {
-  findVaultPathFromDesktopConfig,
-  getObsidianDesktopConfigPaths,
-  normalizeConfiguredVaultPath,
-};

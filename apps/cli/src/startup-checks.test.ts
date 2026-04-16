@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { __test__ } from "./startup-checks.js";
+import { getObsidianVaultStartupError } from "./startup-checks.js";
 
 test("getObsidianVaultStartupError should error when vault is missing", () => {
-  const message = __test__.getObsidianVaultStartupError({
+  const message = getObsidianVaultStartupError({
     obsidianVault: undefined,
   } as never);
 
@@ -12,7 +12,7 @@ test("getObsidianVaultStartupError should error when vault is missing", () => {
 });
 
 test("getObsidianVaultStartupError should accept absolute path", () => {
-  const message = __test__.getObsidianVaultStartupError({
+  const message = getObsidianVaultStartupError({
     obsidianVault: "/Users/alfwong/Documents/Obsidian",
   } as never);
 
@@ -20,7 +20,7 @@ test("getObsidianVaultStartupError should accept absolute path", () => {
 });
 
 test("getObsidianVaultStartupError should error for relative path", () => {
-  const message = __test__.getObsidianVaultStartupError({
+  const message = getObsidianVaultStartupError({
     obsidianVault: "知识库",
   } as never);
 

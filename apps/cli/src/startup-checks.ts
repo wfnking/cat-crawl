@@ -41,9 +41,3 @@ export function getObsidianVaultStartupError(env: StartupEnv): string | null {
 
   return null;
 }
-
-export const __test__ = {
-  getObsidianVaultStartupError,
-  getObsidianVaultStartupWarning,
-  isConfiguredVaultAbsolute,
-};

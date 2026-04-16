@@ -123,8 +123,3 @@ export const crawlWebArticleTool = tool(
     schema: inputSchema,
   },
 );
-
-export const __test__ = {
-  resolveInputArticleUrl,
-  pickArticleAdapter,
-};

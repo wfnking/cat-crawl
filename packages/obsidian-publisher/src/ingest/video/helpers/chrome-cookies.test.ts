@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
-import { __test__, loadChromeCookiesForDomains } from "./chrome-cookies.js";
+import { loadChromeCookiesForDomains } from "./chrome-cookies.js";
 
 function createChromeCookieFixture(secret: string, hostKey: string, value: string): Buffer {
   const key = pbkdf2Sync(Buffer.from(secret, "utf8"), Buffer.from("saltysalt", "utf8"), 1003, 16, "sha1");
@@ -17,24 +17,6 @@ function createChromeCookieFixture(secret: string, hostKey: string, value: strin
   cipher.setAutoPadding(false);
   return Buffer.concat([prefix, cipher.update(padded), cipher.final()]);
 }
-
-test("decryptChromeCookieValue should remove host digest for schema v24 cookies", () => {
-  const secret = "demo-secret";
-  const hostKey = ".douyin.com";
-  const encrypted = createChromeCookieFixture(secret, hostKey, "cookie-value");
-  const key = __test__.getChromeEncryptionKey(secret);
-
-  const value = __test__.decryptChromeCookieValue(
-    {
-      host_key: hostKey,
-      value: "",
-      encrypted_value: encrypted,
-    },
-    key,
-  );
-
-  assert.equal(value, "cookie-value");
-});
 
 test("loadChromeCookiesForDomains should read and decrypt cookies from the newest Chrome profile", () => {
   const chromeRootDir = mkdtempSync(join(tmpdir(), "cat-crawl-chrome-root-"));

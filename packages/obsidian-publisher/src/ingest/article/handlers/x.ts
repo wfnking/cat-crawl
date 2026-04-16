@@ -165,10 +165,3 @@ export class XHandler extends BaseArticleHandler {
     }
   }
 }
-
-export const __test__ = {
-  waitForRenderedMain,
-  normalizeXSourceUrl,
-  extractRenderedMainHtml,
-  sliceRenderedHtmlForDefuddle,
-};

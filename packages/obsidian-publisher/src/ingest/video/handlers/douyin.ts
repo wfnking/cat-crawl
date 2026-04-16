@@ -624,10 +624,3 @@ export async function resolveDouyinVideoSource(
     "Douyin video URL resolved, but all downloaded candidates have no audio track. Please confirm the video has audible track in Chrome playback and try again.",
   );
 }
-
-export const __test__ = {
-  extractDouyinVideoFromPage,
-  toDouyinCookies,
-  applyDouyinCookies,
-  collectMediaCandidates,
-};

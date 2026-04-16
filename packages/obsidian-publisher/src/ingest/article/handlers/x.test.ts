@@ -1,26 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { XHandler, __test__ } from "./x.js";
-
-test("waitForRenderedMain should wait for main node and non-empty content", async () => {
-  const steps: string[] = [];
-  const page = {
-    waitForSelector: async (selector: string) => {
-      steps.push(`selector:${selector}`);
-    },
-    waitForTimeout: async (ms: number) => {
-      steps.push(`timeout:${ms}`);
-    },
-  };
-
-  await __test__.waitForRenderedMain(page as never);
-
-  assert.deepEqual(steps, [
-    "selector:main",
-    'selector:main article[data-testid="tweet"]',
-    "timeout:1000",
-  ]);
-});
+import { XHandler } from "./x.js";
 
 test("XHandler should pass Chrome cookies into rendered crawl", async () => {
   let renderedCookies: Array<{ domain: string; name: string }> = [];

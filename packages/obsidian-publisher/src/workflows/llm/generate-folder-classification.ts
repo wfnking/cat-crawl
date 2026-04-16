@@ -165,11 +165,3 @@ export async function generateFolderClassification(
     userPrompt,
   };
 }
-
-export const __test__ = {
-  buildSystemPrompt,
-  buildUserPrompt,
-  buildModelOptions,
-  extractModelText,
-  parseFolderClassification,
-};

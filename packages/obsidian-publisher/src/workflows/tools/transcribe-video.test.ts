@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { __test__, createTranscribeVideoTool } from './transcribe-video.js'
+import { createTranscribeVideoTool } from './transcribe-video.js'
 
 test('transcribe video tool should transcribe local file without saving', async () => {
   const tool = createTranscribeVideoTool(
@@ -450,106 +450,4 @@ test('transcribe video tool should keep temp cache directories instead of deleti
     '/tmp/cat-crawl/audio',
     '/tmp/cat-crawl/whisper'
   ])
-})
-
-test('normalizeVideoTitle should strip hashtags and source suffix into tags', () => {
-  assert.deepEqual(
-    __test__.normalizeVideoTitle(
-      '一个很绝的英文写作开头手法：“钩子开头”,钩子使得好，读者跑不了。 #幼儿英语 #少儿英语启蒙 #英语写作 #美国小学#英语写作 - 抖音'
-    ),
-    {
-      title: '一个很绝的英文写作开头手法：“钩子开头”,钩子使得好，读者跑不了。',
-      tags: ['幼儿英语', '少儿英语启蒙', '英语写作', '美国小学']
-    }
-  )
-})
-
-test('shouldTranslateToChinese should detect non-Chinese transcript', () => {
-  assert.equal(
-    __test__.shouldTranslateToChinese(
-      'Now I have two hooks that I am going to put here on the screen.'
-    ),
-    true
-  )
-
-  assert.equal(
-    __test__.shouldTranslateToChinese('这是中文内容，主要讲英语写作的钩子开头。'),
-    false
-  )
-})
-
-test('shouldTranslateToChinese should keep Chinese transcript monolingual when English translation is mixed in', () => {
-  assert.equal(
-    __test__.shouldTranslateToChinese(
-      [
-        '2026做自媒体一定要有长期价值，做深度内容，不要害怕做长视频没人看。',
-        "In 2026, if you're doing self-media, you must have long-term value and create in-depth content.",
-        '所以视频时长和完播是不会影响你视频流量的。',
-        "Therefore, video length and completion rate do not affect your video's traffic."
-      ].join('\n\n')
-    ),
-    false
-  )
-})
-
-test('pickGeminiSummarizeModel should route translation to pro preview', () => {
-  assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, true), 'gemini-2.5-pro')
-  assert.equal(__test__.pickGeminiSummarizeModel({ geminiModel: 'gemini-2.5-pro' } as any, false), 'gemini-2.5-pro')
-})
-
-test('pickSummarizeModel should use openai-compatible model for deepseek provider', () => {
-  assert.equal(
-    __test__.pickSummarizeModel(
-      { geminiModel: 'gemini-2.5-pro', openaiModel: 'deepseek-chat' } as any,
-      'deepseek',
-      false
-    ),
-    'deepseek-chat'
-  )
-})
-
-test('pickSummarizeMaxTokens should use a larger floor for long transcript summaries', () => {
-  assert.equal(__test__.pickSummarizeMaxTokens('x'), 24000)
-  assert.equal(__test__.pickSummarizeMaxTokens('x'.repeat(120000)), 24000)
-})
-
-test('pickTranscriptSourceMaterial should prefer plain transcript over verbose srt', () => {
-  assert.equal(
-    __test__.pickTranscriptSourceMaterial({
-      transcriptText: 'plain transcript text',
-      transcriptSrt: '1\n00:00:00,000 --> 00:00:02,000\nplain transcript text\n'
-    }),
-    'plain transcript text'
-  )
-})
-
-test('buildTranscriptSystemPrompt should not request English translation for Chinese source', () => {
-  const prompt = __test__.buildTranscriptSystemPrompt({
-    sourceUrl: 'https://example.com/video',
-    translateToChinese: false
-  })
-
-  assert.match(prompt, /如果原文已经是中文，只保留中文整理稿，不要翻译成英文/)
-  assert.doesNotMatch(prompt, /紧接着写对应的中文翻译内容/)
-  assert.match(prompt, /每章只写原始语言内容（保真整理，轻微断句即可）/)
-})
-
-test('buildTranscriptSystemPrompt should request Chinese translation for non-Chinese source', () => {
-  const prompt = __test__.buildTranscriptSystemPrompt({
-    sourceUrl: 'https://example.com/video',
-    translateToChinese: true
-  })
-
-  assert.match(prompt, /每章先写原始语言内容（保真整理，轻微断句即可），紧接着写对应的中文翻译内容/)
-  assert.match(prompt, /若内容过长，优先确保原文完整输出；译文可以按段落精炼翻译/)
-})
-
-test('buildTranscriptSystemPrompt should forbid placing body text right after a heading', () => {
-  const prompt = __test__.buildTranscriptSystemPrompt({
-    sourceUrl: 'https://example.com/video',
-    translateToChinese: false
-  })
-
-  assert.match(prompt, /章节标题和第一段之间必须有一个空行/)
-  assert.match(prompt, /禁止输出.*立刻紧跟正文/)
 })

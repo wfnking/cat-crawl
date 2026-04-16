@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BaseMessage } from "@langchain/core/messages";
 import {
-  __test__,
+  buildModelOptions,
+  buildSystemPrompt,
+  buildUserPrompt,
   generateFolderClassification,
 } from "./generate-folder-classification.js";
 
 test("buildFolderClassificationSystemPrompt should enforce candidate-only selection", () => {
-  const prompt = __test__.buildSystemPrompt();
+  const prompt = buildSystemPrompt();
 
   assert.match(prompt, /你是 Obsidian 目录分类器/);
   assert.match(prompt, /只能返回候选列表中的 folder/);
@@ -16,7 +18,7 @@ test("buildFolderClassificationSystemPrompt should enforce candidate-only select
 });
 
 test("buildFolderClassificationUserPrompt should include base folder and candidates", () => {
-  const prompt = __test__.buildUserPrompt({
+  const prompt = buildUserPrompt({
     baseFolder: "Clippings",
     title: "娶妻不娶妾，男人擦亮眼睛",
     sourceUrl: "https://www.douyin.com/video/123",
@@ -36,7 +38,7 @@ test("buildFolderClassificationUserPrompt should include base folder and candida
 });
 
 test("buildModelOptions should keep plain model settings", () => {
-  assert.deepEqual(__test__.buildModelOptions({}), {
+  assert.deepEqual(buildModelOptions({}), {
     maxTokens: 200,
     timeout: 20000,
     temperature: 0,

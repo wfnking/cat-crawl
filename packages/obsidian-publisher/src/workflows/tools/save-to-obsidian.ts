@@ -477,18 +477,3 @@ export function createSaveToObsidianTool(env: AppEnv) {
     },
   );
 }
-
-export const __test__ = {
-  buildNoteContent,
-  normalizeDateString,
-  formatObsidianCommandForLog,
-  findVaultPathFromDesktopConfig,
-  normalizeConfiguredVaultPath,
-  resolveVaultNotePath,
-  resolveAvailableNotePath,
-  resolveTargetFolder,
-  resolveObsidianRouting,
-  resolveConfiguredCandidateFolder,
-  normalizeObsidianTag,
-  inferTags,
-};
