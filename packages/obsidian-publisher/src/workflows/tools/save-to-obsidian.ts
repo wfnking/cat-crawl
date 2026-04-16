@@ -14,9 +14,7 @@ import {
   generateTitleAndDescription,
   type TitleDescriptionResult,
 } from "../llm/generate-title-description.js";
-import {
-  generateFolderClassification,
-} from "../llm/generate-folder-classification.js";
+import { generateFolderClassification } from "../llm/generate-folder-classification.js";
 
 const logger = createLogger();
 const PROJECT_TAG = "cat-crawl";
@@ -159,11 +157,15 @@ function buildFolderClassificationPreview(markdown: string): string {
     .slice(0, 1500);
 }
 
-function resolveObsidianRouting(currentEnv: AppEnv | undefined, fallbackEnv: AppEnv): ResolvedObsidianRouting {
+function resolveObsidianRouting(
+  currentEnv: AppEnv | undefined,
+  fallbackEnv: AppEnv,
+): ResolvedObsidianRouting {
   const effectiveEnv = currentEnv || fallbackEnv;
   return {
     env: effectiveEnv,
-    baseFolder: effectiveEnv.obsidianFolder?.trim() || fallbackEnv.obsidianFolder.trim() || "Clippings",
+    baseFolder:
+      effectiveEnv.obsidianFolder?.trim() || fallbackEnv.obsidianFolder.trim() || "Clippings",
     candidates: effectiveEnv.obsidianFolders ?? fallbackEnv.obsidianFolders ?? [],
   };
 }
@@ -207,7 +209,9 @@ async function classifyConfiguredFolder(input: FolderClassificationInput): Promi
     return selectedFolder;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    logger.warn(`[tool:save_to_obsidian] folder classify failed, fallback to base folder: ${detail}`);
+    logger.warn(
+      `[tool:save_to_obsidian] folder classify failed, fallback to base folder: ${detail}`,
+    );
     return null;
   }
 }
@@ -282,9 +286,7 @@ function buildNoteContent(
   const safeAuthor = normalizeSingleLineText(input.author?.trim() || "Unknown");
   const created = formatLocalDate(new Date());
   const effectivePublished = overrides.published || input.published?.trim() || created;
-  const published = normalizeDateString(
-    normalizeSingleLineText(effectivePublished),
-  );
+  const published = normalizeDateString(normalizeSingleLineText(effectivePublished));
   const safeDescription = normalizeSingleLineText(effectiveDescription).slice(0, 200);
   const tagInline = tags.map((t) => quoteYamlValue(t)).join(", ");
 
@@ -331,40 +333,43 @@ function resolveVaultNotePath(vaultPath: string, notePath: string): string {
 }
 
 export function createSaveToObsidianTool(env: AppEnv) {
-
-  const resolveTitleAndDescription = 
-    (async (title: string, contentMarkdown: string, published: string) => {
-      const startedAt = Date.now();
-      const timeoutMs = 60_000;
-      const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
-      const model =
-        provider === "gemini" || provider === "vertex" ? env.geminiModel : env.openaiModel;
+  const resolveTitleAndDescription = async (
+    title: string,
+    contentMarkdown: string,
+    published: string,
+  ) => {
+    const startedAt = Date.now();
+    const timeoutMs = 60_000;
+    const provider = env.aiSummarizeProvider || env.aiProvider || env.agent;
+    const model =
+      provider === "gemini" || provider === "vertex" ? env.geminiModel : env.openaiModel;
+    logger.info(
+      `[tool:save_to_obsidian] title_desc_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
+    );
+    try {
+      const result = await generateTitleAndDescription(title, contentMarkdown, published, {
+        env,
+        provider,
+        model,
+        timeoutMs,
+      });
       logger.info(
-        `[tool:save_to_obsidian] title_desc_model=${provider} model=${model} timeout_ms=${timeoutMs}`,
+        `[tool:save_to_obsidian] title_desc_done original_title="${title}" resolved_title="${result.title}" desc_chars=${result.description.length} published="${result.published}" elapsed_ms=${Date.now() - startedAt}`,
       );
-      try {
-        const result = await generateTitleAndDescription(title, contentMarkdown, published, {
-          env,
-          provider,
-          model,
-          timeoutMs,
-        });
-        logger.info(
-          `[tool:save_to_obsidian] title_desc_done original_title="${title}" resolved_title="${result.title}" desc_chars=${result.description.length} published="${result.published}" elapsed_ms=${Date.now() - startedAt}`,
-        );
-        return result;
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.warn(`[tool:save_to_obsidian] title_desc_failed msg=${msg}`);
-        throw error;
-      }
-    });
+      return result;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn(`[tool:save_to_obsidian] title_desc_failed msg=${msg}`);
+      throw error;
+    }
+  };
 
   return tool(
     async (input) => {
       const currentEnv = loadEnv();
       const routing = resolveObsidianRouting(currentEnv, env);
-      const configuredVault = input.vault?.trim() || currentEnv.obsidianVault?.trim() || env.obsidianVault?.trim() || "";
+      const configuredVault =
+        input.vault?.trim() || currentEnv.obsidianVault?.trim() || env.obsidianVault?.trim() || "";
       const tags = inferTags(input);
 
       // Use LLM to resolve title, description, and published
