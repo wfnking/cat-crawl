@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import { createTranscribeVideoTool } from './transcribe-video.js'
 
@@ -386,6 +388,66 @@ test('transcribe video tool should use unified temp directories under /tmp/cat-c
   assert.equal(receivedYoutubeOutputDir, '/tmp/cat-crawl/youtube')
   assert.equal(receivedAudioOutputDir, '/tmp/cat-crawl/audio')
   assert.equal(receivedWhisperOutputDir, '/tmp/cat-crawl/whisper')
+})
+
+test('transcribe video tool should use YouTube subtitles without extracting audio', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cat-crawl-subtitles-'))
+  const transcriptPath = path.join(tempDir, 'Captioned Video.en.srt')
+  fs.writeFileSync(
+    transcriptPath,
+    '1\n00:00:00,000 --> 00:00:02,000\nHello from captions.\n\n2\n00:00:02,000 --> 00:00:04,000\nNo whisper needed.\n'
+  )
+
+  let extractCalled = false
+  let transcribeCalled = false
+  try {
+    const tool = createTranscribeVideoTool(
+      {
+        transcriptionProvider: 'whisper_cpp',
+        whisperCppBin: 'whisper-cli',
+        whisperCppModelPath: '/models/base.bin',
+        whisperCppLanguage: undefined,
+        geminiApiKey: 'gemini-demo-key',
+        geminiModel: 'gemini-2.5-pro',
+        obsidianFolder: 'Clippings',
+        obsidianDynamicFolders: []
+      } as never,
+      {
+        selectVideoHandler: () => ({ name: 'youtube' }),
+        resolveYouTubeVideoSource: async () => ({
+          adapter: 'youtube',
+          sourceUrl: 'https://www.youtube.com/watch?v=abc123',
+          mediaPath: transcriptPath,
+          transcriptPath,
+          title: 'Captioned Video'
+        }),
+        extractAudioFromVideo: async () => {
+          extractCalled = true
+          throw new Error('extract should not be called')
+        },
+        transcribeAudio: async () => {
+          transcribeCalled = true
+          throw new Error('transcribe should not be called')
+        },
+        buildTranscriptMarkdown: async ({ transcriptText, transcriptSrt }) => {
+          assert.equal(transcriptText, 'Hello from captions. No whisper needed.')
+          assert.match(transcriptSrt || '', /Hello from captions/)
+          return { markdown: `## Captioned Video\n\n${transcriptText}` }
+        }
+      }
+    )
+
+    const result = await tool.invoke({
+      source: 'https://www.youtube.com/watch?v=abc123'
+    })
+
+    assert.equal(extractCalled, false)
+    assert.equal(transcribeCalled, false)
+    assert.equal(result.meta?.provider_used, 'youtube_subtitles')
+    assert.match(result.content_markdown, /Hello from captions/)
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
 })
 
 test('transcribe video tool should keep temp cache directories instead of deleting them', async () => {

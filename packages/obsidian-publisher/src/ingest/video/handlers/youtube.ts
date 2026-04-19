@@ -24,6 +24,7 @@ type ResolvedYouTubeVideoSource = {
   adapter: "youtube";
   sourceUrl: string;
   mediaPath: string;
+  transcriptPath?: string;
   title?: string;
   published?: string;
   author?: string;
@@ -78,6 +79,25 @@ function parseDownloadedMediaPath(stdout: string, stderr: string): string {
   return mediaPath;
 }
 
+function parseDownloadedSubtitlePath(stdout: string, stderr: string): string | undefined {
+  const combined = `${stdout}\n${stderr}`;
+  for (const line of combined.split(/\r?\n/g)) {
+    const match = line.match(/Writing video subtitles to:\s*(.+\.srt)\s*$/i);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+  return undefined;
+}
+
+function getExecErrorOutput(error: unknown): { stdout: string; stderr: string } {
+  const maybeOutput = error as { stdout?: unknown; stderr?: unknown };
+  return {
+    stdout: typeof maybeOutput.stdout === "string" ? maybeOutput.stdout : "",
+    stderr: typeof maybeOutput.stderr === "string" ? maybeOutput.stderr : "",
+  };
+}
+
 function isMissingYtDlpError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("spawn yt-dlp ENOENT") || message.includes("yt-dlp: command not found");
@@ -113,6 +133,23 @@ function buildYtDlpArgs(sourceUrl: string, outputTemplate: string, useBrowserCoo
   ];
 }
 
+function buildYtDlpSubtitleArgs(sourceUrl: string, outputTemplate: string, useBrowserCookies: boolean): string[] {
+  return [
+    "--no-progress",
+    ...(useBrowserCookies ? ["--cookies-from-browser", "chrome"] : []),
+    "--skip-download",
+    "--write-subs",
+    "--write-auto-subs",
+    "--sub-langs",
+    "en,en-orig,zh-Hans,zh-Hant",
+    "--sub-format",
+    "srt",
+    "-o",
+    outputTemplate,
+    sourceUrl,
+  ];
+}
+
 function buildYtDlpMetadataArgs(sourceUrl: string): string[] {
   return [
     "--no-progress",
@@ -125,6 +162,51 @@ function buildYtDlpMetadataArgs(sourceUrl: string): string[] {
     "title:%(title)s",
     sourceUrl,
   ];
+}
+
+async function tryDownloadSubtitle(
+  execFileAsync: ExecFileAsync,
+  sourceUrl: string,
+  outputTemplate: string,
+): Promise<string | undefined> {
+  let subtitleStdout = "";
+  let subtitleStderr = "";
+  try {
+    ({ stdout: subtitleStdout, stderr: subtitleStderr } = await execFileAsync(
+      "yt-dlp",
+      buildYtDlpSubtitleArgs(sourceUrl, outputTemplate, true),
+      { maxBuffer: 10 * 1024 * 1024 },
+    ));
+  } catch (error) {
+    const partialPath = parseDownloadedSubtitlePath(
+      getExecErrorOutput(error).stdout,
+      getExecErrorOutput(error).stderr,
+    );
+    if (partialPath) {
+      return partialPath;
+    }
+    if (!isBrowserCookieExtractionError(error)) {
+      return undefined;
+    }
+    try {
+      ({ stdout: subtitleStdout, stderr: subtitleStderr } = await execFileAsync(
+        "yt-dlp",
+        buildYtDlpSubtitleArgs(sourceUrl, outputTemplate, false),
+        { maxBuffer: 10 * 1024 * 1024 },
+      ));
+    } catch (fallbackError) {
+      const fallbackPartialPath = parseDownloadedSubtitlePath(
+        getExecErrorOutput(fallbackError).stdout,
+        getExecErrorOutput(fallbackError).stderr,
+      );
+      if (fallbackPartialPath) {
+        return fallbackPartialPath;
+      }
+      return undefined;
+    }
+  }
+
+  return parseDownloadedSubtitlePath(subtitleStdout, subtitleStderr);
 }
 
 export async function resolveYouTubeVideoSource(
@@ -143,6 +225,22 @@ export async function resolveYouTubeVideoSource(
     const { published, author, title } = parseMetadataOutput(metadataResult.stdout);
     const preferredBaseName = sanitizeMediaFileName(title || "") || "%(title)s";
     const outputTemplate = join(options.outputDir, `${preferredBaseName}.%(ext)s`);
+    const transcriptPath = await tryDownloadSubtitle(
+      execFileAsync,
+      sourceUrl,
+      outputTemplate,
+    );
+    if (transcriptPath) {
+      return {
+        adapter: "youtube",
+        sourceUrl,
+        mediaPath: transcriptPath,
+        transcriptPath,
+        title,
+        published,
+        author,
+      };
+    }
 
     let downloadStdout = "";
     let downloadStderr = "";

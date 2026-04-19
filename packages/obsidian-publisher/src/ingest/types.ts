@@ -8,7 +8,7 @@ export type IngestContentResult = {
   tags?: string[];
   dynamic_folder?: string;
   meta?: {
-    provider_used: "whisper_cpp";
+    provider_used: "whisper_cpp" | "youtube_subtitles";
     fallback_used: boolean;
   };
 };

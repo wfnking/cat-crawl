@@ -22,6 +22,7 @@ const inputSchema = z.object({
   resolved_adapter: z.enum(["file", "youtube", "douyin"]).optional(),
   resolved_source_url: z.string().min(1).optional(),
   resolved_media_path: z.string().min(1).optional(),
+  resolved_transcript_path: z.string().min(1).optional(),
   resolved_title: z.string().min(1).optional(),
   resolved_published: z.string().min(1).optional(),
   resolved_author: z.string().min(1).optional(),
@@ -69,6 +70,7 @@ function toResolvedVideoSource(input: TranscribeVideoInput): ResolvedVideoSource
     adapter: input.resolved_adapter,
     sourceUrl: input.resolved_source_url,
     mediaPath: input.resolved_media_path,
+    transcriptPath: input.resolved_transcript_path,
     title: input.resolved_title,
     published: input.resolved_published,
     author: input.resolved_author,
@@ -109,6 +111,16 @@ function shouldTranslateToChinese(sourceText: string): boolean {
     return true;
   }
   return latinMatches.length > cjkMatches.length;
+}
+
+function srtToPlainText(srt: string): string {
+  return srt
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^\d+$/.test(line) && !/^\d{2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+/.test(line))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function pickGeminiSummarizeModel(env: AppEnv, translateToChinese: boolean): string {
@@ -378,33 +390,45 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
         `[tool:transcribe_video] resolved source_url=${resolved.sourceUrl} media_path=${resolved.mediaPath}`,
       );
 
-      const audioPath = await extractAudio(resolved.mediaPath, {
-        outputDir: AUDIO_TEMP_DIR,
-      });
-      logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
-      const requestedProvider = input.provider || "whisper_cpp";
-      logger.info(
-        `[tool:transcribe_video] transcription config provider=${requestedProvider} whisper_model=${env.whisperCppModelPath ? "set" : "missing"}`,
-      );
+      const transcription = resolved.transcriptPath
+        ? (() => {
+            const srt = fs.readFileSync(resolved.transcriptPath, "utf8");
+            return {
+              providerUsed: "youtube_subtitles" as const,
+              text: srtToPlainText(srt),
+              srt,
+              fallbackUsed: false,
+            };
+          })()
+        : await (async () => {
+            const audioPath = await extractAudio(resolved.mediaPath, {
+              outputDir: AUDIO_TEMP_DIR,
+            });
+            logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
+            const requestedProvider = input.provider || "whisper_cpp";
+            logger.info(
+              `[tool:transcribe_video] transcription config provider=${requestedProvider} whisper_model=${env.whisperCppModelPath ? "set" : "missing"}`,
+            );
 
-      const transcription = await transcribe(audioPath, {
-        provider: requestedProvider,
-        whisperCpp: {
-          bin: env.whisperCppBin,
-          modelPath: env.whisperCppModelPath,
-          language: input.language || env.whisperCppLanguage || "zh",
-          outputDir: WHISPER_TEMP_DIR,
-          ssh: env.whisperCppSshHost
-            ? {
-                host: env.whisperCppSshHost,
-                user: env.whisperCppSshUser,
-                port: env.whisperCppSshPort,
-                audioDir: env.whisperCppSshAudioDir,
-                outputDir: env.whisperCppSshOutputDir,
-              }
-            : undefined,
-        },
-      });
+            return transcribe(audioPath, {
+              provider: requestedProvider,
+              whisperCpp: {
+                bin: env.whisperCppBin,
+                modelPath: env.whisperCppModelPath,
+                language: input.language || env.whisperCppLanguage || "zh",
+                outputDir: WHISPER_TEMP_DIR,
+                ssh: env.whisperCppSshHost
+                  ? {
+                      host: env.whisperCppSshHost,
+                      user: env.whisperCppSshUser,
+                      port: env.whisperCppSshPort,
+                      audioDir: env.whisperCppSshAudioDir,
+                      outputDir: env.whisperCppSshOutputDir,
+                    }
+                  : undefined,
+              },
+            });
+          })();
       logger.info(
         `[tool:transcribe_video] transcription provider=${transcription.providerUsed} fallback=${transcription.fallbackUsed}`,
       );

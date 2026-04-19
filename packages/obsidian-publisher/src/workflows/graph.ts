@@ -426,6 +426,7 @@ function createTranscribeVideoNode(runtime: AgentRuntime) {
       resolved_adapter: state.resolvedVideoSource.adapter,
       resolved_source_url: state.resolvedVideoSource.sourceUrl,
       resolved_media_path: state.resolvedVideoSource.mediaPath,
+      resolved_transcript_path: state.resolvedVideoSource.transcriptPath,
       resolved_title: state.resolvedVideoSource.title,
       resolved_author: state.resolvedVideoSource.author,
       resolved_published: state.resolvedVideoSource.published,

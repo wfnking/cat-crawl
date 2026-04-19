@@ -8,6 +8,7 @@ export type ResolvedVideoSource = {
   adapter: VideoHandlerName;
   sourceUrl: string;
   mediaPath: string;
+  transcriptPath?: string;
   title?: string;
   published?: string;
   author?: string;
