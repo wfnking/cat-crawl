@@ -36,14 +36,14 @@ test("extractAudioFromVideo should derive output filename from source basename",
         "-vn",
         "-acodec",
         "libmp3lame",
-        "/tmp/cat-crawl-audio/my-video-final.mp3",
+        "/tmp/cat-crawl-audio/My Video (Final).mp3",
       ]);
       return { stdout: "", stderr: "" };
     },
     statAsync: async () => ({ size: 128 }),
   });
 
-  assert.equal(result, "/tmp/cat-crawl-audio/my-video-final.mp3");
+  assert.equal(result, "/tmp/cat-crawl-audio/My Video (Final).mp3");
 });
 
 test("extractAudioFromVideo should report missing ffmpeg", async () => {

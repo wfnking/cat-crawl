@@ -3,7 +3,7 @@ import test from "node:test";
 import { transcribeWithWhisperCpp } from "./whisper-cpp.js";
 
 test("transcribeWithWhisperCpp should omit language when not configured", async () => {
-  const result = await transcribeWithWhisperCpp("/tmp/audio.mp3", {
+  const result = await transcribeWithWhisperCpp("/tmp/My Video (Final).mp3", {
     bin: "whisper-cli",
     modelPath: "/models/ggml-base.bin",
     outputDir: "/tmp/whisper-output",
@@ -11,6 +11,7 @@ test("transcribeWithWhisperCpp should omit language when not configured", async 
       assert.equal(file, "whisper-cli");
       assert.ok(!args.includes("-l"));
       assert.ok(args.includes("-osrt"));
+      assert.ok(args.includes("/tmp/whisper-output/My Video (Final)"));
       return { stdout: "", stderr: "" };
     },
     readFileAsync: async (path) => (path.endsWith(".srt") ? "1\n00:00:00,000 --> 00:00:01,000\nhello\n" : "hello world"),
@@ -42,7 +43,7 @@ test("transcribeWithWhisperCpp should include language when configured", async (
 test("transcribeWithWhisperCpp should use ssh when configured", async () => {
   const calls: Array<{ file: string; args: string[] }> = [];
   const result = await transcribeWithWhisperCpp(
-    "/tmp/audio.mp3",
+    "/tmp/When the Cart Girl is into you.mp3",
     {
       bin: "/opt/homebrew/bin/whisper-cli",
       modelPath: "/Users/alfwong/codes/ai-coding/asr/models/ggml-large-v3-turbo-q8_0.bin",
@@ -75,14 +76,14 @@ test("transcribeWithWhisperCpp should use ssh when configured", async () => {
   ]);
   assert.equal(calls[1]?.file, "scp");
   assert.deepEqual(calls[1]?.args.slice(0, 2), ["-P", "22"]);
-  assert.ok(calls[1]?.args.join(" ").includes("/tmp/cat-crawl/audio/audio.mp3"));
+  assert.ok(calls[1]?.args.join(" ").includes("/tmp/cat-crawl/audio/When the Cart Girl is into you.mp3"));
   assert.equal(calls[2]?.file, "ssh");
   assert.ok(calls[2]?.args.join(" ").includes("/opt/homebrew/bin/whisper-cli"));
-  assert.ok(calls[2]?.args.join(" ").includes("/tmp/cat-crawl/whisper/transcript"));
+  assert.ok(calls[2]?.args.join(" ").includes("/tmp/cat-crawl/whisper/When the Cart Girl is into you"));
   assert.equal(calls[3]?.file, "scp");
   assert.deepEqual(calls[3]?.args.slice(0, 2), ["-P", "22"]);
-  assert.ok(calls[3]?.args.join(" ").includes("/tmp/cat-crawl/whisper/transcript.txt"));
-  assert.ok(calls[3]?.args.join(" ").includes("/tmp/cat-crawl/whisper/transcript.srt"));
+  assert.ok(calls[3]?.args.join(" ").includes("/tmp/cat-crawl/whisper/When the Cart Girl is into you.txt"));
+  assert.ok(calls[3]?.args.join(" ").includes("/tmp/cat-crawl/whisper/When the Cart Girl is into you.srt"));
 });
 
 test("transcribeWithWhisperCpp should fail when srt output is empty", async () => {

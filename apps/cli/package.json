@@ -1,6 +1,6 @@
 {
   "name": "cat-crawl",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Multi-channel Obsidian clipping and video transcription CLI (WeChat/YouTube/Douyin).",
   "private": false,
   "type": "module",

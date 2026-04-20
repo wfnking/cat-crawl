@@ -26,12 +26,7 @@ function isMissingFfmpegError(error: unknown): boolean {
 
 function buildAudioOutputPath(inputPath: string, outputDir: string): string {
   const sourceBase = basename(inputPath, extname(inputPath)).trim();
-  const normalized = sourceBase
-    .normalize("NFKD")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-  return join(outputDir, `${normalized || "audio"}.mp3`);
+  return join(outputDir, `${sourceBase || "audio"}.mp3`);
 }
 
 export async function extractAudioFromVideo(

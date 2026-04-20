@@ -19,7 +19,6 @@ export function createOpenAIModel(env: AppEnv, options: OpenAIModelOptions = {})
     apiKey,
     model: options.model || defaultModel,
     temperature: options.temperature ?? 0,
-    maxTokens: options.maxTokens,
     timeout: options.timeout,
     configuration: {
       baseURL,

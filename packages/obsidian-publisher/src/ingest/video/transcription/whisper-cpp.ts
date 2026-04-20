@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createLogger } from "@cat-crawl/core";
 import { mkdir, readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -84,7 +84,8 @@ export async function transcribeWithWhisperCpp(
 ): Promise<WhisperCppResult> {
   const execFileAsync = options.execFileAsync || execFileAsyncDefault;
   const readFileAsync = options.readFileAsync || readFile;
-  const outputBase = join(options.outputDir, "transcript");
+  const outputStem = basename(audioPath, extname(audioPath)).trim() || "transcript";
+  const outputBase = join(options.outputDir, outputStem);
   const outputPath = `${outputBase}.txt`;
   const srtPath = `${outputBase}.srt`;
   const args = ["-f", audioPath, "-m", options.modelPath, "-otxt", "-osrt", "-of", outputBase];
@@ -99,7 +100,7 @@ export async function transcribeWithWhisperCpp(
     const remoteAudioDir = getRemoteAudioDir(ssh);
     const remoteOutputDir = getRemoteOutputDir(ssh);
     const remoteAudioPath = `${remoteAudioDir}/${basename(audioPath)}`;
-    const remoteOutputBase = `${remoteOutputDir}/transcript`;
+    const remoteOutputBase = `${remoteOutputDir}/${outputStem}`;
     const remoteArgs = ["-f", remoteAudioPath, "-m", options.modelPath, "-otxt", "-osrt", "-of", remoteOutputBase];
 
     if (options.language?.trim()) {
