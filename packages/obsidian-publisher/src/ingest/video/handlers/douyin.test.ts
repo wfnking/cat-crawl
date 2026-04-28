@@ -45,6 +45,7 @@ test("resolveDouyinVideoSource should retry candidate urls until one has audio",
         : "/tmp/cat-crawl-video/video-with-audio.mp4";
     },
     hasAudioTrack: async (mediaPath) => mediaPath.includes("with-audio"),
+    hasVideoTrack: async (mediaPath) => mediaPath.includes("with-audio"),
   });
 
   assert.deepEqual(downloaded, [
@@ -69,6 +70,7 @@ test("resolveDouyinVideoSource should ignore placeholder media candidate", async
       return "/tmp/cat-crawl-video/video-with-audio.mp4";
     },
     hasAudioTrack: async () => true,
+    hasVideoTrack: async () => true,
   });
 
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video-with-audio.mp4");
@@ -90,6 +92,7 @@ test("resolveDouyinVideoSource should skip blob URLs and use http(s) candidates 
       return "/tmp/cat-crawl-video/real.mp4";
     },
     hasAudioTrack: async () => true,
+    hasVideoTrack: async () => true,
   });
 
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/real.mp4");
@@ -113,6 +116,7 @@ test("resolveDouyinVideoSource should exclude rejected media host suffixes", asy
       return "/tmp/cat-crawl-video/from-play.mp4";
     },
     hasAudioTrack: async () => true,
+    hasVideoTrack: async () => true,
   });
 
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/from-play.mp4");
@@ -129,9 +133,10 @@ test("resolveDouyinVideoSource should fail when all candidates have no audio tra
         }),
         downloadVideo: async () => "/tmp/cat-crawl-video/video-only.mp4",
         hasAudioTrack: async () => false,
+        hasVideoTrack: async () => true,
         waitBeforeRetry: async () => {},
       }),
-    /all downloaded candidates have no audio track/i,
+    /muxed verification|both video and audio/i,
   );
 });
 
@@ -161,6 +166,7 @@ test("resolveDouyinVideoSource should re-extract once after no-audio candidates"
         ? "/tmp/cat-crawl-video/video-with-audio.mp4"
         : "/tmp/cat-crawl-video/video-only.mp4",
     hasAudioTrack: async (mediaPath) => mediaPath.includes("with-audio"),
+    hasVideoTrack: async (mediaPath) => mediaPath.includes("with-audio"),
     noAudioRetryDelayMs: 1234,
     waitBeforeRetry: async (timeoutMs) => {
       waited.push(timeoutMs);

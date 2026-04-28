@@ -1,6 +1,6 @@
 import { createLogger } from "@cat-crawl/core";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
@@ -73,6 +73,7 @@ type ResolveDouyinVideoSourceOptions = {
     fetchContext?: DouyinDownloadFetchContext,
   ) => Promise<string>;
   hasAudioTrack?: (mediaPath: string) => Promise<boolean>;
+  hasVideoTrack?: (mediaPath: string) => Promise<boolean>;
   noAudioRetryDelayMs?: number;
   noAudioRetryAttempts?: number;
   waitBeforeRetry?: (timeoutMs: number) => Promise<void>;
@@ -252,6 +253,77 @@ function looksLikeDouyinNetworkMediaRequest(
   return false;
 }
 
+function findDouyinSplitVideoAudioPair(candidates: string[]): { videoUrl: string; audioUrl: string } | null {
+  const videoUrls = candidates.filter((u) => /media-video/i.test(u));
+  const audioUrls = candidates.filter((u) => /media-audio/i.test(u));
+  if (videoUrls.length === 0 || audioUrls.length === 0) {
+    return null;
+  }
+  return { videoUrl: videoUrls[0], audioUrl: audioUrls[0] };
+}
+
+async function muxDouyinSplitStreamsWithFfmpeg(videoPath: string, audioPath: string, outputPath: string) {
+  await execFileAsync(
+    "ffmpeg",
+    ["-y", "-i", videoPath, "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-shortest", outputPath],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+}
+
+async function safeUnlink(p: string) {
+  try {
+    await unlink(p);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function tryMuxDouyinSplitPair(
+  pair: { videoUrl: string; audioUrl: string },
+  outputDir: string,
+  preferredName: string | undefined,
+  downloadVideo: (
+    mediaUrl: string,
+    outputDir: string,
+    preferredName?: string,
+    fetchContext?: DouyinDownloadFetchContext,
+  ) => Promise<string>,
+  verifyMedia: (mediaPath: string) => Promise<boolean>,
+  fetchContext?: DouyinDownloadFetchContext,
+): Promise<DownloadCandidateResult | null> {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  let videoPath = "";
+  let audioPath = "";
+  let outPath = "";
+  try {
+    await mkdir(outputDir, { recursive: true });
+    logger.info("[video-source:douyin] split CDN: download video+audio then ffmpeg mux");
+    videoPath = await downloadVideo(pair.videoUrl, outputDir, `.douyin-split-${id}-v`, fetchContext);
+    audioPath = await downloadVideo(pair.audioUrl, outputDir, `.douyin-split-${id}-a`, fetchContext);
+    outPath = join(outputDir, `${inferDouyinMediaFileName(pair.videoUrl, preferredName)}.mp4`);
+    await muxDouyinSplitStreamsWithFfmpeg(videoPath, audioPath, outPath);
+    if (!(await verifyMedia(outPath))) {
+      logger.warn("[video-source:douyin] muxed file failed verification, will try single URLs");
+      await safeUnlink(outPath);
+      return null;
+    }
+    return {
+      selectedPath: outPath,
+      selectedCandidate: `${pair.videoUrl} |+ ${pair.audioUrl}`,
+      downloadedCount: 2,
+    };
+  } catch (error) {
+    logger.warn(
+      `[video-source:douyin] split mux failed msg=${error instanceof Error ? error.message : String(error)}`,
+    );
+    if (outPath) await safeUnlink(outPath);
+    return null;
+  } finally {
+    if (videoPath) await safeUnlink(videoPath);
+    if (audioPath) await safeUnlink(audioPath);
+  }
+}
+
 function collectMediaCandidates(extracted: ExtractedDouyinVideo): string[] {
   const primary = extracted.mediaUrl?.trim() || "";
   const extras = extracted.mediaUrls || [];
@@ -267,7 +339,8 @@ function collectMediaCandidates(extracted: ExtractedDouyinVideo): string[] {
   return merged;
 }
 
-async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
+async function ffprobeHasStream(mediaPath: string, kind: "audio" | "video"): Promise<boolean> {
+  const sel = kind === "audio" ? "a" : "v";
   try {
     const { stdout } = await execFileAsync(
       "ffprobe",
@@ -275,7 +348,7 @@ async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
         "-v",
         "error",
         "-select_streams",
-        "a",
+        sel,
         "-show_entries",
         "stream=codec_type",
         "-of",
@@ -287,16 +360,38 @@ async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
     return stdout
       .split(/\r?\n/g)
       .map((line) => line.trim().toLowerCase())
-      .some((line) => line === "audio");
+      .some((line) => line === kind);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     if (detail.includes("spawn ffprobe ENOENT")) {
-      logger.warn("[video-source:douyin] ffprobe not found, skip audio-track verification");
+      logger.warn(`[video-source:douyin] ffprobe not found, skip ${kind} verification`);
       return true;
     }
-    logger.warn(`[video-source:douyin] ffprobe check failed msg=${detail}`);
+    logger.warn(`[video-source:douyin] ffprobe ${kind} check failed msg=${detail}`);
     return false;
   }
+}
+
+const hasAudioTrackDefault = (p: string) => ffprobeHasStream(p, "audio");
+const hasVideoStreamDefault = (p: string) => ffprobeHasStream(p, "video");
+
+function buildMediaVerifier(options: ResolveDouyinVideoSourceOptions): (mediaPath: string) => Promise<boolean> {
+  const skipVerification =
+    Boolean(options.downloadVideo) &&
+    options.hasAudioTrack === undefined &&
+    options.hasVideoTrack === undefined;
+
+  if (skipVerification) {
+    return async () => true;
+  }
+
+  const audioFn = options.hasAudioTrack ?? hasAudioTrackDefault;
+  const videoFn = options.hasVideoTrack ?? hasVideoStreamDefault;
+  return async (mediaPath: string) => {
+    const okAudio = await audioFn(mediaPath);
+    const okVideo = await videoFn(mediaPath);
+    return okAudio && okVideo;
+  };
 }
 
 async function waitForDouyinPageReady(page: DouyinPage, sourceUrl: string): Promise<void> {
@@ -708,9 +803,24 @@ async function downloadFirstCandidateWithAudio(
     preferredName?: string,
     fetchContext?: DouyinDownloadFetchContext,
   ) => Promise<string>,
-  hasAudioTrack: (mediaPath: string) => Promise<boolean>,
+  verifyMedia: (mediaPath: string) => Promise<boolean>,
   fetchContext?: DouyinDownloadFetchContext,
 ): Promise<DownloadCandidateResult> {
+  const splitPair = findDouyinSplitVideoAudioPair(candidates);
+  if (splitPair) {
+    const muxed = await tryMuxDouyinSplitPair(
+      splitPair,
+      outputDir,
+      preferredName,
+      downloadVideo,
+      verifyMedia,
+      fetchContext,
+    );
+    if (muxed?.selectedPath) {
+      return muxed;
+    }
+  }
+
   let selectedPath = "";
   let selectedCandidate = "";
   let downloadedCount = 0;
@@ -719,13 +829,15 @@ async function downloadFirstCandidateWithAudio(
     try {
       const mediaPath = await downloadVideo(candidate, outputDir, preferredName, fetchContext);
       downloadedCount += 1;
-      const hasAudio = await hasAudioTrack(mediaPath);
-      if (hasAudio) {
+      const ok = await verifyMedia(mediaPath);
+      if (ok) {
         selectedPath = mediaPath;
         selectedCandidate = candidate;
         break;
       }
-      logger.warn(`[video-source:douyin] candidate has no audio, retry next url=${candidate}`);
+      logger.warn(
+        `[video-source:douyin] candidate failed verification (need muxed video+audio), retry next url=${candidate}`,
+      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       logger.warn(`[video-source:douyin] candidate download failed url=${candidate} msg=${detail}`);
@@ -736,6 +848,22 @@ async function downloadFirstCandidateWithAudio(
     selectedPath,
     selectedCandidate,
     downloadedCount,
+  };
+}
+
+function toResolvedDouyinVideo(
+  extracted: ExtractedDouyinVideo,
+  sourceUrl: string,
+  downloadResult: DownloadCandidateResult,
+): ResolvedDouyinVideoSource {
+  logger.info(`[video-source:douyin] selected media candidate=${downloadResult.selectedCandidate}`);
+  return {
+    adapter: "douyin",
+    sourceUrl: extracted.pageUrl || sourceUrl,
+    mediaPath: downloadResult.selectedPath,
+    title: extracted.title?.trim() || undefined,
+    author: extracted.author?.trim() || undefined,
+    published: extracted.published?.trim() || undefined,
   };
 }
 
@@ -753,8 +881,7 @@ export async function resolveDouyinVideoSource(
   const useBrowserRequestDownload = !options.extractVideo && !options.downloadVideo;
 
   logger.info(`[video-source:douyin] start source=${sourceUrl}`);
-  const hasAudioTrack =
-    options.hasAudioTrack || (!options.downloadVideo ? hasAudioTrackDefault : async () => true);
+  const verifyMedia = buildMediaVerifier(options);
 
   const browserExtractOptions: DouyinBrowserSessionOptions = {
     headless: false,
@@ -765,105 +892,74 @@ export async function resolveDouyinVideoSource(
   };
 
   for (let attempt = 0; attempt <= noAudioRetryAttempts; attempt += 1) {
-    if (useBrowserRequestDownload) {
-      const session = await openDouyinBrowserSession(
-        sourceUrl,
-        options.cookieHeader,
-        options.loadChromeCookies,
-        browserExtractOptions,
-      );
-      try {
-        const extracted = session.extracted;
-        const candidates = collectMediaCandidates(extracted);
-        if (candidates.length === 0) {
-          throw new Error("Douyin video URL not found.");
-        }
-        logger.info(
-          `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
+    let session: DouyinBrowserSession | null = null;
+    try {
+      let extracted: ExtractedDouyinVideo;
+      if (useBrowserRequestDownload) {
+        session = await openDouyinBrowserSession(
+          sourceUrl,
+          options.cookieHeader,
+          options.loadChromeCookies,
+          browserExtractOptions,
         );
-
-        const downloadResult = await downloadFirstCandidateWithAudio(
-          candidates,
-          outputDir,
-          extracted.title,
-          (u, d, n) => session.downloadMedia(u, d, n),
-          hasAudioTrack,
+        extracted = session.extracted;
+      } else {
+        extracted = await (options.extractVideo || extractDouyinVideoDefault)(
+          sourceUrl,
+          options.cookieHeader,
+          options.loadChromeCookies,
         );
-        if (downloadResult.selectedPath) {
-          logger.info(`[video-source:douyin] selected media candidate=${downloadResult.selectedCandidate}`);
-          return {
-            adapter: "douyin",
-            sourceUrl: extracted.pageUrl || sourceUrl,
-            mediaPath: downloadResult.selectedPath,
-            title: extracted.title?.trim() || undefined,
-            author: extracted.author?.trim() || undefined,
-            published: extracted.published?.trim() || undefined,
-          };
-        }
-        if (downloadResult.downloadedCount === 0) {
-          throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
-        }
-        if (attempt < noAudioRetryAttempts) {
-          logger.warn(
-            `[video-source:douyin] all downloaded candidates had no audio, wait ${noAudioRetryDelayMs}ms before re-extract retry=${attempt + 1}`,
-          );
-          await waitBeforeRetry(noAudioRetryDelayMs);
-        }
-      } finally {
-        await session.close();
       }
-      continue;
-    }
 
-    const extractVideo = options.extractVideo || extractDouyinVideoDefault;
-    const extracted = await extractVideo(sourceUrl, options.cookieHeader, options.loadChromeCookies);
-    const candidates = collectMediaCandidates(extracted);
-    if (candidates.length === 0) {
-      throw new Error("Douyin video URL not found.");
-    }
-    logger.info(
-      `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
-    );
-
-    const fetchContext: DouyinDownloadFetchContext = {
-      cookieHeader: options.cookieHeader,
-      referer: extracted.pageUrl?.trim() || sourceUrl,
-    };
-    const downloadVideo =
-      options.downloadVideo ||
-      ((u, d, n, fc) => downloadDouyinVideoDefault(u, d, n, fc ?? fetchContext));
-
-    const downloadResult = await downloadFirstCandidateWithAudio(
-      candidates,
-      outputDir,
-      extracted.title,
-      downloadVideo,
-      hasAudioTrack,
-      fetchContext,
-    );
-    if (downloadResult.selectedPath) {
-      logger.info(`[video-source:douyin] selected media candidate=${downloadResult.selectedCandidate}`);
-      return {
-        adapter: "douyin",
-        sourceUrl: extracted.pageUrl || sourceUrl,
-        mediaPath: downloadResult.selectedPath,
-        title: extracted.title?.trim() || undefined,
-        author: extracted.author?.trim() || undefined,
-        published: extracted.published?.trim() || undefined,
-      };
-    }
-    if (downloadResult.downloadedCount === 0) {
-      throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
-    }
-    if (attempt < noAudioRetryAttempts) {
-      logger.warn(
-        `[video-source:douyin] all downloaded candidates had no audio, wait ${noAudioRetryDelayMs}ms before re-extract retry=${attempt + 1}`,
+      const candidates = collectMediaCandidates(extracted);
+      if (candidates.length === 0) {
+        throw new Error("Douyin video URL not found.");
+      }
+      logger.info(
+        `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
       );
-      await waitBeforeRetry(noAudioRetryDelayMs);
+
+      const fetchContext: DouyinDownloadFetchContext | undefined = useBrowserRequestDownload
+        ? undefined
+        : {
+            cookieHeader: options.cookieHeader,
+            referer: extracted.pageUrl?.trim() || sourceUrl,
+          };
+
+      const browserSession = session;
+      const downloadVideo =
+        browserSession !== null
+          ? (u: string, d: string, n?: string) => browserSession.downloadMedia(u, d, n)
+          : options.downloadVideo ||
+            ((u, d, n, fc) => downloadDouyinVideoDefault(u, d, n, fc ?? fetchContext!));
+
+      const downloadResult = await downloadFirstCandidateWithAudio(
+        candidates,
+        outputDir,
+        extracted.title,
+        downloadVideo,
+        verifyMedia,
+        fetchContext,
+      );
+
+      if (downloadResult.selectedPath) {
+        return toResolvedDouyinVideo(extracted, sourceUrl, downloadResult);
+      }
+      if (downloadResult.downloadedCount === 0) {
+        throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
+      }
+      if (attempt < noAudioRetryAttempts) {
+        logger.warn(
+          `[video-source:douyin] all downloaded candidates failed muxed verification, wait ${noAudioRetryDelayMs}ms before re-extract retry=${attempt + 1}`,
+        );
+        await waitBeforeRetry(noAudioRetryDelayMs);
+      }
+    } finally {
+      await session?.close();
     }
   }
 
   throw new Error(
-    "Douyin video URL resolved, but all downloaded candidates have no audio track. Please confirm the video has audible track in Chrome playback and try again.",
+    "Douyin video URL resolved, but no downloaded file passed muxed verification (ffprobe: both video and audio required). Douyin often serves audio-only and video-only URLs separately; another candidate may be needed.",
   );
 }
