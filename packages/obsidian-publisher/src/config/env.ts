@@ -51,7 +51,9 @@ export type AppEnv = {
   obsidianVault?: string
   obsidianFolder: string
   obsidianFolders: ObsidianFolderOption[]
+  tempRootDir?: string
   maxToolSteps: number
+  transcriptionChapterizeEnabled: boolean
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -280,6 +282,14 @@ function readFromStructuredConfig(name: string): string | undefined {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined
   }
 
+  if (name === 'TRANSCRIPTION_CHAPTERIZE_ENABLED') {
+    const value = readFromPath(raw, ['transcription', 'chapterizeEnabled'])
+    if (typeof value === 'boolean') {
+      return value ? 'true' : 'false'
+    }
+    return undefined
+  }
+
   const boolPath = boolMappings[name]
   if (boolPath) {
     const value = readFromPath(raw, boolPath)
@@ -477,7 +487,7 @@ export function loadEnv(): AppEnv {
     vertexProject: readRaw('VERTEX_PROJECT') || undefined,
     vertexLocation: readRaw('VERTEX_LOCATION') || undefined,
     vertexEndpoint: readRaw('VERTEX_ENDPOINT') || undefined,
-    douyinCookie: readRaw('DOUYIN_COOKIE') || undefined,
+    douyinCookie: readRaw('DOUYIN_COOKIE') || process.env.DOUYIN_COOKIE?.trim() || undefined,
     feishuEnabled: getBoolean('FEISHU_ENABLED', false),
     feishuAppId: readRaw('FEISHU_APP_ID') || undefined,
     feishuAppSecret: readRaw('FEISHU_APP_SECRET') || undefined,
@@ -492,6 +502,8 @@ export function loadEnv(): AppEnv {
     obsidianVault: readRaw('OBSIDIAN_VAULT') || undefined,
     obsidianFolder: readRaw('OBSIDIAN_FOLDER') || 'Clippings',
     obsidianFolders,
-    maxToolSteps: getNumber('MAX_TOOL_STEPS', 4)
+    tempRootDir: process.env.CAT_CRAWL_TEMP_ROOT?.trim() || undefined,
+    maxToolSteps: getNumber('MAX_TOOL_STEPS', 4),
+    transcriptionChapterizeEnabled: getBoolean('TRANSCRIPTION_CHAPTERIZE_ENABLED', true)
   }
 }

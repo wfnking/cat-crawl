@@ -48,6 +48,8 @@ export type AgentRequestContext = {
 export type AgentRunOptions = {
   onStatus?: (status: AgentStatusUpdate) => void | Promise<void>;
   context?: AgentRequestContext;
+  tempRootDir?: string;
+  stopAfterTranscription?: boolean;
 };
 
 export type PersistSuccessHistory = (

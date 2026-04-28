@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
+import type { BrowserContext } from "playwright";
 import { loadChromeCookiesForDomains } from "../helpers/chrome-cookies.js";
 
 const logger = createLogger();
@@ -12,6 +13,8 @@ const execFileAsync = promisify(execFile);
 export const douyinVideoHandler = {
   name: "douyin",
 } as const;
+
+const DOUYIN_REJECTED_MEDIA_HOST_SUFFIXES: string[] = ["byteeffecttos.com"];
 
 type ExtractedDouyinVideo = {
   pageUrl: string;
@@ -27,7 +30,10 @@ type DouyinPage = {
   waitForTimeout: (timeout: number) => Promise<void>;
   waitForLoadState: (state: "domcontentloaded" | "networkidle", options?: { timeout?: number }) => Promise<void>;
   waitForURL: (urlOrPredicate: string | RegExp | ((url: URL) => boolean), options?: { timeout?: number }) => Promise<void>;
-  evaluate: <T>(pageFunction: () => T) => Promise<T>;
+  evaluate: <T, A = undefined>(
+    pageFunction: A extends undefined ? () => T : (arg: A) => T,
+    arg?: A,
+  ) => Promise<T>;
   mouse?: {
     click: (x: number, y: number) => Promise<void>;
   };
@@ -46,6 +52,11 @@ type DouyinContext = {
   }>) => Promise<void>;
 };
 
+export type DouyinDownloadFetchContext = {
+  cookieHeader?: string;
+  referer?: string;
+};
+
 type ResolveDouyinVideoSourceOptions = {
   outputDir?: string;
   cookieHeader?: string;
@@ -55,7 +66,12 @@ type ResolveDouyinVideoSourceOptions = {
     cookieHeader?: string,
     loadChromeCookies?: typeof loadChromeCookiesForDomains,
   ) => Promise<ExtractedDouyinVideo>;
-  downloadVideo?: (mediaUrl: string, outputDir: string, preferredName?: string) => Promise<string>;
+  downloadVideo?: (
+    mediaUrl: string,
+    outputDir: string,
+    preferredName?: string,
+    fetchContext?: DouyinDownloadFetchContext,
+  ) => Promise<string>;
   hasAudioTrack?: (mediaPath: string) => Promise<boolean>;
   noAudioRetryDelayMs?: number;
   noAudioRetryAttempts?: number;
@@ -93,7 +109,7 @@ function isExecutionContextDestroyedError(error: unknown): boolean {
 }
 
 async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinVideo> {
-  return page.evaluate(() => {
+  return page.evaluate((rejectedSuffixes) => {
     const protocol = window.location.protocol;
     const ogVideoRaw =
       document.querySelector('meta[property="og:video"]')?.getAttribute("content")?.trim() || "";
@@ -104,8 +120,11 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
       : videoSourceRaw.startsWith("//")
         ? `${protocol}${videoSourceRaw}`
         : videoSourceRaw;
+    const videoEl = document.querySelector("video");
     const currentVideoSourceRaw =
-      (document.querySelector("video") as HTMLVideoElement | null)?.currentSrc?.trim() || "";
+      videoEl && "currentSrc" in videoEl
+        ? String((videoEl as { currentSrc?: string }).currentSrc || "").trim()
+        : "";
     const currentVideoSource = !currentVideoSourceRaw
       ? ""
       : currentVideoSourceRaw.startsWith("//")
@@ -143,14 +162,25 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
       undefined;
     
     if (publishedRaw) {
-      // Parse "发布时间：2026-03-09 21:00" format
       const match = publishedRaw.match(/(\d{4}-\d{2}-\d{2})/);
       published = match ? match[1] : publishedRaw;
     }
-    
+
     const mediaUrls = Array.from(
       new Set([ogVideo, currentVideoSource, ...sourceUrls, videoSource, ...resourceUrls].filter(Boolean)),
-    );
+    ).filter((u) => {
+      try {
+        const parsed = new URL(u);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return false;
+        }
+        const h = parsed.hostname.toLowerCase();
+        const blocked = rejectedSuffixes.some((suffix) => h === suffix || h.endsWith("." + suffix));
+        return !blocked;
+      } catch {
+        return false;
+      }
+    });
     return {
       pageUrl: window.location.href,
       mediaUrl: mediaUrls[0] || "",
@@ -159,18 +189,82 @@ async function readDouyinPageDetails(page: DouyinPage): Promise<ExtractedDouyinV
       author,
       published,
     };
-  });
+  }, DOUYIN_REJECTED_MEDIA_HOST_SUFFIXES);
+}
+
+function hostnameMatchesRejectedMediaSuffix(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return DOUYIN_REJECTED_MEDIA_HOST_SUFFIXES.some(
+    (suffix) => h === suffix || h.endsWith(`.${suffix}`),
+  );
+}
+
+function isRejectedDouyinMediaUrl(url: string): boolean {
+  try {
+    return hostnameMatchesRejectedMediaSuffix(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isNodeFetchableHttpUrl(url: string): boolean {
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeDouyinNetworkMediaRequest(
+  lowerUrl: string,
+  contentType: string | undefined,
+  resourceType: string,
+): boolean {
+  const lowerType = (contentType || "").toLowerCase();
+  const rt = resourceType.toLowerCase();
+  if (/\.(mp4|m3u8|m4a|mp3|aac|webm|m4s|flv)(\?|#|$)/i.test(lowerUrl)) {
+    return true;
+  }
+  if (/\/aweme\/v\d+\/play\b/i.test(lowerUrl)) {
+    return true;
+  }
+  if (/\/video\/tos\//i.test(lowerUrl)) {
+    return true;
+  }
+  if (lowerType.startsWith("video/") || lowerType.startsWith("audio/")) {
+    return true;
+  }
+  if (rt === "media") {
+    return true;
+  }
+  if (rt === "xhr" || rt === "fetch") {
+    if (
+      lowerType.includes("video") ||
+      lowerType.includes("audio") ||
+      (lowerType.includes("octet-stream") &&
+        (/douyinstatic\.com|bytecdn|pstatp\.com|snssdk\.com|douyin\.com\/aweme/i.test(lowerUrl) ||
+          /\/video\/tos\//i.test(lowerUrl)))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function collectMediaCandidates(extracted: ExtractedDouyinVideo): string[] {
   const primary = extracted.mediaUrl?.trim() || "";
   const extras = extracted.mediaUrls || [];
-  const all = Array.from(new Set([primary, ...extras].map((item) => item.trim()).filter(Boolean)));
-  const filtered = all.filter((url) => {
-    const value = url.toLowerCase();
-    return !value.includes("/obj/douyin-pc-web/uuu_");
-  });
-  return filtered.length > 0 ? filtered : all;
+  const all = Array.from(
+    new Set([primary, ...extras].map((item) => item.trim()).filter(Boolean).filter(isNodeFetchableHttpUrl)),
+  );
+  const stripRejectedHosts = (urls: string[]) => urls.filter((url) => !isRejectedDouyinMediaUrl(url));
+  const stripPlaceholder = (urls: string[]) =>
+    urls.filter((url) => !url.toLowerCase().includes("/obj/douyin-pc-web/uuu_"));
+  const filtered = stripRejectedHosts(stripPlaceholder(all));
+  const merged =
+    filtered.length > 0 ? filtered : stripRejectedHosts(all);
+  return merged;
 }
 
 async function hasAudioTrackDefault(mediaPath: string): Promise<boolean> {
@@ -303,11 +397,15 @@ async function clickDouyinPlayerCenter(page: DouyinPage): Promise<void> {
 async function tryEnableDouyinAudio(page: DouyinPage): Promise<void> {
   await page
     .evaluate(() => {
-      const video = document.querySelector("video") as HTMLVideoElement | null;
+      const video = document.querySelector("video");
       if (video) {
         video.muted = false;
         video.volume = 1;
-        void video.play().catch(() => {});
+        try {
+          void video.play();
+        } catch {
+          /* ignore */
+        }
       }
 
       const selectors = [
@@ -353,11 +451,14 @@ async function extractDouyinVideoFromPage(
       if (options.clickCenter) {
         await clickDouyinPlayerCenter(page);
       }
+      let extracted: ExtractedDouyinVideo;
       if (options.ensureAudio) {
         await tryEnableDouyinAudio(page);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(1000);
+        extracted = await readDouyinPageDetails(page);
+      } else {
+        extracted = await readDouyinPageDetails(page);
       }
-      const extracted = await readDouyinPageDetails(page);
       lastExtracted = extracted;
       if (extracted.mediaUrl.trim()) {
         return extracted;
@@ -377,22 +478,52 @@ async function extractDouyinVideoFromPage(
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-async function extractDouyinVideoWithBrowser(
+type DouyinBrowserSessionOptions = {
+  headless: boolean;
+  attempts: number;
+  intervalMs: number;
+  clickCenter?: boolean;
+  ensureAudio?: boolean;
+};
+
+type DouyinBrowserSession = {
+  extracted: ExtractedDouyinVideo;
+  downloadMedia: (mediaUrl: string, outputDir: string, preferredName?: string) => Promise<string>;
+  close: () => Promise<void>;
+};
+
+async function downloadDouyinMediaViaBrowserRequest(
+  context: BrowserContext,
+  referer: string,
+  mediaUrl: string,
+  outputDir: string,
+  preferredName?: string,
+): Promise<string> {
+  const response = await context.request.get(mediaUrl, {
+    headers: {
+      Referer: referer,
+      Accept: "*/*",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    },
+    timeout: 180_000,
+  });
+  if (!response.ok()) {
+    throw new Error(`media download failed: status=${response.status()}`);
+  }
+  const buffer = Buffer.from(await response.body());
+  const extension = extname(new URL(mediaUrl).pathname) || ".mp4";
+  const targetPath = join(outputDir, `${inferDouyinMediaFileName(mediaUrl, preferredName)}${extension}`);
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(targetPath, buffer);
+  return targetPath;
+}
+
+async function openDouyinBrowserSession(
   sourceUrl: string,
-  cookieHeader?: string,
-  loadChromeCookies?: typeof loadChromeCookiesForDomains,
-  options: {
-    headless: boolean;
-    attempts: number;
-    intervalMs: number;
-    clickCenter?: boolean;
-    ensureAudio?: boolean;
-  } = {
-    headless: true,
-    attempts: 5,
-    intervalMs: 800,
-  },
-): Promise<ExtractedDouyinVideo> {
+  cookieHeader: string | undefined,
+  loadChromeCookies: typeof loadChromeCookiesForDomains | undefined,
+  options: DouyinBrowserSessionOptions,
+): Promise<DouyinBrowserSession> {
   const networkMediaUrls = new Set<string>();
   const collectNetworkMediaUrl = (
     url: string,
@@ -400,15 +531,14 @@ async function extractDouyinVideoWithBrowser(
     resourceType?: string,
   ): void => {
     const value = (url || "").trim();
-    if (!value) {
+    if (!value || !isNodeFetchableHttpUrl(value)) {
       return;
     }
     const lowerUrl = value.toLowerCase();
-    const lowerType = (contentType || "").toLowerCase();
-    const isMediaByUrl = /\.(mp4|m3u8|m4a|mp3|aac|webm|m4s)(\?|$)/i.test(lowerUrl);
-    const isMediaByType = lowerType.startsWith("video/") || lowerType.startsWith("audio/");
-    const isMediaResource = (resourceType || "").toLowerCase() === "media";
-    if (isMediaByUrl || isMediaByType || isMediaResource) {
+    if (!looksLikeDouyinNetworkMediaRequest(lowerUrl, contentType, resourceType || "")) {
+      return;
+    }
+    if (!isRejectedDouyinMediaUrl(value)) {
       networkMediaUrls.add(value);
     }
   };
@@ -418,48 +548,69 @@ async function extractDouyinVideoWithBrowser(
   const context = await browser.newContext();
   await applyDouyinCookies(context, cookieHeader, loadChromeCookies);
   const page = await context.newPage();
-  const eventPage = page as unknown as {
-    on?: (event: string, handler: (payload: unknown) => void) => unknown;
+  page.on("request", (request) => {
+    collectNetworkMediaUrl(request.url(), undefined, request.resourceType());
+  });
+  page.on("response", (response) => {
+    const headers = response.headers();
+    const contentType = headers["content-type"] ?? headers["Content-Type"] ?? "";
+    collectNetworkMediaUrl(response.url(), contentType, response.request().resourceType());
+  });
+  page.on("requestfinished", (request) => {
+    collectNetworkMediaUrl(request.url(), undefined, request.resourceType());
+  });
+
+  await waitForDouyinPageReady(page, sourceUrl);
+  const extracted = await extractDouyinVideoFromPage(page, {
+    attempts: options.attempts,
+    intervalMs: options.intervalMs,
+    clickCenter: options.clickCenter,
+    ensureAudio: options.ensureAudio,
+  });
+  const mergedMediaUrls = Array.from(
+    new Set(
+      [...Array.from(networkMediaUrls), ...(extracted.mediaUrls || []), extracted.mediaUrl].filter(Boolean),
+    ),
+  ).filter((u) => !isRejectedDouyinMediaUrl(u) && isNodeFetchableHttpUrl(u));
+  const extractedFinal: ExtractedDouyinVideo = {
+    ...extracted,
+    mediaUrl:
+      mergedMediaUrls[0] ||
+      (extracted.mediaUrl &&
+      !isRejectedDouyinMediaUrl(extracted.mediaUrl) &&
+      isNodeFetchableHttpUrl(extracted.mediaUrl)
+        ? extracted.mediaUrl
+        : ""),
+    mediaUrls: mergedMediaUrls,
   };
-  if (typeof eventPage.on === "function") {
-    eventPage.on("response", (response: unknown) => {
-      const item = response as {
-        url?: () => string;
-        headers?: () => Record<string, string>;
-        request?: () => { resourceType?: () => string };
-      };
-      const url = item.url?.() || "";
-      const headers = item.headers?.() || {};
-      const contentType = headers["content-type"] || headers["Content-Type"] || "";
-      const resourceType = item.request?.().resourceType?.() || "";
-      collectNetworkMediaUrl(url, contentType, resourceType);
-    });
-    eventPage.on("requestfinished", (request: unknown) => {
-      const item = request as {
-        url?: () => string;
-        resourceType?: () => string;
-      };
-      collectNetworkMediaUrl(item.url?.() || "", undefined, item.resourceType?.() || "");
-    });
-  }
+
+  const referer = extractedFinal.pageUrl?.trim() || sourceUrl;
+
+  return {
+    extracted: extractedFinal,
+    downloadMedia: (mediaUrl, outputDir, preferredName) =>
+      downloadDouyinMediaViaBrowserRequest(context, referer, mediaUrl, outputDir, preferredName),
+    close: async () => {
+      await browser.close();
+    },
+  };
+}
+
+async function extractDouyinVideoWithBrowser(
+  sourceUrl: string,
+  cookieHeader?: string,
+  loadChromeCookies?: typeof loadChromeCookiesForDomains,
+  options: DouyinBrowserSessionOptions = {
+    headless: true,
+    attempts: 5,
+    intervalMs: 800,
+  },
+): Promise<ExtractedDouyinVideo> {
+  const session = await openDouyinBrowserSession(sourceUrl, cookieHeader, loadChromeCookies, options);
   try {
-    await waitForDouyinPageReady(page, sourceUrl);
-    const extracted = await extractDouyinVideoFromPage(page, {
-      attempts: options.attempts,
-      intervalMs: options.intervalMs,
-      clickCenter: options.clickCenter,
-      ensureAudio: options.ensureAudio,
-    });
-    const mergedMediaUrls = Array.from(
-      new Set([...(extracted.mediaUrls || []), ...Array.from(networkMediaUrls)].filter(Boolean)),
-    );
-    return {
-      ...extracted,
-      mediaUrl: extracted.mediaUrl || mergedMediaUrls[0] || "",
-      mediaUrls: mergedMediaUrls,
-    };
+    return session.extracted;
   } finally {
-    await browser.close();
+    await session.close();
   }
 }
 
@@ -487,6 +638,9 @@ function sanitizeMediaFileName(input: string): string {
     .trim();
 }
 
+const CHROME_LIKE_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 function inferDouyinMediaFileName(mediaUrl: string, preferredName?: string): string {
   const preferred = sanitizeMediaFileName(preferredName || "");
   if (preferred) {
@@ -511,14 +665,29 @@ async function downloadDouyinVideoDefault(
   mediaUrl: string,
   outputDir: string,
   preferredName?: string,
+  fetchContext?: DouyinDownloadFetchContext,
 ): Promise<string> {
-  const response = await fetch(mediaUrl);
+  const headers = new Headers();
+  const cookie = fetchContext?.cookieHeader?.trim();
+  if (cookie) {
+    headers.set("Cookie", cookie);
+  }
+  const referer = fetchContext?.referer?.trim();
+  if (referer) {
+    headers.set("Referer", referer);
+  }
+  headers.set("User-Agent", CHROME_LIKE_UA);
+  headers.set("Accept", "*/*");
+  headers.set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+
+  const response = await fetch(mediaUrl, { headers, redirect: "follow" });
   if (!response.ok) {
     throw new Error(`media download failed: status=${response.status}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   const extension = extname(new URL(mediaUrl).pathname) || ".mp4";
   const targetPath = join(outputDir, `${inferDouyinMediaFileName(mediaUrl, preferredName)}${extension}`);
+  await mkdir(outputDir, { recursive: true });
   await writeFile(targetPath, bytes);
   return targetPath;
 }
@@ -533,8 +702,14 @@ async function downloadFirstCandidateWithAudio(
   candidates: string[],
   outputDir: string,
   preferredName: string | undefined,
-  downloadVideo: (mediaUrl: string, outputDir: string, preferredName?: string) => Promise<string>,
+  downloadVideo: (
+    mediaUrl: string,
+    outputDir: string,
+    preferredName?: string,
+    fetchContext?: DouyinDownloadFetchContext,
+  ) => Promise<string>,
   hasAudioTrack: (mediaPath: string) => Promise<boolean>,
+  fetchContext?: DouyinDownloadFetchContext,
 ): Promise<DownloadCandidateResult> {
   let selectedPath = "";
   let selectedCandidate = "";
@@ -542,7 +717,7 @@ async function downloadFirstCandidateWithAudio(
 
   for (const candidate of candidates) {
     try {
-      const mediaPath = await downloadVideo(candidate, outputDir, preferredName);
+      const mediaPath = await downloadVideo(candidate, outputDir, preferredName, fetchContext);
       downloadedCount += 1;
       const hasAudio = await hasAudioTrack(mediaPath);
       if (hasAudio) {
@@ -571,17 +746,76 @@ export async function resolveDouyinVideoSource(
   const tempRootDir = join(tmpdir(), "cat-crawl");
   await mkdir(tempRootDir, { recursive: true });
   const outputDir = options.outputDir || (await mkdtemp(join(tempRootDir, "douyin-")));
-  const extractVideo = options.extractVideo || extractDouyinVideoDefault;
-  const downloadVideo = options.downloadVideo || downloadDouyinVideoDefault;
   const noAudioRetryDelayMs = options.noAudioRetryDelayMs ?? 5000;
   const noAudioRetryAttempts = options.noAudioRetryAttempts ?? 1;
   const waitBeforeRetry = options.waitBeforeRetry || waitBeforeRetryDefault;
+
+  const useBrowserRequestDownload = !options.extractVideo && !options.downloadVideo;
 
   logger.info(`[video-source:douyin] start source=${sourceUrl}`);
   const hasAudioTrack =
     options.hasAudioTrack || (!options.downloadVideo ? hasAudioTrackDefault : async () => true);
 
+  const browserExtractOptions: DouyinBrowserSessionOptions = {
+    headless: false,
+    attempts: 12,
+    intervalMs: 5000,
+    clickCenter: true,
+    ensureAudio: true,
+  };
+
   for (let attempt = 0; attempt <= noAudioRetryAttempts; attempt += 1) {
+    if (useBrowserRequestDownload) {
+      const session = await openDouyinBrowserSession(
+        sourceUrl,
+        options.cookieHeader,
+        options.loadChromeCookies,
+        browserExtractOptions,
+      );
+      try {
+        const extracted = session.extracted;
+        const candidates = collectMediaCandidates(extracted);
+        if (candidates.length === 0) {
+          throw new Error("Douyin video URL not found.");
+        }
+        logger.info(
+          `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
+        );
+
+        const downloadResult = await downloadFirstCandidateWithAudio(
+          candidates,
+          outputDir,
+          extracted.title,
+          (u, d, n) => session.downloadMedia(u, d, n),
+          hasAudioTrack,
+        );
+        if (downloadResult.selectedPath) {
+          logger.info(`[video-source:douyin] selected media candidate=${downloadResult.selectedCandidate}`);
+          return {
+            adapter: "douyin",
+            sourceUrl: extracted.pageUrl || sourceUrl,
+            mediaPath: downloadResult.selectedPath,
+            title: extracted.title?.trim() || undefined,
+            author: extracted.author?.trim() || undefined,
+            published: extracted.published?.trim() || undefined,
+          };
+        }
+        if (downloadResult.downloadedCount === 0) {
+          throw new Error("Douyin video URL resolved, but no downloadable media candidate succeeded.");
+        }
+        if (attempt < noAudioRetryAttempts) {
+          logger.warn(
+            `[video-source:douyin] all downloaded candidates had no audio, wait ${noAudioRetryDelayMs}ms before re-extract retry=${attempt + 1}`,
+          );
+          await waitBeforeRetry(noAudioRetryDelayMs);
+        }
+      } finally {
+        await session.close();
+      }
+      continue;
+    }
+
+    const extractVideo = options.extractVideo || extractDouyinVideoDefault;
     const extracted = await extractVideo(sourceUrl, options.cookieHeader, options.loadChromeCookies);
     const candidates = collectMediaCandidates(extracted);
     if (candidates.length === 0) {
@@ -591,12 +825,21 @@ export async function resolveDouyinVideoSource(
       `[video-source:douyin] media candidates=${candidates.length} sample=${candidates.slice(0, 3).join(" | ")}`,
     );
 
+    const fetchContext: DouyinDownloadFetchContext = {
+      cookieHeader: options.cookieHeader,
+      referer: extracted.pageUrl?.trim() || sourceUrl,
+    };
+    const downloadVideo =
+      options.downloadVideo ||
+      ((u, d, n, fc) => downloadDouyinVideoDefault(u, d, n, fc ?? fetchContext));
+
     const downloadResult = await downloadFirstCandidateWithAudio(
       candidates,
       outputDir,
       extracted.title,
       downloadVideo,
       hasAudioTrack,
+      fetchContext,
     );
     if (downloadResult.selectedPath) {
       logger.info(`[video-source:douyin] selected media candidate=${downloadResult.selectedCandidate}`);

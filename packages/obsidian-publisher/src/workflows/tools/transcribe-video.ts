@@ -45,11 +45,18 @@ type TranscribeVideoDeps = {
 };
 
 const logger = createLogger();
-const TEMP_ROOT_DIR = "/tmp/cat-crawl";
-const YOUTUBE_TEMP_DIR = join(TEMP_ROOT_DIR, "youtube");
-const DOUYIN_TEMP_DIR = join(TEMP_ROOT_DIR, "douyin");
-const AUDIO_TEMP_DIR = join(TEMP_ROOT_DIR, "audio");
-const WHISPER_TEMP_DIR = join(TEMP_ROOT_DIR, "whisper");
+const DEFAULT_TEMP_ROOT_DIR = "/tmp/cat-crawl";
+
+function getTempDirs(env: AppEnv) {
+  const root = env.tempRootDir || DEFAULT_TEMP_ROOT_DIR;
+  return {
+    root,
+    youtube: join(root, "youtube"),
+    douyin: join(root, "douyin"),
+    audio: join(root, "audio"),
+    whisper: join(root, "whisper"),
+  };
+}
 
 function hasPreResolvedSource(
   input: TranscribeVideoInput,
@@ -193,6 +200,24 @@ function splitTranscriptIntoParagraphs(text: string, maxChars = 480): string[] {
   return paragraphs;
 }
 
+function buildFallbackChapterMarkdown(input: {
+  sourceUrl: string;
+  transcriptText: string;
+  transcriptSrt?: string;
+}): { markdown: string; description?: string; tags?: string[] } {
+  const plain = pickTranscriptSourceMaterial(input);
+  const preview = plain.slice(0, 400).trim().replace(/\s+/g, " ");
+  const description =
+    preview.length > 0
+      ? `${preview}${plain.length > 400 ? "…" : ""}`
+      : "Video transcript.";
+  const tags = ["video", "transcript"];
+  const paragraphs = splitTranscriptIntoParagraphs(plain);
+  const transcriptBody = paragraphs.length > 0 ? paragraphs.join("\n\n") : plain;
+  const markdown = [`- Source: ${input.sourceUrl}`, "", "## Full Transcript", "", transcriptBody].join("\n").trim();
+  return { markdown, description, tags };
+}
+
 function appendFullTranscript(markdown: string, transcriptText: string): string {
   if (!transcriptText.trim()) {
     return markdown.trim();
@@ -260,6 +285,11 @@ export async function buildTranscriptMarkdownWithModel(
     transcriptSrt?: string;
   },
 ): Promise<{ markdown: string; description?: string; tags?: string[] }> {
+  if (!env.transcriptionChapterizeEnabled) {
+    logger.info(`[tool:transcribe_video] chapterize skipped source_url=${input.sourceUrl}`);
+    return buildFallbackChapterMarkdown(input);
+  }
+
   logger.info(`[tool:transcribe_video] chapterize start source_url=${input.sourceUrl}`);
   const sourceMaterial = pickTranscriptSourceMaterial(input);
   const translateToChinese = shouldTranslateToChinese(sourceMaterial);
@@ -321,8 +351,8 @@ export async function buildTranscriptMarkdownWithModel(
     return { markdown, description, tags };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    logger.error(`[tool:transcribe_video] chapterize failed msg=${detail}`);
-    throw error;
+    logger.warn(`[tool:transcribe_video] chapterize failed, transcript-only fallback msg=${detail}`);
+    return buildFallbackChapterMarkdown(input);
   }
 }
 
@@ -343,15 +373,16 @@ export async function resolveVideoSource(
   logger.info(`[tool:resolve_video_source] start source=${source}`);
   logger.info(`[tool:resolve_video_source] handler=${handler.name}`);
 
+  const dirs = getTempDirs(env);
   const resolved =
     handler.name === "file"
       ? await resolveFile(source)
       : handler.name === "youtube"
         ? await resolveYoutube(source, {
-            outputDir: YOUTUBE_TEMP_DIR,
+            outputDir: dirs.youtube,
           })
         : await resolveDouyin(source, {
-            outputDir: DOUYIN_TEMP_DIR,
+            outputDir: dirs.douyin,
             cookieHeader: env.douyinCookie,
           });
 
@@ -371,8 +402,9 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
 
   return tool(
     async (input: TranscribeVideoInput) => {
-      const tempDirs = [YOUTUBE_TEMP_DIR, DOUYIN_TEMP_DIR, AUDIO_TEMP_DIR, WHISPER_TEMP_DIR];
-      for (const dir of tempDirs) {
+      const dirs = getTempDirs(env);
+      const tempDirList = [dirs.youtube, dirs.douyin, dirs.audio, dirs.whisper];
+      for (const dir of tempDirList) {
         try {
           fs.mkdirSync(dir, { recursive: true });
         } catch (error) {
@@ -402,7 +434,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
           })()
         : await (async () => {
             const audioPath = await extractAudio(resolved.mediaPath, {
-              outputDir: AUDIO_TEMP_DIR,
+              outputDir: dirs.audio,
             });
             logger.info(`[tool:transcribe_video] extracted audio_path=${audioPath}`);
             const requestedProvider = input.provider || "whisper_cpp";
@@ -416,7 +448,7 @@ export function createTranscribeVideoTool(env: AppEnv, deps: TranscribeVideoDeps
                 bin: env.whisperCppBin,
                 modelPath: env.whisperCppModelPath,
                 language: input.language || env.whisperCppLanguage || "zh",
-                outputDir: WHISPER_TEMP_DIR,
+                outputDir: dirs.whisper,
                 ssh: env.whisperCppSshHost
                   ? {
                       host: env.whisperCppSshHost,

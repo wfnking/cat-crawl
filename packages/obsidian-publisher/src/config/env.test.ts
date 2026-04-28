@@ -40,6 +40,30 @@ test('loadEnv should expose default transcription config', () => {
     assert.equal(env.geminiApiKey, 'gemini-demo-key')
     assert.equal(env.geminiApiKeySource, 'GEMINI_API_KEY')
     assert.equal(env.douyinCookie, undefined)
+    assert.equal(env.transcriptionChapterizeEnabled, true)
+  } finally {
+    setLocalConfigStoreForTest(null)
+    cleanup()
+  }
+})
+
+test('loadEnv should read transcription.chapterizeEnabled from structured config', () => {
+  const { homeDir, cleanup } = createTempHome()
+  const store = createLocalConfigStore({ homeDir })
+  store.writeRaw({
+    agent: {
+      provider: 'gemini',
+      gemini: { apiKey: 'gemini-demo-key' },
+    },
+    transcription: {
+      chapterizeEnabled: false,
+    },
+  })
+
+  setLocalConfigStoreForTest(store)
+  try {
+    const env = loadEnv()
+    assert.equal(env.transcriptionChapterizeEnabled, false)
   } finally {
     setLocalConfigStoreForTest(null)
     cleanup()

@@ -74,6 +74,50 @@ test("resolveDouyinVideoSource should ignore placeholder media candidate", async
   assert.equal(result.mediaPath, "/tmp/cat-crawl-video/video-with-audio.mp4");
 });
 
+test("resolveDouyinVideoSource should skip blob URLs and use http(s) candidates only", async () => {
+  const blobUrl = "blob:https://www.douyin.com/d87178b6-97a7-4f39-8ccb-7d299bb44d10";
+  const mp4Url = "https://video-cdn.example.com/real.mp4";
+
+  const result = await resolveDouyinVideoSource("https://v.douyin.com/ABCDE/", {
+    extractVideo: async () => ({
+      pageUrl: "https://www.douyin.com/video/123456",
+      mediaUrl: blobUrl,
+      mediaUrls: [blobUrl, mp4Url],
+      title: "Demo",
+    }),
+    downloadVideo: async (mediaUrl) => {
+      assert.equal(mediaUrl, mp4Url);
+      return "/tmp/cat-crawl-video/real.mp4";
+    },
+    hasAudioTrack: async () => true,
+  });
+
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/real.mp4");
+});
+
+test("resolveDouyinVideoSource should exclude rejected media host suffixes", async () => {
+  const playUrl =
+    "https://www.douyin.com/aweme/v1/play/?file_id=abc&video_id=v0200fg10000d19qsvfog65pttmoqksg";
+  const effectUrl =
+    "https://lf6-effectcdn-tos.byteeffecttos.com/obj/ies.fe.effect/73a925431aac3cf511e0fb73158c9be8.mp4";
+
+  const result = await resolveDouyinVideoSource("https://v.douyin.com/ABCDE/", {
+    extractVideo: async () => ({
+      pageUrl: "https://www.douyin.com/video/123456",
+      mediaUrl: effectUrl,
+      mediaUrls: [effectUrl, playUrl],
+      title: "Demo",
+    }),
+    downloadVideo: async (mediaUrl) => {
+      assert.equal(mediaUrl, playUrl);
+      return "/tmp/cat-crawl-video/from-play.mp4";
+    },
+    hasAudioTrack: async () => true,
+  });
+
+  assert.equal(result.mediaPath, "/tmp/cat-crawl-video/from-play.mp4");
+});
+
 test("resolveDouyinVideoSource should fail when all candidates have no audio track", async () => {
   await assert.rejects(
     () =>

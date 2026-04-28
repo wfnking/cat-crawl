@@ -73,6 +73,7 @@ npm link
 ## 命令
 
 ```bash
+cat-crawl download [--data-dir|-d <path>] "<视频 URL>"
 cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]
 cat-crawl obsidian run "<任意文本/URL>"
 
@@ -86,6 +87,17 @@ cat-crawl obsidian config get agent [fallback]
 
 cat-crawl obsidian pairing approve telegram <code>
 ```
+
+### `download`（仅下载与转写，不写 Obsidian）
+
+用于视频链接：下载（或取字幕）、抽音频、`whisper.cpp` 转写、章节化 Markdown；**不会**调用保存到 Obsidian，也不会写入历史库的成功保存记录。
+
+- 默认缓存与中间文件目录为 `/tmp/cat-crawl`（与内部 `transcribe_video` 一致）。
+- 自定义目录：`--data-dir` 或 `-d`，例如：
+  - `cat-crawl download -d "$HOME/Videos/cat-crawl" "https://www.youtube.com/watch?v=xxxx"`
+- 等价环境变量：`CAT_CRAWL_TEMP_ROOT`（未传 `--data-dir` 时生效）。
+
+完整入库请用：`cat-crawl obsidian run "<URL>"`。
 
 ## 配置方式
 
@@ -165,6 +177,7 @@ cat-crawl obsidian pairing approve telegram <code>
 ## 本地开发
 
 ```bash
+pnpm dev -- download --data-dir "./data" https://www.youtube.com/xxx
 pnpm dev -- obsidian run "https://mp.weixin.qq.com/s/xxxx"
 pnpm dev:telegram
 pnpm dev:feishu

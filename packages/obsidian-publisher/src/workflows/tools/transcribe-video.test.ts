@@ -3,7 +3,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createTranscribeVideoTool } from './transcribe-video.js'
+import type { AppEnv } from '../../config/env.js'
+import { buildTranscriptMarkdownWithModel, createTranscribeVideoTool } from './transcribe-video.js'
 
 test('transcribe video tool should transcribe local file without saving', async () => {
   const tool = createTranscribeVideoTool(
@@ -448,6 +449,21 @@ test('transcribe video tool should use YouTube subtitles without extracting audi
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
   }
+})
+
+test('buildTranscriptMarkdownWithModel skips LLM when chapterize disabled', async () => {
+  const env = {
+    transcriptionChapterizeEnabled: false,
+    aiProvider: 'vertex',
+    geminiModel: 'gemini-2.5-pro',
+  } as AppEnv
+  const result = await buildTranscriptMarkdownWithModel(env, {
+    sourceUrl: 'https://example.com/video',
+    transcriptText: 'First sentence. Second sentence.',
+  })
+  assert.match(result.markdown, /## Full Transcript/)
+  assert.match(result.markdown, /- Source: https:\/\/example.com\/video/)
+  assert.ok(result.description?.includes('First'))
 })
 
 test('transcribe video tool should keep temp cache directories instead of deleting them', async () => {

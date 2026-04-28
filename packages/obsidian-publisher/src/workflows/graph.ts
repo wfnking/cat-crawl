@@ -203,6 +203,24 @@ function formatSuccessReply(subject: string, saveResult: SaveToolResult): string
   return lines.join("\n\n");
 }
 
+function formatTranscriptionOnlyReply(input: {
+  title: string;
+  source_url: string;
+  content_markdown: string;
+  tempRootDir?: string;
+}): string {
+  const lines = [
+    "视频已下载并完成转写（未写入 Obsidian）。",
+    `标题：${input.title}`,
+    `来源：${input.source_url}`,
+    `正文长度：${input.content_markdown.length} 字符`,
+  ];
+  if (input.tempRootDir) {
+    lines.push(`下载与缓存目录：\`${input.tempRootDir}\``);
+  }
+  return lines.join("\n\n");
+}
+
 function formatExistingRecordReply(record: { title: string; vault: string; path: string }): string {
   return `该内容之前已经帮您处理并保存过，无需重复抓取。\n\n历史标题：${record.title}\n保存路径：\`${record.vault}/${record.path}\`\n\n如果你确认还要重新抓取，直接回复“继续抓取”就行。`;
 }
@@ -506,6 +524,23 @@ function createBuildReplyNode(runtime: AgentRuntime) {
       return {};
     }
 
+    if (
+      runtime.options?.stopAfterTranscription &&
+      state.ingestResult &&
+      state.contentType === "video" &&
+      !state.saveResult &&
+      !state.existingRecord
+    ) {
+      return {
+        reply: formatTranscriptionOnlyReply({
+          title: state.ingestResult.title,
+          source_url: state.ingestResult.source_url,
+          content_markdown: state.ingestResult.content_markdown,
+          tempRootDir: runtime.env.tempRootDir,
+        }),
+      };
+    }
+
     if (state.mode === "small_chat") {
       return {
         reply: await chatForNonWechatInput(state.userInput, runtime),
@@ -557,7 +592,12 @@ export function createAgentGraph(runtime: AgentRuntime) {
       }
       return state.contentType === "video" ? "transcribe_video" : "save_note";
     })
-    .addEdge("transcribe_video", "save_note")
+    .addConditionalEdges("transcribe_video", (state) => {
+      if (runtime.options?.stopAfterTranscription) {
+        return "build_reply";
+      }
+      return "save_note";
+    })
     .addEdge("save_note", "build_reply")
     .addEdge("build_reply", END)
     .compile();

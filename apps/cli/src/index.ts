@@ -24,6 +24,7 @@ import {
   type AgentConfigValue,
   type ChannelConfigValue,
 } from "@cat-crawl/obsidian-publisher";
+import { parseDownloadCommand } from "./download-command.js";
 import {
   hasAnyChannelMode,
   parseObsidianCommand,
@@ -244,13 +245,14 @@ function printUsage(): void {
     [
       "Usage:",
       "0) cat-crawl version | --version | -v",
-      "1) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
-      '2) cat-crawl obsidian run "你的消息内容或文章链接"',
-      "3) cat-crawl obsidian config set channel telegram",
-      "4) cat-crawl obsidian config get channel [fallback]",
-      "5) cat-crawl obsidian config set agent openai|deepseek|openrouter|groq|moonshot|siliconflow|together|gemini|vertex",
-      "6) cat-crawl obsidian config get agent [fallback]",
-      "7) cat-crawl obsidian pairing approve telegram <code>",
+      "1) cat-crawl download [--data-dir|-d <path>] <视频 URL 或文本>",
+      "2) cat-crawl obsidian start [--feishu|--telegram|--discord|--all-channels]",
+      '3) cat-crawl obsidian run "你的消息内容或文章链接"',
+      "4) cat-crawl obsidian config set channel telegram",
+      "5) cat-crawl obsidian config get channel [fallback]",
+      "6) cat-crawl obsidian config set agent openai|deepseek|openrouter|groq|moonshot|siliconflow|together|gemini|vertex",
+      "7) cat-crawl obsidian config get agent [fallback]",
+      "8) cat-crawl obsidian pairing approve telegram <code>",
     ].join("\n"),
   );
 }
@@ -565,12 +567,30 @@ async function runCliMode(input: string): Promise<void> {
   }
 }
 
+async function runDownloadMode(input: string, tempRootDir?: string): Promise<void> {
+  const result = await runAgent(input, {
+    context: { channel: "cli" },
+    stopAfterTranscription: true,
+    ...(tempRootDir ? { tempRootDir } : {}),
+  });
+  logger.log(result.reply);
+  if (result.usedTools.length > 0) {
+    logger.log(`Used tools: ${result.usedTools.join(", ")}`);
+  }
+}
+
 async function main() {
   const args = parseArgs();
   if (isVersionCommand(args)) {
     process.stdout.write(`v${getCliVersion()}\n`);
     return;
   }
+  const downloadCommand = parseDownloadCommand(args);
+  if (downloadCommand) {
+    await runDownloadMode(downloadCommand.input, downloadCommand.tempRootDir);
+    return;
+  }
+
   const obsidianCommand = parseObsidianCommand(args);
   if (!obsidianCommand) {
     printUsage();

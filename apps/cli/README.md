@@ -41,6 +41,10 @@ npm install -g cat-crawl
 ## Basic Commands
 
 ```bash
+# Video: download + transcribe only (no Obsidian save); default cache root /tmp/cat-crawl
+cat-crawl download "https://www.youtube.com/watch?v=xxxx"
+cat-crawl download --data-dir "$HOME/Videos/cat-crawl" "https://www.youtube.com/watch?v=xxxx"
+
 # Start channel listeners
 cat-crawl obsidian start --telegram
 cat-crawl obsidian start --all-channels

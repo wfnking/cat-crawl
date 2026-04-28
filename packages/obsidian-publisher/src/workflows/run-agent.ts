@@ -29,7 +29,13 @@ export type {
 export type { IngestContentResult } from "../ingest/types.js";
 
 function resolveAgentRuntime(options?: AgentRunOptions, deps: AgentDeps = {}) {
-  const env = (deps.loadEnv || loadEnv)();
+  const baseEnv = (deps.loadEnv || loadEnv)();
+  const trimmedTemp = options?.tempRootDir?.trim();
+  const env = {
+    ...baseEnv,
+    ...(trimmedTemp && trimmedTemp.length > 0 ? { tempRootDir: trimmedTemp } : {}),
+    ...(options?.stopAfterTranscription ? { transcriptionChapterizeEnabled: false } : {}),
+  };
   const existingChecker =
     deps.findExistingSavedRecordByUrl ||
     ((url: string) =>

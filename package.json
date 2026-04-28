@@ -17,6 +17,8 @@
     "dev:discord": "NODE_ENV=development tsx apps/cli/src/index.ts obsidian start --discord",
     "dev:all": "NODE_ENV=development tsx apps/cli/src/index.ts obsidian start --all-channels",
     "build": "rm -rf dist && tsc -p tsconfig.json",
+    "link:global": "pnpm link --global",
+    "build:link": "pnpm build && pnpm link --global",
     "start": "node dist/apps/cli/src/index.js",
     "test": "tsx --test src/**/*.test.ts apps/**/*.test.ts packages/**/*.test.ts",
     "prepublishOnly": "pnpm build && pnpm test"
